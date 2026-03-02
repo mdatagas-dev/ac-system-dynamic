@@ -1,0 +1,28 @@
+{
+  "dependencies": {
+    "@prisma/client": "^6.7.0",
+    "bcrypt": "^5.1.1",
+    "bottleneck": "^2.19.5",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.16.3",
+    "redis": "^5.10.0"
+  },
+  "name": "backend-scan-prod",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "nodemon": "^3.1.10",
+    "prisma": "^6.7.0"
+  }
+}
