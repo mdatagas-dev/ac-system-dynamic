@@ -31,6 +31,15 @@ model recordscan {
   sn_accessories String?   @db.VarChar(255)
   sn             String?   @db.VarChar(255)
   timestamps     DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([id_regist(ops: raw("gin_trgm_ops"))], map: "idx_recordscan_id_regist_trgm", type: Gin)
+  @@index([pcb_idu], map: "idx_recordscan_pcb_idu")
+  @@index([sn], map: "idx_recordscan_sn")
+  @@index([sn_accessories], map: "idx_recordscan_sn_accessories")
+  @@index([sn_box], map: "idx_recordscan_sn_box")
+  @@index([sn_carton], map: "idx_recordscan_sn_carton")
+  @@index([sn_motor], map: "idx_recordscan_sn_motor")
+  @@index([timestamps], map: "idx_recordscan_timestamps")
 }
 
 model registscan {
@@ -39,7 +48,7 @@ model registscan {
   order_number   String    @db.VarChar(255)
   subline        String    @db.VarChar(255)
   userid         String    @db.VarChar(255)
-  shift          String    @db.VarChar(255)
+  shift          String?   @db.VarChar(255)
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   sn             String?   @db.VarChar
   sn_carton      String?   @db.VarChar
