@@ -67,12 +67,12 @@ model line {
 }
 
 model model {
-  id                   String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  brand                String? @db.VarChar(255)
-  model                String? @db.VarChar(255)
-  pk                   Int?
-  linkimage            String? @db.VarChar(255)
-  uph_uph_modelTomodel uph[]   @relation("uph_modelTomodel")
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  brand                String?  @db.VarChar(255)
+  model                String?  @db.VarChar(255)
+  pk                   Decimal? @db.Decimal
+  linkimage            String?  @db.VarChar(255)
+  uph_uph_modelTomodel uph[]    @relation("uph_modelTomodel")
 }
 
 model uph {

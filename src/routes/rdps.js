@@ -13,9 +13,11 @@ dotenv.config({
 
 router.get("/scan", async (req, res) => {
   const idRegist = req.headers.idregist;
+
   if (idRegist === undefined || idRegist === null || !idRegist) {
     return res.status(404).json({ error: "tidak ada id regist" });
   }
+
   try {
     // validasi dari regist
     const resRegistScan = await prisma.registscan.findFirst({
@@ -41,14 +43,16 @@ router.get("/scan", async (req, res) => {
       },
     });
 
+    const modelOnly = resRegistScan.model.slice(
+      0,
+      resRegistScan.model.length - 5,
+    );
+
     const resBomlist = await prisma.bomlist.findMany({
       where: {
-        order_number: {
-          contains: resRegistScan.order_number,
-          mode: "insensitive",
-        },
+        model: modelOnly.trim(),
+        order_number: resRegistScan.order_number.trim(),
       },
-      take: 1,
     });
 
     const cleanBomlist = resBomlist.map((item) => {
@@ -226,7 +230,6 @@ router.get("/dashboard", async (req, res) => {
     AND rgs.timestamps::date = ${todayStr}::date
     GROUP BY rgs.subline
     `;
-
       query = `
         SELECT 
           suph.uph AS suph,
@@ -241,7 +244,7 @@ router.get("/dashboard", async (req, res) => {
           ON mdl.model ILIKE rgs.model
         JOIN line AS aln
           ON aln.line ILIKE rgs.subline
-        LEFT JOIN (uph
+        LEFT JOIN (
           SELECT DISTINCT model, line, uph
           FROM uph
         ) AS suph
@@ -251,10 +254,7 @@ router.get("/dashboard", async (req, res) => {
             ${whereClause2}
         GROUP BY rgs.model, jam, rgs.subline, suph.uph
         ORDER BY jam, rgs.model, rgs.subline;
-
-
-   
-  `;
+        `;
     } else {
       subline = await prisma.$queryRaw`
     SELECT 
@@ -529,14 +529,18 @@ router.post("/post", async (req, res) => {
         }
       };
 
-      checkDoubleScan("assy input");
-      checkDoubleScan("assy output");
-      checkDoubleScan("testing input");
-      checkDoubleScan("testing output");
-      checkDoubleScan("testing");
-      checkDoubleScan("packing");
-      checkDoubleScan("packing input");
-      checkDoubleScan("packing output");
+      checkDoubleScan("idu assy input");
+      checkDoubleScan("idu assy output");
+      checkDoubleScan("odu assy input");
+      checkDoubleScan("odu assy output");
+      checkDoubleScan("idu testing input");
+      checkDoubleScan("idu testing output");
+      checkDoubleScan("odu testing input");
+      checkDoubleScan("odu testing output");
+      checkDoubleScan("idu packing input");
+      checkDoubleScan("idu packing output");
+      checkDoubleScan("odu packing input");
+      checkDoubleScan("odu packing output");
 
       // jika user regist adalah packing
       if (valueRegist.subline.toLowerCase().includes("packing")) {
@@ -571,9 +575,16 @@ router.post("/post", async (req, res) => {
           }
         };
 
-        checkMissedScan("assy input");
-        checkMissedScan("assy output");
-        checkMissedScan("testing");
+        checkMissedScan("idu assy input");
+        checkMissedScan("idu assy output");
+        checkMissedScan("odu assy input");
+        checkMissedScan("odu assy output");
+        checkMissedScan("idu testing input");
+        checkMissedScan("idu testing output");
+        checkMissedScan("odu testing input");
+        checkMissedScan("odu testing output");
+        checkMissedScan("idu packing input");
+        checkMissedScan("odu packing input");
 
         // mencari mainboard, panel2, atau bplane berdasarkan sn tertentu
         const materialCheck = await tx.recordscan.findMany({
@@ -687,12 +698,12 @@ router.post("/post", async (req, res) => {
       });
 
       return {
-        created,
         unit: marge,
         brand: brandtv ? brandtv.brand : null,
         po: valueRegist.po_number,
         odf: valueRegist.order_number,
         model: valueRegist.model,
+        created,
       };
     });
 

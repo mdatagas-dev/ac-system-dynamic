@@ -45,7 +45,7 @@ router.get("/", async (req, res) => {
     OR rgs.subline ILIKE $${params.length}
   )`;
   }
-  if (decode.roleuser === "superuser") {
+  if (decode.roleuser.toLowerCase() === "superuser") {
     params.push(Number(limit), Number(skip));
     sqlcount = `
     SELECT COUNT(id)::INTEGER FROM registscan AS rgs WHERE 1=1 ${optionQuery}
@@ -150,15 +150,17 @@ router.post("/post", async (req, res) => {
     sn_accessories,
   } = await req.body;
 
+  const modelOnly = model.slice(0, model.length - 5);
+
   const od_eng = await prisma.bomlist.findMany({
     where: {
-      model: model.trim(),
+      model: modelOnly.trim(),
       order_number: order_number.trim(),
     },
   });
 
   if (od_eng <= 0) {
-    return res.status(404).json({ error: "Order Number tidak ada di bomlist" });
+    return res.status(404).json({ error: "Batch tidak ada di bomlist" });
   }
 
   const planning = Number(plan);
@@ -201,7 +203,6 @@ router.put("/edit/:id", async (req, res) => {
     order_number,
     po_number,
     subline,
-    userid,
     shift,
     plan,
     sn,
@@ -211,6 +212,19 @@ router.put("/edit/:id", async (req, res) => {
     sn_carton,
     sn_accessories,
   } = req.body;
+
+  const modelOnly = model.slice(0, model.length - 5);
+
+  const odf = await prisma.bomlist.findMany({
+    where: {
+      model: modelOnly.trim(),
+      order_number: order_number.trim(),
+    },
+  });
+
+  if (odf <= 0) {
+    return res.status(404).json({ error: "Batch tidak ada di bomlist" });
+  }
 
   const planning = Number(plan);
   try {
@@ -223,7 +237,6 @@ router.put("/edit/:id", async (req, res) => {
         order_number: order_number.trim(),
         po_number: po_number.trim(),
         subline: subline.trim(),
-        userid,
         shift,
         plan: planning,
         sn: sn.trim(),
