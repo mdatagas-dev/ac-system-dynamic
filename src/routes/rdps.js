@@ -113,15 +113,16 @@ router.get("/dashboard", async (req, res) => {
   let whereClause3 = ``;
 
   if (keyword) {
+    console.log(keyword);
     whereClause1 = `
     aln.line = UPPER('${keyword}') AND
     rgs.shift = '1'
-    AND rcs.timestamps::date = '${todayStr}'::date`;
+    AND rgs.timestamps::date = '${todayStr}'::date`;
 
     whereClause2 = `
   	aln.line = UPPER('${keyword}')
 	AND
-	(rcs.timestamps AT TIME ZONE 'Asia/Jakarta')::date = '${todayStr}'::date
+	(rgs.timestamps AT TIME ZONE 'Asia/Jakarta')::date = '${todayStr}'::date
 	AND
   ( 
 	  ( rgs.shift = '1' AND EXTRACT(HOUR FROM rcs.timestamps AT TIME ZONE 'Asia/Jakarta') >= 7 )
@@ -137,23 +138,23 @@ router.get("/dashboard", async (req, res) => {
     ( 
       rgs.shift = '2' AND EXTRACT(HOUR FROM rcs.timestamps AT TIME ZONE 'Asia/Jakarta') >= 16 
     AND
-      (rcs.timestamps AT TIME ZONE 'Asia/Jakarta')::date = '${yesterdayStr}'::date 
+      (rgs.timestamps AT TIME ZONE 'Asia/Jakarta')::date = '${yesterdayStr}'::date 
     )
       OR
     (
         rgs.shift = '2' AND EXTRACT(HOUR FROM rcs.timestamps AT TIME ZONE 'Asia/Jakarta') >= 0 
       AND
-      (rcs.timestamps AT TIME ZONE 'Asia/Jakarta')::date = '${todayStr}'::date
+      (rgs.timestamps AT TIME ZONE 'Asia/Jakarta')::date = '${todayStr}'::date
     )
   )
     `;
   } else {
     whereClause1 = `
     rgs.shift = '1'
-    AND rcs.timestamps::date = '${todayStr}'::date`;
+    AND rgs.timestamps::date = '${todayStr}'::date`;
 
     whereClause2 = `
-	(rcs.timestamps AT TIME ZONE 'Asia/Jakarta')::date = '${todayStr}'::date
+	(rgs.timestamps AT TIME ZONE 'Asia/Jakarta')::date = '${todayStr}'::date
 	AND
   ( 
 	  ( rgs.shift = '1' AND EXTRACT(HOUR FROM rcs.timestamps AT TIME ZONE 'Asia/Jakarta') >= 7 )
@@ -166,13 +167,13 @@ router.get("/dashboard", async (req, res) => {
     ( 
       rgs.shift = '2' AND EXTRACT(HOUR FROM rcs.timestamps AT TIME ZONE 'Asia/Jakarta') >= 16 
     AND
-      (rcs.timestamps AT TIME ZONE 'Asia/Jakarta')::date = '${yesterdayStr}'::date 
+      (rgs.timestamps AT TIME ZONE 'Asia/Jakarta')::date = '${yesterdayStr}'::date 
     )
       OR
     (
         rgs.shift = '2' AND EXTRACT(HOUR FROM rcs.timestamps AT TIME ZONE 'Asia/Jakarta') >= 0 
       AND
-      (rcs.timestamps AT TIME ZONE 'Asia/Jakarta')::date = '${todayStr}'::date
+      (rgs.timestamps AT TIME ZONE 'Asia/Jakarta')::date = '${todayStr}'::date
     )
     `;
   }
@@ -187,7 +188,7 @@ router.get("/dashboard", async (req, res) => {
       ON rgs.id = rcs.id_regist::uuid
     WHERE 
       rgs.shift = '1'
-      AND rcs.timestamps::date = ${todayStr}::date
+      AND rgs.timestamps::date = ${todayStr}::date
     GROUP BY rgs.subline
       `;
 
@@ -265,12 +266,12 @@ router.get("/dashboard", async (req, res) => {
     WHERE 
     ( 
       rgs.shift = '2'
-      AND rcs.timestamps::date = ${todayStr}::date
+      AND rgs.timestamps::date = ${todayStr}::date
     )
     OR 
     (
       rgs.shift = '2' 
-      AND rcs.timestamps::date = ${yesterdayStr}::date 
+      AND rgs.timestamps::date = ${yesterdayStr}::date 
       AND EXTRACT(HOUR FROM rcs.timestamps AT TIME ZONE 'Asia/Jakarta') >= 16
     )
     GROUP BY rgs.subline
