@@ -80,7 +80,7 @@ router.get("/scan", async (req, res) => {
 
 router.get("/dashboard", async (req, res) => {
   const { keyword } = req.query;
-  const cacheKey = `dashboardUph:keyword=${keyword}`;
+  const cacheKey = `dashboardUphAC:keyword=${keyword}`;
 
   const cached = await redis.get(cacheKey);
 
@@ -113,7 +113,6 @@ router.get("/dashboard", async (req, res) => {
   let whereClause3 = ``;
 
   if (keyword) {
-    console.log(keyword);
     whereClause1 = `
     aln.line = UPPER('${keyword}') AND
     rgs.shift = '1'
@@ -498,17 +497,18 @@ router.post("/post", async (req, res) => {
         },
       });
 
+      // console.log("sn yang di terima: ", searchField.sn.trim().toUpperCase());
       //get subline from sn
       const allSubline = await tx.$queryRaw`
-          SELECT rgs.subline, rcs.sn 
-          FROM registscan AS rgs
-          JOIN recordscan AS rcs
-          ON rgs.id = rcs.id_regist::uuid
-          WHERE rcs.sn = ${searchField.sn}
-          `;
+        SELECT rgs.subline, rcs.sn
+        FROM registscan AS rgs
+        JOIN recordscan AS rcs
+        ON rgs.id = rcs.id_regist::uuid
+        WHERE rcs.sn = ${searchField.sn.trim().toUpperCase()}
+      `;
 
       // get line from regist scan
-      let isLine = valueRegist.subline.toLowerCase().slice(6, 20).trim();
+      let isLine = valueRegist.subline.toUpperCase();
       const throwBadRequest = (message) => {
         const err = new Error(message);
         err.status = 400;
@@ -516,35 +516,22 @@ router.post("/post", async (req, res) => {
       };
 
       // check double scan per subline
-      // find sn di db berdasarkan sn yang di scan(allSubline.sn & allSubline.subline)
-
       const checkDoubleScan = (lineList) => {
         if (
-          isLine.toLowerCase().includes(lineList) &&
-          allSubline.some((e) => e.subline.toLowerCase().includes(lineList))
+          isLine.toUpperCase().includes(lineList) && // check if the current line is the same as the lineList
+          allSubline.some((e) => e.subline.toUpperCase().includes(lineList)) // check if the lineList exists in the scanned sublines
         ) {
           const found = allSubline.find((e) =>
-            e.subline.toLowerCase().includes(lineList),
+            e.subline.toUpperCase().includes(lineList),
           );
           throwBadRequest("Double Scan di " + (found?.subline || lineList));
         }
       };
 
-      checkDoubleScan("idu assy input");
-      checkDoubleScan("idu assy output");
-      checkDoubleScan("odu assy input");
-      checkDoubleScan("odu assy output");
-      checkDoubleScan("idu testing input");
-      checkDoubleScan("idu testing output");
-      checkDoubleScan("odu testing input");
-      checkDoubleScan("odu testing output");
-      checkDoubleScan("idu packing input");
-      checkDoubleScan("idu packing output");
-      checkDoubleScan("odu packing input");
-      checkDoubleScan("odu packing output");
+      checkDoubleScan(valueRegist.subline.toUpperCase());
 
       // jika user regist adalah packing
-      if (valueRegist.subline.toLowerCase().includes("packing")) {
+      if (valueRegist.subline.toUpperCase().includes("PACKING")) {
         // search order number & model on registscan
         const searchRegist = await tx.registscan.findMany({
           select: {
@@ -557,35 +544,38 @@ router.post("/post", async (req, res) => {
             order_number: valueRegist.order_number,
             model: valueRegist.model,
             po_number: valueRegist.po_number,
-            subline: {
-              startsWith: valueRegist.subline.slice(0, 6), // take line name
-              mode: "insensitive",
-            },
           },
         });
 
         // cek apakah unit terlewat di line sebelumnya
+
+        // cari uniq dari subline by order number, model, po number dan cek apakah salah satu subline tidak ada sn
+        // jika uniq yang di ambil malah uniq yang tidak ada sn dan yang tidak di ambil malah mengandung sn
         const checkMissedScan = (lineList) => {
+          // diambil dari table regis, apakah lineList ada di subline regist
+
+          // allSubline di ambil dari table regis join recordscan berdasarkan sn yang di scan
+
           if (
-            searchRegist.some((e) =>
-              e.subline.toLowerCase().includes(lineList),
+            searchRegist.some(
+              (e) => e.subline.toUpperCase().includes(lineList), // false
             ) &&
-            !allSubline.some((e) => e.subline.toLowerCase().includes(lineList))
+            !allSubline.some((e) => e.subline.toUpperCase().includes(lineList))
           ) {
             throwBadRequest(`unit terlewat scan kembali di ${lineList}`);
           }
         };
 
-        checkMissedScan("idu assy input");
-        checkMissedScan("idu assy output");
-        checkMissedScan("odu assy input");
-        checkMissedScan("odu assy output");
-        checkMissedScan("idu testing input");
-        checkMissedScan("idu testing output");
-        checkMissedScan("odu testing input");
-        checkMissedScan("odu testing output");
-        checkMissedScan("idu packing input");
-        checkMissedScan("odu packing input");
+        checkMissedScan("LINE IDU ASSY INPUT");
+        checkMissedScan("LINE IDU ASSY OUTPUT");
+        checkMissedScan("LINE ODU ASSY INPUT");
+        checkMissedScan("LINE ODU ASSY OUTPUT");
+        checkMissedScan("LINE IDU TESTING INPUT");
+        checkMissedScan("LINE IDU TESTING OUTPUT");
+        checkMissedScan("LINE ODU TESTING INPUT");
+        checkMissedScan("LINE ODU TESTING OUTPUT");
+        checkMissedScan("LINE IDU PACKING INPUT");
+        checkMissedScan("LINE ODU PACKING INPUT");
 
         // mencari mainboard, panel2, atau bplane berdasarkan sn tertentu
         const materialCheck = await tx.recordscan.findMany({
@@ -718,7 +708,7 @@ router.post("/post", async (req, res) => {
       model: txResult.model,
     });
   } catch (err) {
-    // console.error(err);
+    console.error(err);
     return res.status(err.status || 500).json({
       error: err.message || "Internal Server Error",
     });
@@ -772,7 +762,7 @@ router.put("/edit/:id", async (req, res) => {
     });
     res.status(200).json({ message: "data update successful", data: result });
   } catch (error) {
-    // console.error(error);
+    console.error(error);
     res.status(500).json("Internal Server Error");
   }
 });
@@ -802,7 +792,7 @@ router.delete("/delete/:id", async (req, res) => {
       res.status(200).json({ result: result, message: "Deleted Succesfully" });
     }
   } catch (error) {
-    // console.error(error);
+    console.error(error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
@@ -882,7 +872,7 @@ router.get("/total-po-scan", async (req, res) => {
       totalPages: Math.ceil(total / limit),
     });
   } catch (error) {
-    // console.log(`Handling Error count total po scan: ${error.message}`);
+    console.error(`Handling Error count total po scan: ${error.message}`);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
@@ -922,7 +912,7 @@ router.get("/export-odf-po-all", async (req, res) => {
 
     res.status(200).json({ data: result });
   } catch (error) {
-    // console.log(`Handling Error export odf po all: ${error.message}`);
+    console.log(`Handling Error export odf po all: ${error.message}`);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
