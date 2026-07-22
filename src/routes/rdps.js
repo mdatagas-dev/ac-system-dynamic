@@ -531,7 +531,7 @@ router.post("/post", async (req, res) => {
       checkDoubleScan(valueRegist.subline.toUpperCase());
 
       // jika user regist adalah packing
-      if (valueRegist.subline.toUpperCase().includes("PACKING")) {
+      if (valueRegist.subline.toUpperCase().includes("PACKING OUTPUT")) {
         // search order number & model on registscan
         const searchRegist = await tx.registscan.findMany({
           select: {
