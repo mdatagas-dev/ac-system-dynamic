@@ -21,38 +21,39 @@ test("alur scan: regist via API, scan via UI, hasil muncul", async ({ page, requ
 
   const reg = await request.post(`${base}/registscan/post`, {
     headers: auth,
-    data: { model: modelFull, order_number: order, po_number: `PO-${uniq}`, subline: "LINE E2E", userid: "e2e", shift: "1", plan: 5, sn, sn_motor: "", sn_box: "", pcb_idu: "", sn_carton: "", sn_accessories: "" },
+    data: { model: modelFull, order_number: order, po_number: `PO-${uniq}`, subline: "LINE IDU ASSY INPUT", userid: "e2e", shift: "1", plan: 5, sn, sn_odu: `ODU-${uniq}`, pcb_idu: `PCB-${uniq}`, sn_accessories: `ACC-${uniq}`, sn_motor: `MTR-${uniq}`, sn_box: `BOX-${uniq}`, sn_carton: `CTN-${uniq}` },
   });
   expect(reg.status()).toBe(201);
   const regId = (await reg.json()).result.id;
 
   try {
     await login(page);
-    await page.goto("/scan");
+    await page.goto(`/scan?idregist=${regId}`);
 
-    // pilih registrasi: buka select → klik option
-    await page.getByRole("combobox").click();
-    await page.getByRole("option", { name: new RegExp(`${modelShort}12345`) }).click();
-
-    // scan SN
+    // scan SN + komponen IDU (auto pindah tanpa Enter, terakhir Enter = auto submit)
     await page.getByLabel("Serial Number").fill(sn);
-    await page.getByRole("button", { name: "Simpan Scan" }).click();
+    // untuk IDU, auto pindah aktif: setelah SN terisi, fokus ke PCB, tapi isi manual juga oke
+    await page.getByLabel("PCB IDU").fill(`PCB-${uniq}`);
+    await page.getByLabel("SN Accessories").fill(`ACC-${uniq}`);
+    await page.getByLabel("SN Accessories").press("Enter");
 
     // hasil tampil
     await expect(page.getByText(sn)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/Berhasil/i)).toBeVisible();
   } finally {
-    // cleanup: hapus semua recordscan milik regist ini (via history), lalu regist & bomlist
-    const hist = await request.get(`${base}/rdps/history?limit=100`, {
-      headers: { ...auth, idregist: regId },
-    });
-    if (hist.status() === 200) {
-      const records: Array<{ id: string; sn: string }> = (await hist.json()).data ?? [];
-      for (const r of records.filter((x) => x.sn === sn)) {
-        await request.delete(`${base}/rdps/delete/${r.id}`, { headers: auth });
+    // cleanup: jangan bikin test fail kalau cleanup error (request context bisa sudah closed)
+    try {
+      const hist = await request.get(`${base}/rdps/history?limit=100`, {
+        headers: { ...auth, idregist: regId },
+      });
+      if (hist.status() === 200) {
+        const records: Array<{ id: string; sn: string }> = (await hist.json()).data ?? [];
+        for (const r of records.filter((x) => x.sn === sn)) {
+          try { await request.delete(`${base}/rdps/delete/${r.id}`, { headers: auth }); } catch {}
+        }
       }
-    }
-    await request.delete(`${base}/registscan/delete/${regId}`, { headers: auth });
-    await request.delete(`${base}/bomlist/delete/${bomId}`, { headers: auth });
+      try { await request.delete(`${base}/registscan/delete/${regId}`, { headers: auth }); } catch {}
+      try { await request.delete(`${base}/bomlist/delete/${bomId}`, { headers: auth }); } catch {}
+    } catch {}
   }
 });

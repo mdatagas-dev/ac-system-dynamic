@@ -16,7 +16,7 @@ test.describe("A11y & theme & responsive", () => {
   test("dialog: muncul, Esc menutup", async ({ page }) => {
     await login(page);
     await page.goto("/regist");
-    await page.getByRole("button", { name: "Registrasi Baru" }).click();
+    await page.getByRole("button", { name: "Create" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await page.keyboard.press("Escape");

@@ -437,6 +437,7 @@ function ScanContent() {
                     ref={(el) => {
                       inputRefs.current[idx] = el;
                     }}
+                    aria-label={f.label}
                     value={fieldValues[f.key] ?? ""}
                     onChange={(e) => setFieldValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
                     onKeyDown={(e) => {
