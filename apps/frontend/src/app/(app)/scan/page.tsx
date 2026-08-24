@@ -1,14 +1,15 @@
 "use client";
 
 /**
- * Scan — pilih registrasi (header idregist), scan SN via /rdps/post.
- * Fokus legacy: form tengah sempit, hanya 3 field (SN/MOTOR/BOX untuk ODU), Last Scan di atas, submit biru kanan, auto-focus berurutan.
+ * Scan — fokus legacy tanpa tombol submit. Auto-scan saat field terakhir di-Enter.
+ * Popup hijau (pass) / merah (fail) sebagai feedback.
  */
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { http } from "@/lib/api";
-import { Button } from "@/components/vm3/Button";
 import { Card } from "@/components/vm3/Card";
+import { Dialog } from "@/components/vm3/Dialog";
+import { Button } from "@/components/vm3/Button";
 import { Select } from "@/components/vm3/Select";
 import { useSnackbar } from "@/components/vm3/Snackbar";
 
@@ -62,10 +63,15 @@ function ScanContent() {
   const [loading, setLoading] = useState(false);
   const [lastScan, setLastScan] = useState<string>("");
   const [count, setCount] = useState<number>(0);
+  const [popupOpen, setPopupOpen] = useState(false);
+  const [popupType, setPopupType] = useState<"success" | "error">("success");
+  const [popupMsg, setPopupMsg] = useState("");
 
   const snRef = useRef<HTMLInputElement>(null);
   const motorRef = useRef<HTMLInputElement>(null);
   const boxRef = useRef<HTMLInputElement>(null);
+  const pcbRef = useRef<HTMLInputElement>(null);
+  const accRef = useRef<HTMLInputElement>(null);
 
   const selected = regists.find((r) => r.id === registId) ?? null;
   const isOdu = (selected?.subline ?? "").toUpperCase().includes("ODU");
@@ -103,18 +109,46 @@ function ScanContent() {
     if (selected?.total != null) setCount(selected.total);
   }, [selected?.total]);
 
-  // Auto-focus pertama kali masuk window scan (kaya legacy langsung cursor di SN)
   useEffect(() => {
     const t = setTimeout(() => snRef.current?.focus(), 300);
     return () => clearTimeout(t);
   }, [registId]);
 
+  // tutup popup -> auto fokus balik ke SN untuk unit berikutnya
+  useEffect(() => {
+    if (!popupOpen) {
+      const t = setTimeout(() => snRef.current?.focus(), 150);
+      return () => clearTimeout(t);
+    }
+  }, [popupOpen]);
+
   const scan = async () => {
-    if (!registId) return show("Pilih registrasi dulu");
+    if (!registId) {
+      show("Pilih registrasi dulu");
+      return;
+    }
     if (!sn.trim()) {
-      show("SN wajib diisi");
+      setPopupType("error");
+      setPopupMsg("SN wajib diisi");
+      setPopupOpen(true);
       snRef.current?.focus();
       return;
+    }
+    // ODU wajib: MOTOR & BOX; IDU wajib: PCB & Accessories
+    if (isOdu) {
+      if (!snMotor.trim() || !snBox.trim()) {
+        setPopupType("error");
+        setPopupMsg("MOTOR dan BOX wajib diisi untuk ODU");
+        setPopupOpen(true);
+        return;
+      }
+    } else {
+      if (!pcb.trim() || !snAcc.trim()) {
+        setPopupType("error");
+        setPopupMsg("PCB IDU dan SN Accessories wajib diisi untuk IDU");
+        setPopupOpen(true);
+        return;
+      }
     }
     setLoading(true);
     try {
@@ -132,10 +166,12 @@ function ScanContent() {
         },
         { extraHeaders: { idregist: registId } },
       );
-      show("Scan berhasil disimpan");
       const newSn = (res as unknown as { data?: { sn?: string } })?.data?.sn ?? sn.trim();
       setLastScan(newSn);
       setCount((c) => c + 1);
+      setPopupType("success");
+      setPopupMsg((res as unknown as { message?: string })?.message ?? "Scan berhasil");
+      setPopupOpen(true);
       setSn("");
       setSnOdu("");
       setSnMotor("");
@@ -143,10 +179,12 @@ function ScanContent() {
       setPcb("");
       setSnCarton("");
       setSnAcc("");
-      // auto balik ke SN untuk unit berikutnya
-      setTimeout(() => snRef.current?.focus(), 100);
+      // auto-close hijau setelah 1.2s
+      setTimeout(() => setPopupOpen(false), 1200);
     } catch (err) {
-      show(`Scan ditolak: ${(err as Error).message}`);
+      setPopupType("error");
+      setPopupMsg((err as Error).message || "Scan gagal");
+      setPopupOpen(true);
     } finally {
       setLoading(false);
     }
@@ -154,7 +192,6 @@ function ScanContent() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Header legacy — biru dongker */}
       {selected && (
         <div className="rounded-xl bg-[#0f1445] p-4 text-white flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -168,7 +205,6 @@ function ScanContent() {
         </div>
       )}
 
-      {/* Pilih registrasi hanya tampil kalau tidak datang dari drill */}
       {!idRegistParam && (
         <div className="max-w-xs">
           <div className="mb-2 text-sm font-medium text-on-surface-variant">Registrasi Aktif</div>
@@ -184,10 +220,8 @@ function ScanContent() {
         </div>
       )}
 
-      {/* Form tengah fokus — replikasi Image 2 legacy */}
       <Card variant="outlined" className="mx-auto w-full max-w-[560px] !bg-white p-8">
         <div className="flex flex-col gap-6">
-          {/* Last Scan */}
           <div className="flex items-center gap-4">
             <div className="w-32 shrink-0 text-sm text-gray-700">Last Scan</div>
             <div className="flex-1">
@@ -197,7 +231,6 @@ function ScanContent() {
             </div>
           </div>
 
-          {/* Serial Number */}
           <div className="flex items-center gap-4">
             <div className="w-32 shrink-0 text-sm text-gray-900">Serial Number</div>
             <div className="flex-1">
@@ -209,17 +242,17 @@ function ScanContent() {
                   if (e.key === "Enter") {
                     e.preventDefault();
                     if (isOdu) motorRef.current?.focus();
-                    else snRef.current?.blur();
+                    else pcbRef.current?.focus();
                   }
                 }}
                 className="h-11 w-full rounded-md border border-gray-300 bg-white px-3 text-sm outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20"
                 placeholder=""
                 autoComplete="off"
+                disabled={loading}
               />
             </div>
           </div>
 
-          {/* Field dinamis: ODU = MOTOR/BOX, IDU = PCB/Accessories */}
           {isOdu ? (
             <>
               <div className="flex items-center gap-4">
@@ -237,6 +270,7 @@ function ScanContent() {
                     }}
                     className="h-11 w-full rounded-md border border-gray-300 bg-white px-3 text-sm outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20"
                     autoComplete="off"
+                    disabled={loading}
                   />
                 </div>
               </div>
@@ -255,6 +289,7 @@ function ScanContent() {
                     }}
                     className="h-11 w-full rounded-md border border-gray-300 bg-white px-3 text-sm outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20"
                     autoComplete="off"
+                    disabled={loading}
                   />
                 </div>
               </div>
@@ -265,10 +300,18 @@ function ScanContent() {
                 <div className="w-32 shrink-0 text-sm text-gray-900">PCB IDU</div>
                 <div className="flex-1">
                   <input
+                    ref={pcbRef}
                     value={pcb}
                     onChange={(e) => setPcb(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        accRef.current?.focus();
+                      }
+                    }}
                     className="h-11 w-full rounded-md border border-gray-300 bg-white px-3 text-sm outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20"
                     autoComplete="off"
+                    disabled={loading}
                   />
                 </div>
               </div>
@@ -276,6 +319,7 @@ function ScanContent() {
                 <div className="w-32 shrink-0 text-sm text-gray-900">SN Accessories</div>
                 <div className="flex-1">
                   <input
+                    ref={accRef}
                     value={snAcc}
                     onChange={(e) => setSnAcc(e.target.value)}
                     onKeyDown={(e) => {
@@ -286,32 +330,41 @@ function ScanContent() {
                     }}
                     className="h-11 w-full rounded-md border border-gray-300 bg-white px-3 text-sm outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20"
                     autoComplete="off"
+                    disabled={loading}
                   />
                 </div>
               </div>
             </>
           )}
 
-          {/* Hidden fields tetap dikirim tapi tidak ditampilkan di mode fokus */}
           <input type="hidden" value={snOdu} readOnly />
           <input type="hidden" value={snCarton} readOnly />
 
-          <div className="flex justify-end pt-2">
-            <Button
-              onClick={scan}
-              loading={loading}
-              className="!bg-[#2381c7] hover:!bg-[#1c6aa6] !text-white !rounded-md px-8"
-            >
-              submit
-            </Button>
-          </div>
-
-          {/* Feedback kecil di bawah form, bukan panel kanan besar */}
           <div className="text-center text-xs text-gray-500 min-h-4">
-            Tekan Enter di BOX untuk submit • Auto fokus kembali ke Serial Number setelah sukses
+            Scan SN → Enter → {isOdu ? "MOTOR → Enter → BOX → Enter" : "PCB → Enter → Accessories → Enter"} = auto submit (tanpa tombol)
           </div>
         </div>
       </Card>
+
+      {/* Popup hijau/merah auto — tanpa tombol submit */}
+      <Dialog
+        open={popupOpen}
+        onOpenChange={setPopupOpen}
+        title={popupType === "success" ? "Scan Berhasil" : "Scan Gagal"}
+        description={popupMsg}
+        actions={
+          popupType === "error" ? (
+            <Button onClick={() => setPopupOpen(false)} className={popupType === "error" ? "!bg-red-600 hover:!bg-red-700 !text-white" : ""}>
+              OK
+            </Button>
+          ) : null
+        }
+        className={
+          popupType === "success"
+            ? "!bg-green-600 !text-white [&_.vm3-dialog-title]:!text-white [&_.vm3-dialog-description]:!text-white/90"
+            : "!bg-red-600 !text-white [&_.vm3-dialog-title]:!text-white [&_.vm3-dialog-description]:!text-white/90"
+        }
+      />
     </div>
   );
 }
