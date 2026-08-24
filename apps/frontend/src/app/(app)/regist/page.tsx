@@ -278,8 +278,8 @@ export default function RegistPage() {
           {/* Pilihan cepat ODU/IDU — jangan tampilkan semua field di awal */}
           <div className="flex flex-wrap items-center gap-2 rounded-lg bg-surface-container p-3">
             <span className="text-sm font-medium">Pilih Subline:</span>
-            <button type="button" onClick={() => setForm({ ...form, subline: "LINE ODU ASSY INPUT" })} className={`rounded-full px-4 py-1.5 text-sm font-semibold border ${form.subline.toUpperCase().includes("ODU") ? "bg-[#0f1445] text-white border-[#0f1445]" : "bg-white border-outline-variant hover:bg-surface-container-highest"}`}>ODU</button>
-            <button type="button" onClick={() => setForm({ ...form, subline: "LINE IDU ASSY INPUT" })} className={`rounded-full px-4 py-1.5 text-sm font-semibold border ${form.subline.toUpperCase().includes("IDU") ? "bg-[#0f1445] text-white border-[#0f1445]" : "bg-white border-outline-variant hover:bg-surface-container-highest"}`}>IDU</button>
+            <button type="button" onClick={() => setForm({ ...form, subline: "LINE ODU ASSY INPUT" })} className={`rounded-full px-4 py-1.5 text-sm font-semibold border ${form.subline.toUpperCase().includes("ODU") ? "bg-[#0f1445] text-white border-[#0f1445]" : "bg-white text-gray-900 border-gray-300 hover:bg-gray-100"}`}>ODU</button>
+            <button type="button" onClick={() => setForm({ ...form, subline: "LINE IDU ASSY INPUT" })} className={`rounded-full px-4 py-1.5 text-sm font-semibold border ${form.subline.toUpperCase().includes("IDU") ? "bg-[#0f1445] text-white border-[#0f1445]" : "bg-white text-gray-900 border-gray-300 hover:bg-gray-100"}`}>IDU</button>
             <span className="text-xs text-on-surface-variant ml-1">atau ketik manual di field Subline</span>
           </div>
 
