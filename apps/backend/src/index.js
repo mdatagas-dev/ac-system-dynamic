@@ -20,6 +20,8 @@ const lineRoutes = require("./routes/line");
 const pinRoutes = require("./routes/pin");
 const bomlistRoutes = require("./routes/bomlist");
 const uphRoutes = require("./routes/uph");
+const productCategoriesRoutes = require("./routes/product-categories");
+const componentsRoutes = require("./routes/components");
 
 const redis = require("./config/redis");
 
@@ -73,6 +75,8 @@ app.use("/pin", auth, pinRoutes);
 app.use("/uph", auth, uphRoutes);
 app.use("/rdps", auth, rdpsRoutes);
 app.use("/registscan", auth, registscanRoutes);
+app.use("/product-categories", auth, productCategoriesRoutes);
+app.use("/components", auth, componentsRoutes);
 
 // 404 handler
 app.use((req, res) => {

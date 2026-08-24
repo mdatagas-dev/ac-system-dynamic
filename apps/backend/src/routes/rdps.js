@@ -675,7 +675,16 @@ router.post("/post", async (req, res) => {
         }
       }
 
-      // query 3
+      // query 3 — support dynamic components + product_category
+      const knownKeys = new Set(["sn","sn_odu","sn_carton","pcb_idu","sn_box","sn_motor","sn_accessories","product_category","productCategory","components"]);
+      const dynComp = {};
+      for (const k of Object.keys(searchField)) {
+        if (!knownKeys.has(k) && searchField[k]) dynComp[k] = String(searchField[k]).toUpperCase();
+      }
+      if (searchField.components && typeof searchField.components === "object") {
+        for (const [k,v] of Object.entries(searchField.components)) if (v) dynComp[k] = String(v).toUpperCase();
+      }
+      const prodCat = (searchField.product_category || searchField.productCategory || valueRegist.product_category || "").toString().toLowerCase() || null;
       const created = await tx.recordscan.create({
         data: {
           id_regist: id_regist,
@@ -686,6 +695,8 @@ router.post("/post", async (req, res) => {
           sn_box: (searchField.sn_box || "").toUpperCase(),
           sn_motor: (searchField.sn_motor || "").toUpperCase(),
           sn_accessories: (searchField.sn_accessories || "").toUpperCase(),
+          product_category: prodCat,
+          components: Object.keys(dynComp).length ? dynComp : null,
         },
       });
 
@@ -748,10 +759,14 @@ router.put("/edit/:id", async (req, res) => {
     return res.status(400).json({ error: "Double scan di satu regist" });
   }
   try {
+    const dynUpdate = {};
+    const knownKnown = new Set(["sn_odu","sn_motor","pcb_idu","sn_box","sn_accessories","sn_carton","product_category","productCategory","components"]);
+    for (const k of Object.keys(handleRequest)) {
+      if (!knownKnown.has(k) && handleRequest[k] != null) dynUpdate[k] = String(handleRequest[k]).toUpperCase();
+    }
+    if (handleRequest.components && typeof handleRequest.components === "object") Object.assign(dynUpdate, handleRequest.components);
     const result = await prisma.recordscan.update({
-      where: {
-        id: id,
-      },
+      where: { id: id },
       data: {
         sn: sn,
         sn_odu: handleRequest.sn_odu,
@@ -760,6 +775,8 @@ router.put("/edit/:id", async (req, res) => {
         sn_box: handleRequest.sn_box,
         sn_accessories: handleRequest.sn_accessories,
         sn_carton: handleRequest.sn_carton,
+        ...(handleRequest.product_category || handleRequest.productCategory ? { product_category: String(handleRequest.product_category || handleRequest.productCategory).toLowerCase() } : {}),
+        ...(Object.keys(dynUpdate).length ? { components: dynUpdate } : {}),
       },
     });
     res.status(200).json({ message: "data update successful", data: result });
