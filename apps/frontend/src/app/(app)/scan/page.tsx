@@ -2,6 +2,7 @@
 
 /**
  * Scan — pilih registrasi (header idregist), scan SN via /rdps/post.
+ * Replikasi legacy Image 1: header Model/PO/Line/Plan/Count + Last Scan field.
  */
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -19,6 +20,7 @@ interface Regist {
   po_number: string;
   subline: string;
   plan: number | null;
+  total?: number;
 }
 
 interface ScanResult {
@@ -28,6 +30,13 @@ interface ScanResult {
   odf?: string;
   model?: string;
   data?: { id: string; sn: string };
+}
+
+interface ScanSummary {
+  validation?: Regist;
+  total?: number;
+  last?: { sn?: string; sn_odu?: string } | null;
+  bomlist?: unknown[];
 }
 
 export default function ScanPage() {
@@ -43,7 +52,6 @@ function ScanContent() {
   const searchParams = useSearchParams();
   const idRegistParam = searchParams.get("idregist");
   const [regists, setRegists] = useState<Regist[]>([]);
-  // idregist dari URL (/scan?idregist=...) — jadi nilai awal, user bisa ganti via Select
   const [registId, setRegistId] = useState<string | null>(idRegistParam);
   const [sn, setSn] = useState("");
   const [snOdu, setSnOdu] = useState("");
@@ -55,18 +63,49 @@ function ScanContent() {
   const [result, setResult] = useState<ScanResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [snFocused, setSnFocused] = useState(false);
+  const [lastScan, setLastScan] = useState<string>("");
+  const [count, setCount] = useState<number>(0);
+
+  const selected = regists.find((r) => r.id === registId) ?? null;
 
   useEffect(() => {
     http
       .get<{ data: Regist[] }>("/registscan?limit=100")
       .then((res) => {
         setRegists(res.data ?? []);
-        // Jangan timpa idregist dari query param — pakai functional update
         if (res.data?.length) setRegistId((prev) => prev ?? res.data![0].id);
       })
       .catch((err) => show(`Gagal muat registrasi: ${(err as Error).message}`));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Fetch Last Scan + Count untuk header kayak legacy Image 1
+  useEffect(() => {
+    if (!registId) {
+      setLastScan("");
+      setCount(0);
+      return;
+    }
+    http
+      .get<ScanSummary>("/rdps/scan", { extraHeaders: { idregist: registId } })
+      .then((res) => {
+        setLastScan(res.last?.sn ?? res.last?.sn_odu ?? "");
+        if (typeof res.total === "number") setCount(res.total);
+        // Sinkron plan/total dari validation jika ada
+        if (res.validation) {
+          setRegists((prev) => prev.map((r) => r.id === registId ? { ...r, ...res.validation } : r));
+        }
+      })
+      .catch(() => {
+        // fallback: hitung dari history atau diam
+        setLastScan("");
+      });
+  }, [registId]);
+
+  // Fallback count dari total di regists
+  useEffect(() => {
+    if (selected?.total != null) setCount(selected.total);
+  }, [selected?.total]);
 
   const scan = async () => {
     if (!registId) return show("Pilih registrasi dulu");
@@ -90,7 +129,16 @@ function ScanContent() {
       );
       setResult(res);
       show("Scan berhasil disimpan");
+      const newSn = res.data?.sn ?? sn.trim();
+      setLastScan(newSn);
+      setCount((c) => c + 1);
       setSn("");
+      setSnOdu("");
+      setSnMotor("");
+      setSnBox("");
+      setPcb("");
+      setSnCarton("");
+      setSnAcc("");
       setSnFocused(true);
     } catch (err) {
       show(`Scan ditolak: ${(err as Error).message}`);
@@ -102,6 +150,23 @@ function ScanContent() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-bold">Scan Unit</h1>
+
+      {/* Header legacy Image 1: Model (ODU) | PO | Line | Plan/Count */}
+      {selected && (
+        <Card variant="filled" className="p-4 bg-[#0f1445] text-white">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="text-lg font-bold tracking-wide">{selected.model}</div>
+              <div className="text-sm opacity-80">PO NUMBER: {selected.po_number}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-sm font-semibold">{selected.subline}</div>
+              <div className="text-xs opacity-80">Plan: {selected.plan ?? "-"}</div>
+              <div className="text-xs opacity-80">Count: {count}</div>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Form scan */}
@@ -120,6 +185,9 @@ function ScanContent() {
           </div>
 
           <div className="flex flex-col gap-4">
+            {/* Last Scan — replikasi Image 1 */}
+            <TextField label="Last Scan" value={lastScan} disabled placeholder="-" />
+
             <TextField
               label="Serial Number"
               icon="qr_code_scanner"
@@ -142,7 +210,7 @@ function ScanContent() {
               <TextField label="SN Accessories" value={snAcc} onChange={(e) => setSnAcc(e.target.value)} />
             </div>
             <Button onClick={scan} loading={loading} fullWidth>
-              Simpan Scan
+              submit
             </Button>
           </div>
         </Card>

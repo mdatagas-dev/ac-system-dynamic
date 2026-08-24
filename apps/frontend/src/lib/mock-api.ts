@@ -101,6 +101,14 @@ export function mockRequest(
     return makeToken(username);
   }
 
+  /* ---- Scan summary (header Last Scan) ---- */
+  if (p === "/rdps/scan" && m === "GET") {
+    const idRegist = headers?.idregist ?? "";
+    const reg = REGISTS.find((r) => r.id === idRegist) ?? null;
+    const list = RECORDS.filter((r) => r.id_regist === idRegist);
+    return { validation: reg, total: list.length, last: list[0] ?? null, bomlist: [] };
+  }
+
   /* ---- Dashboard ---- */
   if (p === "/rdps/dashboard" && m === "GET") return dashboard(url.searchParams.get("keyword") ?? "");
   if (p === "/rdps/total-po-scan" && m === "GET") return totalPoScan(url);

@@ -3,7 +3,8 @@
 /**
  * Riwayat scan — /rdps/history dengan header idregist + pencarian.
  */
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { http } from "@/lib/api";
 import { Card } from "@/components/vm3/Card";
 import { SearchField } from "@/components/vm3/SearchField";
@@ -31,9 +32,19 @@ interface Record {
 }
 
 export default function HistoryPage() {
+  return (
+    <Suspense fallback={null}>
+      <HistoryContent />
+    </Suspense>
+  );
+}
+
+function HistoryContent() {
   const { show } = useSnackbar();
+  const searchParams = useSearchParams();
+  const idRegistParam = searchParams.get("idregist");
   const [regists, setRegists] = useState<Regist[]>([]);
-  const [registId, setRegistId] = useState<string | null>(null);
+  const [registId, setRegistId] = useState<string | null>(idRegistParam);
   const [rows, setRows] = useState<Record[]>([]);
   const [keyword, setKeyword] = useState("");
   const [total, setTotal] = useState(0);
@@ -46,7 +57,7 @@ export default function HistoryPage() {
       .get<{ data: Regist[] }>("/registscan?limit=100")
       .then((res) => {
         setRegists(res.data ?? []);
-        if (res.data?.length) setRegistId(res.data[0].id);
+        if (res.data?.length) setRegistId((prev) => prev ?? res.data![0].id);
       })
       .catch((err) => show(`Gagal muat: ${(err as Error).message}`));
     // eslint-disable-next-line react-hooks/exhaustive-deps
