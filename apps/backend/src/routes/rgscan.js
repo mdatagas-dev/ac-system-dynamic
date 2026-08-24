@@ -179,7 +179,14 @@ router.post("/post", async (req, res) => {
       .json({ error: "model, order_number, po_number, subline, userid, shift, plan wajib diisi" });
   }
 
-  const wajibSN = { sn, sn_odu, pcb_idu, sn_accessories, sn_motor, sn_box };
+  // validasi SN dinamis per subline: ODU -> odu fields, IDU -> idu fields, else semua
+  const u = String(subline).toUpperCase();
+  const isOdu = u.includes("ODU");
+  const isIdu = u.includes("IDU");
+  let wajibSN;
+  if (isOdu && !isIdu) wajibSN = { sn_odu, sn_motor, sn_box };
+  else if (isIdu && !isOdu) wajibSN = { sn, pcb_idu, sn_accessories };
+  else wajibSN = { sn, sn_odu, pcb_idu, sn_accessories, sn_motor, sn_box };
   const kosong = Object.entries(wajibSN).filter(([, v]) => !v || !String(v).trim());
   if (kosong.length) {
     return res
@@ -261,12 +268,18 @@ router.put("/edit/:id", async (req, res) => {
       .json({ error: "model, order_number, po_number, subline, shift, plan wajib diisi" });
   }
 
-  const wajibSN = { sn, sn_odu, pcb_idu, sn_accessories, sn_motor, sn_box };
-  const kosong = Object.entries(wajibSN).filter(([, v]) => !v || !String(v).trim());
-  if (kosong.length) {
+  const u2 = String(subline).toUpperCase();
+  const isOdu2 = u2.includes("ODU");
+  const isIdu2 = u2.includes("IDU");
+  let wajibSN2;
+  if (isOdu2 && !isIdu2) wajibSN2 = { sn_odu, sn_motor, sn_box };
+  else if (isIdu2 && !isOdu2) wajibSN2 = { sn, pcb_idu, sn_accessories };
+  else wajibSN2 = { sn, sn_odu, pcb_idu, sn_accessories, sn_motor, sn_box };
+  const kosong2 = Object.entries(wajibSN2).filter(([, v]) => !v || !String(v).trim());
+  if (kosong2.length) {
     return res
       .status(400)
-      .json({ error: `Wajib diisi: ${kosong.map(([k]) => k).join(", ")}` });
+      .json({ error: `Wajib diisi: ${kosong2.map(([k]) => k).join(", ")}` });
   }
 
   try {

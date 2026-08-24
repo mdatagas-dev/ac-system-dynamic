@@ -44,11 +44,22 @@ const EMPTY = {
   sn_accessories: "",
 };
 
-/** Field wajib — backend 400 reject bila kosong (sn_carton opsional) */
-const REQUIRED = [
-  "model", "order_number", "po_number", "subline",
-  "sn", "sn_odu", "pcb_idu", "sn_accessories", "sn_motor", "sn_box",
-] as const;
+/** Field wajib — dinamis per subline (sn_carton selalu opsional) */
+function getRequired(subline: string) {
+  const u = subline.toUpperCase();
+  const isOdu = u.includes("ODU");
+  const isIdu = u.includes("IDU");
+  const base = ["model", "order_number", "po_number", "subline"] as const;
+  if (isOdu && !isIdu) return [...base, "sn_odu", "sn_motor", "sn_box"] as const;
+  if (isIdu && !isOdu) return [...base, "sn", "pcb_idu", "sn_accessories"] as const;
+  if (subline.trim() === "" || subline.trim().toUpperCase() === "ODU" || subline.trim().toUpperCase() === "IDU") {
+    // fallback untuk input singkat "ODU"/"IDU" — treat sama
+    if (isOdu) return [...base, "sn_odu", "sn_motor", "sn_box"] as const;
+    if (isIdu) return [...base, "sn", "pcb_idu", "sn_accessories"] as const;
+  }
+  // kalau subline generic / tidak jelas (mis. kosong), wajib semua biar tidak lolos setengah
+  return [...base, "sn", "sn_odu", "pcb_idu", "sn_accessories", "sn_motor", "sn_box"] as const;
+}
 
 interface PostResult {
   result?: { id: string };
@@ -67,6 +78,10 @@ export default function RegistPage() {
   const [searchInput, setSearchInput] = useState("");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+
+  const requiredKeys = getRequired(form.subline);
+  const requiredSet = new Set<string>(requiredKeys as unknown as string[]);
+  const isFormValid = requiredKeys.every((k) => String((form as Record<string, unknown>)[k] ?? "").trim() !== "");
 
   const load = useCallback(async (kw = keyword, pg = page) => {
     try {
@@ -246,7 +261,7 @@ export default function RegistPage() {
         actions={
           <>
             <Button variant="text" onClick={() => setDialogOpen(false)}>Batal</Button>
-            <Button onClick={submit} disabled={!REQUIRED.every((k) => String(form[k]).trim())}>Simpan</Button>
+            <Button onClick={submit} disabled={!isFormValid}>Simpan</Button>
           </>
         }
       >
@@ -261,20 +276,20 @@ export default function RegistPage() {
           </div>
 
           <section aria-label="IDU">
-            <div className="mb-2 text-sm font-medium text-on-surface-variant">IDU</div>
+            <div className="mb-2 text-sm font-medium text-on-surface-variant">IDU {requiredSet.has("sn") ? "" : "(opsional untuk ODU)"}</div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <TextField label="Serial Number Unit" value={form.sn} onChange={(e) => setForm({ ...form, sn: e.target.value })} required />
-              <TextField label="SN PCB" value={form.pcb_idu} onChange={(e) => setForm({ ...form, pcb_idu: e.target.value })} required />
-              <TextField label="SN Accessories" value={form.sn_accessories} onChange={(e) => setForm({ ...form, sn_accessories: e.target.value })} required />
+              <TextField label="Serial Number Unit" value={form.sn} onChange={(e) => setForm({ ...form, sn: e.target.value })} required={requiredSet.has("sn")} />
+              <TextField label="SN PCB" value={form.pcb_idu} onChange={(e) => setForm({ ...form, pcb_idu: e.target.value })} required={requiredSet.has("pcb_idu")} />
+              <TextField label="SN Accessories" value={form.sn_accessories} onChange={(e) => setForm({ ...form, sn_accessories: e.target.value })} required={requiredSet.has("sn_accessories")} />
             </div>
           </section>
 
           <section aria-label="ODU">
-            <div className="mb-2 text-sm font-medium text-on-surface-variant">ODU</div>
+            <div className="mb-2 text-sm font-medium text-on-surface-variant">ODU {requiredSet.has("sn_odu") ? "" : "(opsional untuk IDU)"}</div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <TextField label="Serial Number" value={form.sn_odu} onChange={(e) => setForm({ ...form, sn_odu: e.target.value })} required />
-              <TextField label="SN Motor" value={form.sn_motor} onChange={(e) => setForm({ ...form, sn_motor: e.target.value })} required />
-              <TextField label="SN Electrical Box" value={form.sn_box} onChange={(e) => setForm({ ...form, sn_box: e.target.value })} required />
+              <TextField label="Serial Number" value={form.sn_odu} onChange={(e) => setForm({ ...form, sn_odu: e.target.value })} required={requiredSet.has("sn_odu")} />
+              <TextField label="SN Motor" value={form.sn_motor} onChange={(e) => setForm({ ...form, sn_motor: e.target.value })} required={requiredSet.has("sn_motor")} />
+              <TextField label="SN Electrical Box" value={form.sn_box} onChange={(e) => setForm({ ...form, sn_box: e.target.value })} required={requiredSet.has("sn_box")} />
               <TextField label="SN Carton" value={form.sn_carton} onChange={(e) => setForm({ ...form, sn_carton: e.target.value })} />
             </div>
           </section>
