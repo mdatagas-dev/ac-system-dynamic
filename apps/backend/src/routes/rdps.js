@@ -602,16 +602,22 @@ router.post("/post", async (req, res) => {
         }, {});
       }
 
+      const knownScanCols = new Set(["sn","sn_odu","sn_carton","pcb_idu","sn_box","sn_motor","sn_accessories"]);
       const optionWhere = [].filter(Boolean);
-      // check scan result
+      // check scan result — hanya kolom known, komponen dinamis skip (cek via JSONB tidak didukung di findMany contains, skip untuk MVP)
       for (let key in searchField) {
         const value = searchField[key];
         if (value !== undefined && value !== null && value !== "") {
+          if (!knownScanCols.has(key)) continue;
           // push when has value
           optionWhere.push({
             [key]: { contains: value, mode: "insensitive" },
           });
         }
+      }
+      if (optionWhere.length === 0) {
+        // jika hanya komponen dinamis (mis. washing sn_drum), jangan gagal — buat dummy yang tidak match
+        optionWhere.push({ sn: { contains: "__no_match__" } });
       }
 
       // query 2 cek double sn by po
@@ -796,11 +802,7 @@ router.delete("/delete/:id", async (req, res) => {
       },
     });
 
-    if (
-      Object.entries(check).length < 1 ||
-      check === undefined ||
-      check === null
-    ) {
+    if (!check || Object.keys(check).length < 1) {
       res.status(401).json({ error: "Id tidak terbaca di server" });
     } else {
       const result = await prisma.recordscan.delete({
