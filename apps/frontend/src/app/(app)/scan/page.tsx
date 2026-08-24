@@ -190,6 +190,51 @@ function ScanContent() {
     }
   };
 
+  // Auto-enter tanpa Enter: kolom atas terisi -> pindah bawah
+  useEffect(() => {
+    if (loading || popupOpen) return;
+    if (!sn.trim() || sn.trim().length < 6) return;
+    if (isOdu) {
+      if (snMotor.trim() !== "" || snBox.trim() !== "") return;
+    } else {
+      if (pcb.trim() !== "" || snAcc.trim() !== "") return;
+    }
+    const t = setTimeout(() => {
+      if (isOdu) motorRef.current?.focus();
+      else pcbRef.current?.focus();
+    }, 280);
+    return () => clearTimeout(t);
+  }, [sn, isOdu, snMotor, snBox, pcb, snAcc, loading, popupOpen]);
+
+  useEffect(() => {
+    if (loading || popupOpen) return;
+    if (isOdu) {
+      if (!snMotor.trim() || snMotor.trim().length < 4) return;
+      if (snBox.trim() !== "") return;
+      const t = setTimeout(() => boxRef.current?.focus(), 280);
+      return () => clearTimeout(t);
+    } else {
+      if (!pcb.trim() || pcb.trim().length < 4) return;
+      if (snAcc.trim() !== "") return;
+      const t = setTimeout(() => accRef.current?.focus(), 280);
+      return () => clearTimeout(t);
+    }
+  }, [snMotor, pcb, isOdu, snBox, snAcc, loading, popupOpen]);
+
+  useEffect(() => {
+    if (loading || popupOpen) return;
+    if (isOdu) {
+      if (!sn.trim() || !snMotor.trim() || !snBox.trim()) return;
+      if (snBox.trim().length < 4) return;
+    } else {
+      if (!sn.trim() || !pcb.trim() || !snAcc.trim()) return;
+      if (snAcc.trim().length < 4) return;
+    }
+    const t = setTimeout(() => scan(), 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sn, snMotor, snBox, pcb, snAcc, isOdu, loading, popupOpen]);
+
   return (
     <div className="flex flex-col gap-6">
       {selected && (
@@ -341,7 +386,7 @@ function ScanContent() {
           <input type="hidden" value={snCarton} readOnly />
 
           <div className="text-center text-xs text-gray-500 min-h-4">
-            Scan SN → Enter → {isOdu ? "MOTOR → Enter → BOX → Enter" : "PCB → Enter → Accessories → Enter"} = auto submit (tanpa tombol)
+            Auto pindah saat kolom terisi — tidak perlu Enter • Scan terakhir auto submit
           </div>
         </div>
       </Card>
