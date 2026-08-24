@@ -1,0 +1,74 @@
+/*
+ * VM3 → Tailwind v4 @theme
+ * Map token CSS vars jadi utilitas Tailwind (bg-primary, text-on-surface, rounded-md, ...)
+ * Import SETELAH tailwindcss agar @theme aktif.
+ */
+@theme {
+  /* ---------- Warna semantik (dari --vm3-color-*) ---------- */
+  --color-primary: var(--vm3-color-primary);
+  --color-on-primary: var(--vm3-color-on-primary);
+  --color-primary-container: var(--vm3-color-primary-container);
+  --color-on-primary-container: var(--vm3-color-on-primary-container);
+  --color-secondary: var(--vm3-color-secondary);
+  --color-on-secondary: var(--vm3-color-on-secondary);
+  --color-secondary-container: var(--vm3-color-secondary-container);
+  --color-on-secondary-container: var(--vm3-color-on-secondary-container);
+  --color-tertiary: var(--vm3-color-tertiary);
+  --color-on-tertiary: var(--vm3-color-on-tertiary);
+  --color-tertiary-container: var(--vm3-color-tertiary-container);
+  --color-on-tertiary-container: var(--vm3-color-on-tertiary-container);
+  --color-error: var(--vm3-color-error);
+  --color-on-error: var(--vm3-color-on-error);
+  --color-error-container: var(--vm3-color-error-container);
+  --color-on-error-container: var(--vm3-color-on-error-container);
+  --color-surface-dim: var(--vm3-color-surface-dim);
+  --color-surface: var(--vm3-color-surface);
+  --color-surface-bright: var(--vm3-color-surface-bright);
+  --color-surface-container-lowest: var(--vm3-color-surface-container-lowest);
+  --color-surface-container-low: var(--vm3-color-surface-container-low);
+  --color-surface-container: var(--vm3-color-surface-container);
+  --color-surface-container-high: var(--vm3-color-surface-container-high);
+  --color-surface-container-highest: var(--vm3-color-surface-container-highest);
+  --color-on-surface: var(--vm3-color-on-surface);
+  --color-surface-variant: var(--vm3-color-surface-variant);
+  --color-on-surface-variant: var(--vm3-color-on-surface-variant);
+  --color-outline: var(--vm3-color-outline);
+  --color-outline-variant: var(--vm3-color-outline-variant);
+  --color-inverse-surface: var(--vm3-color-inverse-surface);
+  --color-inverse-on-surface: var(--vm3-color-inverse-on-surface);
+  --color-inverse-primary: var(--vm3-color-inverse-primary);
+  --color-scrim: var(--vm3-color-scrim);
+  --color-surface-tint: var(--vm3-color-surface-tint);
+
+  /* Spacing Tailwind dibiarkan default; token VM3 via --vm3-space-* */
+
+  /* ---------- Shape ---------- */
+  --radius-xs: var(--vm3-shape-xs);
+  --radius-sm: var(--vm3-shape-sm);
+  --radius-md: var(--vm3-shape-md);
+  --radius-lg: var(--vm3-shape-lg);
+  --radius-xl: var(--vm3-shape-xl);
+  --radius-full: var(--vm3-shape-full);
+
+  /* ---------- Elevation (shadow) ---------- */
+  --shadow-1: var(--vm3-elevation-1-shadow);
+  --shadow-2: var(--vm3-elevation-2-shadow);
+  --shadow-3: var(--vm3-elevation-3-shadow);
+  --shadow-4: var(--vm3-elevation-4-shadow);
+  --shadow-5: var(--vm3-elevation-5-shadow);
+
+  /* ---------- Font ---------- */
+  --font-sans: var(--vm3-font-family, system-ui, sans-serif);
+
+  /* ---------- Breakpoints (M3 window size classes) ---------- */
+  --breakpoint-sm: 600px;
+  --breakpoint-md: 840px;
+  --breakpoint-lg: 1200px;
+  --breakpoint-xl: 1600px;
+
+  /* ---------- Motion ---------- */
+  --ease-standard: var(--vm3-easing-standard);
+  --ease-emphasized: var(--vm3-easing-emphasized);
+  --ease-emphasized-decelerate: var(--vm3-easing-emphasized-decelerate);
+  --ease-emphasized-accelerate: var(--vm3-easing-emphasized-accelerate);
+}

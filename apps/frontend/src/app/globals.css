@@ -1,0 +1,67 @@
+/*
+ * VM3 — Design System entry
+ * Urutan layer WAJIB dideklarasikan sebelum @import (kemunculan pertama menang):
+ * vm3-tokens → vm3-theme → icons → theme → tailwind(theme/base/components) → vm3-components → utilities
+ *
+ * PENTING: Material Symbols HARUS berada di dalam layer. Jika dimuat unlayered
+ * (mis. import JS "material-symbols/rounded.css"), gaya unlayered mengalahkan
+ * semua @layer — utilitas Tailwind (text-*, grid, place-items-center) pada
+ * elemen ikon mati total: ikon terkunci 24px & tidak bisa di-center.
+ */
+@layer vm3-tokens, vm3-theme, icons, theme, base, components, vm3-components, utilities;
+
+@import "material-symbols/rounded.css" layer(icons);
+@import "../design-system/tokens/core.css";
+@import "../design-system/tokens/component.css";
+@import "../design-system/tokens/buttons.css";
+@import "../design-system/tokens/fields.css";
+@import "../design-system/tokens/selection.css";
+@import "../design-system/tokens/containment.css";
+@import "../design-system/tokens/overlays.css";
+@import "../design-system/tokens/navigation.css";
+@import "../design-system/tokens/progress.css";
+@import "../design-system/themes/default.css";
+@import "../design-system/themes/fino.css";
+@import "tailwindcss";
+@import "../design-system/themes/tailwind.css";
+
+
+@layer base {
+  /* Sinkron dengan toggle tema (data-theme di <html>) —
+     perbaiki scrollbar/input native & meta theme-color saat mode gelap */
+  html[data-theme="light"] {
+    color-scheme: light;
+  }
+  html[data-theme="dark"] {
+    color-scheme: dark;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    /* Type scale M3 sebagai fallback font */
+    font-family: var(--vm3-font-family, system-ui, sans-serif);
+  }
+
+  body {
+    min-height: 100dvh;
+    margin: 0;
+    background-color: var(--vm3-color-surface);
+    color: var(--vm3-color-on-surface);
+  }
+
+  /* Fokus keyboard: aturan dasar ada di component.css (layer vm3-components).
+     Prinsipnya "aman secara default" — SEMUA elemen fokus punya indikator,
+     komponen VM3 dengan FocusRing inset sendiri yang menonaktifkan outline. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

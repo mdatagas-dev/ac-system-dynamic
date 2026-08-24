@@ -1,0 +1,92 @@
+/* VM3 Core Tokens — CSS Variables (nilai mentah, identik dengan core.ts) */
+@layer vm3-tokens {
+  :root {
+    /* ---------- Spacing (grid 4px) ---------- */
+    --vm3-space-2xs: 2px;
+    --vm3-space-xs: 4px;
+    --vm3-space-sm: 8px;
+    --vm3-space-md: 12px;
+    --vm3-space-lg: 16px;
+    --vm3-space-xl: 24px;
+    --vm3-space-2xl: 32px;
+    --vm3-space-3xl: 48px;
+    --vm3-space-4xl: 64px;
+    --vm3-space-6xl: 96px;
+
+    /* ---------- Shape ---------- */
+    --vm3-shape-none: 0px;
+    --vm3-shape-xs: 4px;
+    --vm3-shape-sm: 8px;
+    --vm3-shape-md: 12px;
+    --vm3-shape-lg: 16px;
+    --vm3-shape-xl: 28px;
+    --vm3-shape-full: 9999px;
+
+    /* ---------- Z-index ---------- */
+    --vm3-z-base: 0;
+    --vm3-z-raised: 10;
+    --vm3-z-floating: 20;
+    --vm3-z-overlay: 30;
+    --vm3-z-modal: 40;
+    --vm3-z-toast: 50;
+    --vm3-z-tooltip: 60;
+
+    /* ---------- State opacity ---------- */
+    --vm3-state-hover: 0.08;
+    --vm3-state-focus: 0.12;
+    --vm3-state-pressed: 0.12;
+    --vm3-state-dragged: 0.16;
+    --vm3-state-disabled-content: 0.38;
+    --vm3-state-disabled-container: 0.12;
+
+    /* ---------- Elevation (shadow) ---------- */
+    --vm3-elevation-0-shadow: none;
+    --vm3-elevation-1-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+    --vm3-elevation-2-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
+    --vm3-elevation-3-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 8px 3px rgba(0, 0, 0, 0.15);
+    --vm3-elevation-4-shadow: 0 2px 3px rgba(0, 0, 0, 0.3), 0 6px 10px 4px rgba(0, 0, 0, 0.15);
+    --vm3-elevation-5-shadow: 0 4px 4px rgba(0, 0, 0, 0.3), 0 8px 12px 6px rgba(0, 0, 0, 0.15);
+
+    /* ---------- Motion ---------- */
+    --vm3-duration-short1: 50ms;
+    --vm3-duration-short2: 100ms;
+    --vm3-duration-short3: 150ms;
+    --vm3-duration-short4: 200ms;
+    --vm3-duration-medium1: 250ms;
+    --vm3-duration-medium2: 300ms;
+    --vm3-duration-medium3: 350ms;
+    --vm3-duration-medium4: 400ms;
+    --vm3-duration-long1: 450ms;
+    --vm3-duration-long2: 500ms;
+    --vm3-duration-long3: 550ms;
+    --vm3-duration-long4: 600ms;
+    --vm3-duration-extraLong1: 700ms;
+    --vm3-duration-extraLong2: 800ms;
+    --vm3-duration-extraLong3: 900ms;
+    --vm3-duration-extraLong4: 1000ms;
+
+    --vm3-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+    --vm3-easing-standard-accelerate: cubic-bezier(0.3, 0, 1, 1);
+    --vm3-easing-standard-decelerate: cubic-bezier(0, 0, 0, 1);
+    --vm3-easing-emphasized: cubic-bezier(0.2, 0, 0, 1);
+    --vm3-easing-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
+    --vm3-easing-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+
+    /* ---------- Typography ---------- */
+    --vm3-font-display-large: 400 57px/64px var(--vm3-font-family);
+    --vm3-font-display-medium: 400 45px/52px var(--vm3-font-family);
+    --vm3-font-display-small: 400 36px/44px var(--vm3-font-family);
+    --vm3-font-headline-large: 400 32px/40px var(--vm3-font-family);
+    --vm3-font-headline-medium: 400 28px/36px var(--vm3-font-family);
+    --vm3-font-headline-small: 400 24px/32px var(--vm3-font-family);
+    --vm3-font-title-large: 400 22px/28px var(--vm3-font-family);
+    --vm3-font-title-medium: 500 16px/24px var(--vm3-font-family);
+    --vm3-font-title-small: 500 14px/20px var(--vm3-font-family);
+    --vm3-font-label-large: 500 14px/20px var(--vm3-font-family);
+    --vm3-font-label-medium: 500 12px/16px var(--vm3-font-family);
+    --vm3-font-label-small: 500 11px/16px var(--vm3-font-family);
+    --vm3-font-body-large: 400 16px/24px var(--vm3-font-family);
+    --vm3-font-body-medium: 400 14px/20px var(--vm3-font-family);
+    --vm3-font-body-small: 400 12px/16px var(--vm3-font-family);
+  }
+}

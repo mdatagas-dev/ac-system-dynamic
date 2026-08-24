@@ -1,0 +1,233 @@
+/*
+ * VM3 Overlays — Dialog, BottomSheet, Menu, Popover, Tooltip, Snackbar.
+ * Positioning dari Base UI (floating-ui); tampilan 100% VM3.
+ */
+@layer vm3-components {
+  /* ---------- Scrim ----------
+     Transisi via atribut Base UI (data-open/data-ending-style) —
+     berlaku konsisten untuk Dialog, BottomSheet, dan NavigationDrawer.
+     Durasi dipercepat (short4 200ms masuk, short3 150ms keluar) + hanya
+     opacity/transform (compositor) agar terasa instant & sangat responsif. */
+  .vm3-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: var(--vm3-z-modal);
+    background: var(--vm3-color-scrim);
+    opacity: 0;
+    will-change: opacity;
+    transition:
+      opacity var(--vm3-duration-short4) var(--vm3-easing-standard),
+      display var(--vm3-duration-short4) allow-discrete,
+      overlay var(--vm3-duration-short4) allow-discrete;
+  }
+  .vm3-scrim[data-open] {
+    opacity: 0.32;
+  }
+  .vm3-scrim[data-ending-style] {
+    opacity: 0;
+  }
+  .vm3-scrim[data-starting-style] {
+    opacity: 0;
+  }
+
+  /* ---------- Dialog ----------
+     GPU-only: opacity + scale (transform) — sangat cepat.
+     data-starting-style: sebelum open, data-ending-style: saat menutup. */
+  .vm3-dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    z-index: calc(var(--vm3-z-modal) + 1);
+    width: min(560px, calc(100vw - var(--vm3-space-3xl)));
+    border-radius: var(--vm3-shape-xl);
+    background: var(--vm3-color-surface-container-high);
+    color: var(--vm3-color-on-surface);
+    box-shadow: var(--vm3-elevation-3-shadow);
+    padding: var(--vm3-space-xl);
+    /* animasi: scale 0.96→1 + fade, 190ms masuk decelerate, 140ms keluar accelerate */
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+    transition:
+      opacity var(--vm3-duration-short4) var(--vm3-easing-emphasized-decelerate),
+      transform var(--vm3-duration-short4) var(--vm3-easing-emphasized-decelerate),
+      display var(--vm3-duration-short4) allow-discrete,
+      overlay var(--vm3-duration-short4) allow-discrete;
+  }
+  .vm3-dialog[data-open] {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  .vm3-dialog[data-ending-style] {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+    transition:
+      opacity var(--vm3-duration-short3) var(--vm3-easing-emphasized-accelerate),
+      transform var(--vm3-duration-short3) var(--vm3-easing-emphasized-accelerate),
+      display var(--vm3-duration-short3) allow-discrete,
+      overlay var(--vm3-duration-short3) allow-discrete;
+  }
+  .vm3-dialog[data-starting-style] {
+    opacity: 0;
+    transform: translate(-50%, -46%) scale(0.94);
+  }
+  .vm3-dialog-title {
+    font: var(--vm3-font-headline-small);
+    color: var(--vm3-color-on-surface);
+  }
+  .vm3-dialog-description {
+    margin-top: var(--vm3-space-sm);
+    font: var(--vm3-font-body-medium);
+    color: var(--vm3-color-on-surface-variant);
+  }
+  .vm3-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--vm3-space-xs);
+    margin-top: var(--vm3-space-xl);
+  }
+
+  /* ---------- Bottom Sheet ----------
+     Slide dari bawah: translateY(16px→0) + opacity, compositor only. */
+  .vm3-sheet {
+    position: fixed;
+    left: 50%;
+    bottom: 0;
+    z-index: calc(var(--vm3-z-modal) + 1);
+    width: 100%;
+    max-width: 640px;
+    border-radius: var(--vm3-shape-xl) var(--vm3-shape-xl) 0 0;
+    background: var(--vm3-color-surface-container-low);
+    color: var(--vm3-color-on-surface);
+    box-shadow: var(--vm3-elevation-3-shadow);
+    padding: var(--vm3-space-xl);
+    opacity: 0;
+    transform: translateX(-50%) translateY(16px);
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+    transition:
+      opacity var(--vm3-duration-short4) var(--vm3-easing-emphasized-decelerate),
+      transform var(--vm3-duration-short4) var(--vm3-easing-emphasized-decelerate),
+      display var(--vm3-duration-short4) allow-discrete,
+      overlay var(--vm3-duration-short4) allow-discrete;
+  }
+  .vm3-sheet[data-open] {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .vm3-sheet[data-ending-style] {
+    opacity: 0;
+    transform: translateX(-50%) translateY(16px);
+    transition:
+      opacity var(--vm3-duration-short3) var(--vm3-easing-emphasized-accelerate),
+      transform var(--vm3-duration-short3) var(--vm3-easing-emphasized-accelerate),
+      display var(--vm3-duration-short3) allow-discrete,
+      overlay var(--vm3-duration-short3) allow-discrete;
+  }
+  .vm3-sheet[data-starting-style] {
+    opacity: 0;
+    transform: translateX(-50%) translateY(16px);
+  }
+  .vm3-sheet-handle {
+    width: 32px;
+    height: 4px;
+    border-radius: var(--vm3-shape-full);
+    background: var(--vm3-color-on-surface-variant);
+    margin: 0 auto var(--vm3-space-lg);
+    opacity: 0.4;
+  }
+
+  /* ---------- Menu ---------- */
+  .vm3-menu {
+    position: fixed;
+    z-index: calc(var(--vm3-z-overlay) + 1);
+    min-width: 112px;
+    padding: var(--vm3-space-sm) 0;
+    border-radius: var(--vm3-shape-sm);
+    background: var(--vm3-color-surface-container);
+    color: var(--vm3-color-on-surface);
+    box-shadow: var(--vm3-elevation-2-shadow);
+  }
+  .vm3-menu-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--vm3-space-sm);
+    width: 100%;
+    min-height: 40px;
+    padding: var(--vm3-space-sm) var(--vm3-space-md);
+    border: none;
+    background: transparent;
+    color: var(--vm3-color-on-surface);
+    font: var(--vm3-font-label-large);
+    text-align: left;
+    cursor: pointer;
+  }
+  .vm3-menu-item:disabled {
+    color: var(--vm3-color-on-surface);
+    opacity: var(--vm3-state-disabled-content);
+    pointer-events: none;
+  }
+  .vm3-menu-item-icon {
+    font-size: 20px;
+    color: var(--vm3-color-on-surface-variant);
+  }
+
+  /* ---------- Popover ---------- */
+  .vm3-popover {
+    position: fixed;
+    z-index: calc(var(--vm3-z-overlay) + 1);
+    max-width: 320px;
+    padding: var(--vm3-space-md);
+    border-radius: var(--vm3-shape-sm);
+    background: var(--vm3-color-surface-container);
+    color: var(--vm3-color-on-surface);
+    box-shadow: var(--vm3-elevation-2-shadow);
+  }
+
+  /* ---------- Tooltip ---------- */
+  .vm3-tooltip {
+    position: fixed;
+    z-index: var(--vm3-z-tooltip);
+    padding: var(--vm3-space-xs) var(--vm3-space-sm);
+    border-radius: var(--vm3-shape-xs);
+    background: var(--vm3-color-inverse-surface);
+    color: var(--vm3-color-inverse-on-surface);
+    font: var(--vm3-font-label-medium);
+    max-width: 200px;
+  }
+
+  /* ---------- Snackbar (Toast) ---------- */
+  .vm3-snackbar-viewport {
+    position: fixed;
+    bottom: var(--vm3-space-xl);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--vm3-z-toast);
+    display: flex;
+    flex-direction: column;
+    gap: var(--vm3-space-xs);
+    width: min(480px, calc(100vw - var(--vm3-space-2xl)));
+  }
+  .vm3-snackbar {
+    display: flex;
+    align-items: center;
+    gap: var(--vm3-space-md);
+    padding: var(--vm3-space-sm) var(--vm3-space-md);
+    border-radius: var(--vm3-shape-xs);
+    background: var(--vm3-color-inverse-surface);
+    color: var(--vm3-color-inverse-on-surface);
+    box-shadow: var(--vm3-elevation-3-shadow);
+    font: var(--vm3-font-body-medium);
+  }
+  .vm3-snackbar-action {
+    margin-left: auto;
+    border: none;
+    background: transparent;
+    color: var(--vm3-color-inverse-primary);
+    font: var(--vm3-font-label-large);
+    cursor: pointer;
+    padding: var(--vm3-space-xs);
+  }
+}

@@ -1,0 +1,17 @@
+/* FINO — polish tema (tanpa gradient menyilaukan) */
+@layer vm3-theme {
+  :root {
+    /* Shape halus — tetap pakai token M3 lg/md, hanya referensi */
+    --fino-radius-hero: 16px;
+    --fino-radius-card: 12px;
+  }
+}
+
+/* Transisi tema — hanya pada html, hormati prefers-reduced-motion di globals.css */
+@layer base {
+  html {
+    transition:
+      background-color 280ms var(--vm3-easing-standard),
+      color 280ms var(--vm3-easing-standard);
+  }
+}

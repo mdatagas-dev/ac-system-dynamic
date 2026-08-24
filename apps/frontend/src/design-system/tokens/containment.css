@@ -1,0 +1,163 @@
+/*
+ * VM3 Containment — Card, List, Divider, Chip, Badge.
+ */
+@layer vm3-components {
+  /* ---------- Card ---------- */
+  .vm3-card {
+    position: relative;
+    border-radius: var(--vm3-shape-md);
+    overflow: hidden;
+    transition:
+      box-shadow var(--vm3-duration-short4) var(--vm3-easing-standard),
+      transform var(--vm3-duration-short3) var(--vm3-easing-standard);
+  }
+  .vm3-card-elevated {
+    background: var(--vm3-color-surface-container-low);
+    box-shadow: var(--vm3-elevation-1-shadow);
+  }
+  .vm3-card-elevated:hover {
+    box-shadow: var(--vm3-elevation-2-shadow);
+  }
+  .vm3-card-filled {
+    background: var(--vm3-color-surface-container-highest);
+  }
+  .vm3-card-outlined {
+    background: var(--vm3-color-surface);
+    box-shadow: inset 0 0 0 1px var(--vm3-color-outline-variant);
+  }
+  .vm3-card-interactive {
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .vm3-card-interactive:active {
+    transform: scale(0.99);
+  }
+
+  /* ---------- List ---------- */
+  .vm3-list {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    padding: var(--vm3-space-sm) 0;
+  }
+  .vm3-list-item-wrap {
+    width: 100%;
+  }
+  .vm3-list-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--vm3-space-lg);
+    min-height: 56px;
+    padding: var(--vm3-space-sm) var(--vm3-space-lg);
+    color: var(--vm3-color-on-surface);
+    background: transparent;
+    border: none;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    font: var(--vm3-font-body-large);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .vm3-list-item-icon {
+    color: var(--vm3-color-on-surface-variant);
+    font-size: 24px;
+    flex-shrink: 0;
+  }
+  .vm3-list-item-text {
+    flex: 1;
+    min-width: 0;
+  }
+  .vm3-list-item-title {
+    display: block;
+    font: var(--vm3-font-body-large);
+    color: var(--vm3-color-on-surface);
+  }
+  .vm3-list-item-support {
+    display: block;
+    font: var(--vm3-font-body-medium);
+    color: var(--vm3-color-on-surface-variant);
+  }
+  .vm3-list-item-trailing {
+    color: var(--vm3-color-on-surface-variant);
+  }
+
+  /* ---------- Divider ---------- */
+  .vm3-divider {
+    height: 1px;
+    background: var(--vm3-color-outline-variant);
+    border: none;
+    margin: 0;
+  }
+  .vm3-divider-inset {
+    margin-left: 72px;
+  }
+
+  /* ---------- Chip ---------- */
+  .vm3-chip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--vm3-space-xs);
+    height: var(--vm3-comp-chip-height);
+    padding: 0 var(--vm3-space-lg);
+    border: none;
+    border-radius: var(--vm3-shape-sm);
+    font: var(--vm3-font-label-large);
+    color: var(--vm3-color-on-surface-variant);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .vm3-chip-assist {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--vm3-color-outline);
+  }
+  .vm3-chip-filter {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--vm3-color-outline);
+  }
+  .vm3-chip-filter:has(input:checked) {
+    background: var(--vm3-color-secondary-container);
+    color: var(--vm3-color-on-secondary-container);
+    box-shadow: none;
+  }
+  .vm3-chip-input {
+    background: var(--vm3-color-surface-container-highest);
+  }
+  .vm3-chip-suggestion {
+    background: var(--vm3-color-surface-container-highest);
+    box-shadow: inset 0 0 0 1px var(--vm3-color-outline-variant);
+  }
+  .vm3-chip-icon {
+    font-size: 18px;
+  }
+  .vm3-chip-check {
+    font-size: 18px;
+    display: none;
+  }
+  .vm3-chip-filter:has(input:checked) .vm3-chip-check {
+    display: inline-flex;
+  }
+
+  /* ---------- Badge ---------- */
+  .vm3-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 var(--vm3-space-2xs);
+    border-radius: var(--vm3-shape-full);
+    background: var(--vm3-color-error);
+    color: var(--vm3-color-on-error);
+    font: var(--vm3-font-label-small);
+    font-weight: 600;
+  }
+  .vm3-badge-dot {
+    width: 6px;
+    height: 6px;
+    min-width: 6px;
+    padding: 0;
+    border-radius: 50%;
+  }
+}

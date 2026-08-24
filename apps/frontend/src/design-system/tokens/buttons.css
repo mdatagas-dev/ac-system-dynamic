@@ -1,0 +1,200 @@
+/*
+ * VM3 Button — style varian, state, elevasi dinamis, spinner.
+ * Hanya memakai token komponen + semantic — tanpa nilai visual hardcode.
+ */
+@layer vm3-components {
+  .vm3-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: var(--vm3-comp-button-height);
+    min-width: 48px;
+    padding: 0 var(--vm3-comp-button-padding-x);
+    gap: var(--vm3-comp-button-gap);
+    border: none;
+    border-radius: var(--vm3-comp-button-shape);
+    font: var(--vm3-font-label-large);
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      box-shadow var(--vm3-duration-short3) var(--vm3-easing-standard),
+      background-color var(--vm3-duration-short3) var(--vm3-easing-standard);
+  }
+
+  .vm3-btn-content {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--vm3-comp-button-gap);
+  }
+  .vm3-btn-icon {
+    font-size: 20px;
+  }
+  .vm3-btn-label {
+    display: inline-block;
+  }
+
+  /* --- Varian --- */
+  .vm3-btn-elevated {
+    background: var(--vm3-color-surface-container-low);
+    color: var(--vm3-color-primary);
+    box-shadow: var(--vm3-elevation-1-shadow);
+  }
+  .vm3-btn-elevated:hover {
+    box-shadow: var(--vm3-elevation-2-shadow);
+  }
+  .vm3-btn-elevated:active {
+    box-shadow: var(--vm3-elevation-1-shadow);
+  }
+
+  .vm3-btn-filled {
+    background: var(--vm3-color-primary);
+    color: var(--vm3-color-on-primary);
+    box-shadow: var(--vm3-elevation-0-shadow);
+  }
+
+  .vm3-btn-tonal {
+    background: var(--vm3-color-secondary-container);
+    color: var(--vm3-color-on-secondary-container);
+  }
+
+  .vm3-btn-outlined {
+    background: transparent;
+    color: var(--vm3-color-primary);
+    box-shadow: inset 0 0 0 1px var(--vm3-color-outline);
+  }
+
+  .vm3-btn-text {
+    background: transparent;
+    color: var(--vm3-color-primary);
+    padding: 0 var(--vm3-space-md);
+  }
+
+  .vm3-btn-full {
+    width: 100%;
+  }
+
+  /* Spinner loading */
+  .vm3-btn-spinner {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    animation: vm3-spin 0.8s linear infinite;
+  }
+
+  /* ---------- Icon Button ---------- */
+  .vm3-iconbtn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--vm3-comp-icon-button-size);
+    height: var(--vm3-comp-icon-button-size);
+    border: none;
+    border-radius: var(--vm3-comp-icon-button-shape);
+    background: transparent;
+    color: var(--vm3-color-on-surface-variant);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      background-color var(--vm3-duration-short3) var(--vm3-easing-standard),
+      box-shadow var(--vm3-duration-short3) var(--vm3-easing-standard);
+  }
+  .vm3-iconbtn-icon {
+    font-size: 24px;
+  }
+  .vm3-iconbtn-outlined {
+    box-shadow: inset 0 0 0 1px var(--vm3-color-outline);
+    color: var(--vm3-color-primary);
+  }
+  .vm3-iconbtn-filled {
+    background: var(--vm3-color-primary);
+    color: var(--vm3-color-on-primary);
+  }
+  .vm3-iconbtn-tonal {
+    background: var(--vm3-color-secondary-container);
+    color: var(--vm3-color-on-secondary-container);
+  }
+
+  /* ---------- FAB ---------- */
+  .vm3-fab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--vm3-comp-fab-size);
+    height: var(--vm3-comp-fab-size);
+    border: none;
+    border-radius: var(--vm3-comp-fab-shape);
+    background: var(--vm3-comp-fab-container-color);
+    color: var(--vm3-comp-fab-on-container);
+    font: var(--vm3-font-label-large);
+    box-shadow: var(--vm3-elevation-3-shadow);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      box-shadow var(--vm3-duration-short4) var(--vm3-easing-standard),
+      transform var(--vm3-duration-short3) var(--vm3-easing-standard);
+  }
+  .vm3-fab:hover {
+    box-shadow: var(--vm3-elevation-4-shadow);
+  }
+  .vm3-fab:active {
+    box-shadow: var(--vm3-elevation-3-shadow);
+    transform: scale(0.97);
+  }
+  .vm3-fab-small {
+    width: var(--vm3-comp-fab-size-small);
+    height: var(--vm3-comp-fab-size-small);
+  }
+  .vm3-fab-extended {
+    width: auto;
+    padding: 0 var(--vm3-space-lg);
+    gap: var(--vm3-space-sm);
+    border-radius: var(--vm3-shape-lg);
+  }
+  .vm3-fab-label {
+    font-weight: 500;
+  }
+
+  /* ---------- Segmented Button ---------- */
+  .vm3-segmented {
+    display: inline-flex;
+    align-items: center;
+    height: var(--vm3-comp-segmented-height);
+    border-radius: var(--vm3-comp-segmented-shape);
+    box-shadow: inset 0 0 0 1px var(--vm3-color-outline);
+    overflow: hidden;
+  }
+  .vm3-segment {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--vm3-space-xs);
+    height: 100%;
+    padding: 0 var(--vm3-space-md);
+    border: none;
+    background: transparent;
+    color: var(--vm3-color-on-surface);
+    font: var(--vm3-font-label-large);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .vm3-segment-selected {
+    background: var(--vm3-comp-segmented-indicator);
+    color: var(--vm3-comp-segmented-check);
+  }
+  .vm3-segment-check {
+    font-size: 18px;
+  }
+}
+
+@keyframes vm3-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

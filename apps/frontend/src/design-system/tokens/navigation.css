@@ -1,0 +1,288 @@
+/*
+ * VM3 Navigation — AppBar, NavigationBar, NavigationRail, NavigationDrawer, Tabs.
+ */
+@layer vm3-components {
+  /* ---------- App Bar ---------- */
+  .vm3-appbar {
+    display: flex;
+    align-items: center;
+    gap: var(--vm3-space-xs);
+    height: var(--vm3-comp-appbar-height);
+    padding: 0 var(--vm3-space-sm);
+    background: var(--vm3-comp-appbar-container-color);
+    border-bottom: 1px solid var(--vm3-comp-appbar-border);
+    color: var(--vm3-color-on-surface);
+    position: sticky;
+    top: 0;
+    z-index: var(--vm3-z-floating);
+  }
+  .vm3-appbar-title {
+    flex: 1;
+    font: var(--vm3-font-title-large);
+    padding: 0 var(--vm3-space-xs);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* Elevasi saat halaman digulir (data-scrolled dari shell) */
+  .vm3-appbar[data-scrolled="true"] {
+    box-shadow: var(--vm3-elevation-2-shadow);
+  }
+
+  /* ---------- Progress nav (feedback instant saat perpindahan) ---------- */
+  .vm3-nav-progress {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    margin: 0;
+    background: var(--vm3-color-primary);
+    transform: scaleX(0);
+    transform-origin: left center;
+    opacity: 0;
+    will-change: transform, opacity;
+    transition:
+      transform var(--vm3-duration-short4) var(--vm3-easing-standard),
+      opacity var(--vm3-duration-short2) linear;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .vm3-nav-progress[data-pending="true"] {
+    opacity: 1;
+    transform: scaleX(1);
+    transition:
+      transform 260ms var(--vm3-easing-standard-decelerate),
+      opacity var(--vm3-duration-short2) linear;
+  }
+  /* Indeterminate accent */
+  .vm3-nav-progress[data-pending="true"]::after {
+    content: "";
+    display: block;
+    height: 2px;
+    width: 35%;
+    background: inherit;
+    opacity: 0.6;
+    animation: vm3-progress-slide 800ms infinite var(--vm3-easing-standard);
+  }
+  @keyframes vm3-progress-slide {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(350%);
+    }
+  }
+
+  /* ---------- Navigation Bar (mobile) ---------- */
+  .vm3-navbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    height: calc(var(--vm3-comp-navbar-height) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--vm3-comp-navbar-container-color);
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: var(--vm3-z-floating);
+  }
+  .vm3-navbar-item {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--vm3-space-2xs);
+    width: 64px;
+    padding: var(--vm3-space-2xs) 0;
+    border: none;
+    background: transparent;
+    color: var(--vm3-comp-navbar-icon-inactive);
+    font: var(--vm3-font-label-medium);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .vm3-navbar-indicator {
+    position: absolute;
+    top: 0;
+    width: 64px;
+    height: 32px;
+    border-radius: var(--vm3-shape-full);
+    background: var(--vm3-comp-navbar-indicator-color);
+  }
+  .vm3-navbar-item[data-active="true"] {
+    color: var(--vm3-comp-navbar-icon-active);
+  }
+  .vm3-navbar-item[data-active="true"] .vm3-navbar-icon {
+    color: var(--vm3-color-on-surface);
+  }
+  .vm3-navbar-icon {
+    font-size: 24px;
+  }
+
+  /* ---------- Navigation Rail (tablet/desktop) ---------- */
+  .vm3-rail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--vm3-space-xs);
+    width: var(--vm3-comp-rail-width);
+    padding: var(--vm3-space-lg) var(--vm3-space-sm);
+    background: var(--vm3-comp-rail-container-color);
+    border-right: 1px solid var(--vm3-color-outline-variant);
+    min-height: calc(100dvh - var(--vm3-comp-appbar-height));
+    height: auto;
+    position: sticky;
+    top: var(--vm3-comp-appbar-height);
+    z-index: var(--vm3-z-raised);
+  }
+  .vm3-rail-item {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 72px;
+    padding: var(--vm3-space-2xs) 0;
+    border: none;
+    background: transparent;
+    color: var(--vm3-comp-navbar-icon-inactive);
+    font: var(--vm3-font-label-small);
+    white-space: nowrap;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .vm3-rail-item[data-active="true"] {
+    color: var(--vm3-color-on-surface);
+  }
+  /* Indikator M3: pill di belakang ikon */
+  .vm3-rail-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 32px;
+    border-radius: var(--vm3-shape-full);
+    transition: background-color var(--vm3-duration-short3) var(--vm3-easing-standard);
+  }
+  .vm3-rail-item[data-active="true"] .vm3-rail-pill {
+    background: var(--vm3-comp-navbar-indicator-color);
+  }
+  .vm3-rail-icon {
+    font-size: 24px;
+  }
+
+  /* Link pembungkus RailItem (shell) — ikon di tengah saat ciut */
+  .vm3-rail > a {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+  }
+
+  /* Mode expanded — rail melebar jadi navigasi menyamping.
+     Lebar dianimasikan tapi dipercepat (190ms) agar perpindahan page
+     terasa instant & sangat responsif. Hanya width+transform (GPU). */
+  .vm3-rail[data-expanded="true"] {
+    width: 248px;
+    align-items: stretch;
+    will-change: width;
+    transition: width var(--vm3-duration-short4) var(--vm3-easing-emphasized-decelerate);
+  }
+  .vm3-rail[data-expanded="false"],
+  .vm3-rail:not([data-expanded]) {
+    will-change: width;
+    transition: width var(--vm3-duration-short4) var(--vm3-easing-emphasized-accelerate);
+  }
+  .vm3-rail[data-expanded="true"] > a {
+    justify-content: stretch;
+  }
+  .vm3-rail[data-expanded="true"] .vm3-rail-item {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: var(--vm3-space-md);
+    width: 100%;
+    padding-left: var(--vm3-space-lg);
+    font: var(--vm3-font-label-large);
+  }
+  .vm3-rail[data-expanded="true"] .vm3-rail-pill {
+    flex-shrink: 0;
+  }
+
+  /* ---------- Navigation Drawer ----------
+     Transisi murni CSS via atribut Base UI ([data-open], [data-ending-style]).
+     PENTING: jangan bungkus Backdrop/Popup dengan motion.div — transform
+     pada ancestor mengubah containing block `position: fixed` sehingga
+     drawer melompat posisi saat animasi (bug lama). */
+  .vm3-drawer {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: calc(var(--vm3-z-modal) + 1);
+    width: var(--vm3-comp-drawer-width);
+    max-width: 85vw;
+    background: var(--vm3-comp-drawer-container-color);
+    color: var(--vm3-color-on-surface);
+    box-shadow: var(--vm3-elevation-3-shadow);
+    padding: var(--vm3-space-md) var(--vm3-space-sm);
+    overflow-y: auto;
+    will-change: transform;
+    backface-visibility: hidden;
+    transform: translateX(-105%);
+    transition:
+      transform var(--vm3-duration-short4) var(--vm3-easing-emphasized-decelerate),
+      box-shadow var(--vm3-duration-short3) var(--vm3-easing-standard),
+      display var(--vm3-duration-short4) allow-discrete,
+      overlay var(--vm3-duration-short4) allow-discrete;
+  }
+  .vm3-drawer[data-open] {
+    transform: translateX(0);
+  }
+  .vm3-drawer[data-starting-style] {
+    transform: translateX(-105%);
+  }
+  /* Keluar: dipercepat 160ms agar terasa instant */
+  .vm3-drawer[data-ending-style] {
+    transform: translateX(-105%);
+    transition:
+      transform var(--vm3-duration-short3) var(--vm3-easing-emphasized-accelerate),
+      opacity var(--vm3-duration-short2) linear,
+      display var(--vm3-duration-short3) allow-discrete,
+      overlay var(--vm3-duration-short3) allow-discrete;
+  }
+
+  /* ---------- Tabs ---------- */
+  .vm3-tabs {
+    display: flex;
+    gap: var(--vm3-space-md);
+    border-bottom: 1px solid var(--vm3-color-outline-variant);
+    overflow-x: auto;
+  }
+  .vm3-tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--vm3-space-sm);
+    height: 48px;
+    padding: 0 var(--vm3-space-md);
+    border: none;
+    background: transparent;
+    color: var(--vm3-color-on-surface-variant);
+    font: var(--vm3-font-title-small);
+    cursor: pointer;
+    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .vm3-tab[data-active="true"] {
+    color: var(--vm3-color-primary);
+  }
+  .vm3-tab[data-active="true"]::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 3px;
+    border-radius: var(--vm3-shape-full) var(--vm3-shape-full) 0 0;
+    background: var(--vm3-color-primary);
+  }
+}

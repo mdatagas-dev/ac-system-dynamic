@@ -1,0 +1,169 @@
+/*
+ * VM3 Component Tokens — dimensi/struktur lintas komponen.
+ * Komponen hanya memakai token ini — tidak boleh nilai visual hardcode.
+ * Berisi pola M3 (touch target 48, app bar 64, navbar 80, rail 80, fab 56).
+ */
+@layer vm3-components {
+  :root {
+    /* Target sentuh minimum M3 */
+    --vm3-comp-touch-target: 48px;
+
+    /* App Bar */
+    --vm3-comp-appbar-height: 64px;
+    --vm3-comp-appbar-container-color: var(--vm3-color-surface);
+    --vm3-comp-appbar-border: var(--vm3-color-outline-variant);
+
+    /* Table */
+    --vm3-comp-table-row-hover: var(--vm3-color-surface-container);
+
+    /* Navigation */
+    --vm3-comp-navbar-height: 80px;
+    --vm3-comp-navbar-container-color: var(--vm3-color-surface-container);
+    --vm3-comp-navbar-indicator-color: var(--vm3-color-secondary-container);
+    --vm3-comp-navbar-icon-active: var(--vm3-color-on-surface);
+    --vm3-comp-navbar-icon-inactive: var(--vm3-color-on-surface-variant);
+
+    --vm3-comp-rail-width: 80px;
+    --vm3-comp-rail-container-color: var(--vm3-color-surface);
+    --vm3-comp-rail-indicator-color: var(--vm3-color-secondary-container);
+
+    --vm3-comp-drawer-width: 360px;
+    --vm3-comp-drawer-container-color: var(--vm3-color-surface-container-low);
+
+    /* FAB */
+    --vm3-comp-fab-size: 56px;
+    --vm3-comp-fab-size-small: 40px;
+    --vm3-comp-fab-container-color: var(--vm3-color-primary-container);
+    --vm3-comp-fab-on-container: var(--vm3-color-on-primary-container);
+
+    /* Icon Button */
+    --vm3-comp-icon-button-size: 40px;
+
+    /* Chip */
+    --vm3-comp-chip-height: 32px;
+
+    /* Switch */
+    --vm3-comp-switch-track-width: 52px;
+    --vm3-comp-switch-track-height: 32px;
+    --vm3-comp-switch-thumb-size: 24px;
+
+    /* Button */
+    --vm3-comp-button-height: 40px;
+    --vm3-comp-button-shape: var(--vm3-shape-full);
+    --vm3-comp-button-padding-x: 24px;
+    --vm3-comp-button-gap: 8px;
+
+    /* Icon Button */
+    --vm3-comp-icon-button-shape: var(--vm3-shape-full);
+
+    /* FAB */
+    --vm3-comp-fab-shape: var(--vm3-shape-lg);
+    --vm3-comp-fab-small-shape: var(--vm3-shape-lg);
+
+    /* Segmented Button */
+    --vm3-comp-segmented-height: 40px;
+    --vm3-comp-segmented-shape: var(--vm3-shape-sm);
+    --vm3-comp-segmented-indicator: var(--vm3-color-secondary-container);
+    --vm3-comp-segmented-check: var(--vm3-color-on-secondary-container);
+  }
+
+  /* ================================================================
+   * Interaksi bersama: state layer M3 + focus ring + disabled
+   * Komponen memakai pola: .vm3-interactive > .vm3-state-layer
+   * ================================================================ */
+
+  /* State layer — overlay warna "on-container" dengan opacity state */
+  .vm3-state-layer {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: currentColor;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--vm3-duration-short3) var(--vm3-easing-standard);
+  }
+
+  .vm3-interactive {
+    position: relative;
+  }
+  .vm3-interactive:hover > .vm3-state-layer {
+    opacity: var(--vm3-state-hover);
+  }
+  .vm3-interactive:focus-visible > .vm3-state-layer {
+    opacity: var(--vm3-state-focus);
+  }
+  .vm3-interactive:active > .vm3-state-layer {
+    opacity: var(--vm3-state-pressed);
+  }
+  .vm3-interactive[data-selected="true"] > .vm3-state-layer {
+    opacity: var(--vm3-state-pressed);
+  }
+
+  /* Focus ring — indikator keyboard, warna kontras M3 (inverse/primary) */
+  .vm3-focus {
+    outline: 2px solid var(--vm3-color-primary);
+    outline-offset: 2px;
+  }
+  :focus-visible.vm3-focusable {
+    outline: 2px solid var(--vm3-color-primary);
+    outline-offset: 2px;
+  }
+
+  /* Fokus "aman secara default": SEMUA elemen interaktif dapat indikator
+     jelas saat navigasi keyboard. Komponen yang punya mekanisme sendiri
+     (FocusRing inset / underline field) menonaktifkan outline di bawah —
+     bukan sebaliknya (opt-out, bukan opt-in) agar tidak ada fokus hilang. */
+  a:focus-visible,
+  button:focus-visible,
+  [role="button"]:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid var(--vm3-color-primary);
+    outline-offset: 2px;
+  }
+  /* Suppress ganda: komponen ber-FocusRing inset */
+  .vm3-interactive:focus-visible {
+    outline: none;
+  }
+  /* Field punya underline/box-shadow :focus-within pada kontainer */
+  .vm3-field-input:focus-visible {
+    outline: none;
+  }
+  /* Select trigger punya box-shadow khusus :focus-visible */
+  .vm3-select-trigger:focus-visible {
+    outline: none;
+  }
+
+  /* Focus ring sebagai elemen overlay (inset shadow) */
+  .vm3-focus-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--vm3-duration-short2) var(--vm3-easing-standard);
+  }
+  .vm3-interactive:focus-visible > .vm3-focus-ring {
+    opacity: 1;
+    box-shadow: inset 0 0 0 2px var(--vm3-color-primary);
+  }
+
+  /* Disabled global state */
+  .vm3-disabled {
+    opacity: var(--vm3-state-disabled-content);
+    pointer-events: none;
+  }
+
+  /* ---------- Table (di dalam Card) ---------- */
+  .vm3-card table tbody tr {
+    transition: background-color var(--vm3-duration-short2) var(--vm3-easing-standard);
+  }
+  .vm3-card table tbody tr:hover {
+    background: var(--vm3-comp-table-row-hover);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .vm3-state-layer {
+      transition: none;
+    }
+  }
+}
