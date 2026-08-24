@@ -179,14 +179,34 @@ router.post("/post", async (req, res) => {
       .json({ error: "model, order_number, po_number, subline, userid, shift, plan wajib diisi" });
   }
 
-  // validasi SN dinamis per subline: ODU -> odu fields, IDU -> idu fields, else semua
-  const u = String(subline).toUpperCase();
-  const isOdu = u.includes("ODU");
-  const isIdu = u.includes("IDU");
+  // validasi SN dinamis: jika product_category ada, baca component_definitions; fallback subline ODU/IDU
+  const product_category = (req.body.product_category || req.body.productCategory || "").toString().trim().toLowerCase() || null;
   let wajibSN;
-  if (isOdu && !isIdu) wajibSN = { sn_odu, sn_motor, sn_box };
-  else if (isIdu && !isOdu) wajibSN = { sn, pcb_idu, sn_accessories };
-  else wajibSN = { sn, sn_odu, pcb_idu, sn_accessories, sn_motor, sn_box };
+  let dynamicDefs = null;
+  if (product_category) {
+    try {
+      const cat = await prisma.product_categories.findUnique({ where: { slug: product_category } });
+      if (cat) {
+        dynamicDefs = await prisma.component_definitions.findMany({
+          where: { category_id: cat.id, required: true, enabled: true },
+        });
+      }
+    } catch {}
+  }
+  if (dynamicDefs && dynamicDefs.length) {
+    wajibSN = {};
+    for (const d of dynamicDefs) {
+      const val = req.body[d.key] ?? (req.body.components && req.body.components[d.key]);
+      wajibSN[d.key] = val;
+    }
+  } else {
+    const u = String(subline).toUpperCase();
+    const isOdu = u.includes("ODU");
+    const isIdu = u.includes("IDU");
+    if (isOdu && !isIdu) wajibSN = { sn_odu, sn_motor, sn_box };
+    else if (isIdu && !isOdu) wajibSN = { sn, pcb_idu, sn_accessories };
+    else wajibSN = { sn, sn_odu, pcb_idu, sn_accessories, sn_motor, sn_box };
+  }
   const kosong = Object.entries(wajibSN).filter(([, v]) => !v || !String(v).trim());
   if (kosong.length) {
     return res
@@ -209,6 +229,18 @@ router.post("/post", async (req, res) => {
     }
 
     const planning = Number(plan);
+    // siapkan components JSONB untuk kolom dinamis
+    let componentsData = null;
+    if (req.body.components && typeof req.body.components === "object") {
+      componentsData = req.body.components;
+    } else {
+      const baseKeys = new Set(["model","order_number","po_number","subline","userid","shift","plan","product_category","productCategory"]);
+      const comp = {};
+      for (const k of Object.keys(req.body)) {
+        if (!baseKeys.has(k)) comp[k] = req.body[k] ? String(req.body[k]).trim() : null;
+      }
+      if (Object.keys(comp).length) componentsData = comp;
+    }
     const result = await prisma.registscan.create({
       data: {
         model: model.trim(),
@@ -225,6 +257,8 @@ router.post("/post", async (req, res) => {
         sn_accessories: sn_accessories ? sn_accessories.trim() : null,
         sn_carton: sn_carton ? sn_carton.trim() : null,
         pcb_idu: pcb_idu ? pcb_idu.trim() : null,
+        product_category: product_category || null,
+        components: componentsData,
       },
     });
 
@@ -253,6 +287,7 @@ router.put("/edit/:id", async (req, res) => {
     pcb_idu,
     sn_carton,
     sn_accessories,
+    product_category,
   } = req.body || {};
 
   if (
@@ -268,18 +303,32 @@ router.put("/edit/:id", async (req, res) => {
       .json({ error: "model, order_number, po_number, subline, shift, plan wajib diisi" });
   }
 
-  const u2 = String(subline).toUpperCase();
-  const isOdu2 = u2.includes("ODU");
-  const isIdu2 = u2.includes("IDU");
+  const prodCat2 = (product_category || "").toString().trim().toLowerCase() || null;
   let wajibSN2;
-  if (isOdu2 && !isIdu2) wajibSN2 = { sn_odu, sn_motor, sn_box };
-  else if (isIdu2 && !isOdu2) wajibSN2 = { sn, pcb_idu, sn_accessories };
-  else wajibSN2 = { sn, sn_odu, pcb_idu, sn_accessories, sn_motor, sn_box };
+  let dyn2 = null;
+  if (prodCat2) {
+    try {
+      const cat2 = await prisma.product_categories.findUnique({ where: { slug: prodCat2 } });
+      if (cat2) dyn2 = await prisma.component_definitions.findMany({ where: { category_id: cat2.id, required: true, enabled: true } });
+    } catch {}
+  }
+  if (dyn2 && dyn2.length) {
+    wajibSN2 = {};
+    for (const d of dyn2) {
+      const val = req.body[d.key] ?? (req.body.components && req.body.components[d.key]);
+      wajibSN2[d.key] = val;
+    }
+  } else {
+    const u2 = String(subline).toUpperCase();
+    const isOdu2 = u2.includes("ODU");
+    const isIdu2 = u2.includes("IDU");
+    if (isOdu2 && !isIdu2) wajibSN2 = { sn_odu, sn_motor, sn_box };
+    else if (isIdu2 && !isOdu2) wajibSN2 = { sn, pcb_idu, sn_accessories };
+    else wajibSN2 = { sn, sn_odu, pcb_idu, sn_accessories, sn_motor, sn_box };
+  }
   const kosong2 = Object.entries(wajibSN2).filter(([, v]) => !v || !String(v).trim());
   if (kosong2.length) {
-    return res
-      .status(400)
-      .json({ error: `Wajib diisi: ${kosong2.map(([k]) => k).join(", ")}` });
+    return res.status(400).json({ error: `Wajib diisi: ${kosong2.map(([k]) => k).join(", ")}` });
   }
 
   try {
@@ -297,10 +346,19 @@ router.put("/edit/:id", async (req, res) => {
     }
 
     const planning = Number(plan);
+    let componentsData2 = null;
+    if (req.body.components && typeof req.body.components === "object") {
+      componentsData2 = req.body.components;
+    } else {
+      const baseKeys2 = new Set(["model","order_number","po_number","subline","shift","plan","product_category","productCategory","id"]);
+      const comp2 = {};
+      for (const k of Object.keys(req.body)) {
+        if (!baseKeys2.has(k) && k !== "userid") comp2[k] = req.body[k] ? String(req.body[k]).trim() : null;
+      }
+      if (Object.keys(comp2).length) componentsData2 = comp2;
+    }
     const result = await prisma.registscan.update({
-      where: {
-        id: id,
-      },
+      where: { id: id },
       data: {
         model: model.trim(),
         order_number: order_number.trim(),
@@ -315,6 +373,8 @@ router.put("/edit/:id", async (req, res) => {
         sn_accessories: sn_accessories ? sn_accessories.trim() : null,
         sn_carton: sn_carton ? sn_carton.trim() : null,
         pcb_idu: pcb_idu ? pcb_idu.trim() : null,
+        product_category: product_category ? product_category.trim().toLowerCase() : undefined,
+        components: componentsData2,
       },
     });
     res

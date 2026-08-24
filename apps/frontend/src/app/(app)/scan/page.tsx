@@ -1,10 +1,15 @@
 "use client";
 
 /**
- * Scan — fokus legacy tanpa tombol submit. Auto-scan saat field terakhir di-Enter.
- * Popup hijau (pass) / merah (fail) sebagai feedback.
+ * Scan — dinamis per product_category. Auto-scan saat field terakhir terisi / Enter.
+ * - product_category diambil dari regist terpilih (regists[].product_category) atau /rdps/scan validation.
+ * - Jika ada, fetch GET /components?slug=product_category → enabled+sort → render dinamis.
+ * - Fallback ke isOdu (MOTOR/BOX vs PCB/Accessories) bila tidak ada kategori/definisi kosong.
+ * - Auto pindah generik via array refs sesuai urutan sort; terakhir auto submit.
+ * - POST /rdps/post kirim product_category + field individual + components JSONB.
+ * - Popup hijau/merah tetap.
  */
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { http } from "@/lib/api";
 import { Card } from "@/components/vm3/Card";
@@ -21,6 +26,21 @@ interface Regist {
   subline: string;
   plan: number | null;
   total?: number;
+  product_category?: string | null;
+  productCategory?: string | null;
+  components?: Record<string, unknown> | null;
+}
+
+interface ComponentDef {
+  id: string;
+  category_id: string;
+  key: string;
+  label: string;
+  required: boolean;
+  enabled: boolean;
+  sort: number;
+  regex?: string | null;
+  created_at?: string;
 }
 
 interface ScanResult {
@@ -33,7 +53,7 @@ interface ScanResult {
 }
 
 interface ScanSummary {
-  validation?: Regist;
+  validation?: Regist & { product_category?: string | null; productCategory?: string | null };
   total?: number;
   last?: { sn?: string; sn_odu?: string } | null;
   bomlist?: unknown[];
@@ -53,35 +73,89 @@ function ScanContent() {
   const idRegistParam = searchParams.get("idregist");
   const [regists, setRegists] = useState<Regist[]>([]);
   const [registId, setRegistId] = useState<string | null>(idRegistParam);
-  const [sn, setSn] = useState("");
-  const [snOdu, setSnOdu] = useState("");
-  const [snMotor, setSnMotor] = useState("");
-  const [snBox, setSnBox] = useState("");
-  const [pcb, setPcb] = useState("");
-  const [snCarton, setSnCarton] = useState("");
-  const [snAcc, setSnAcc] = useState("");
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({ sn: "" });
   const [loading, setLoading] = useState(false);
   const [lastScan, setLastScan] = useState<string>("");
   const [count, setCount] = useState<number>(0);
   const [popupOpen, setPopupOpen] = useState(false);
   const [popupType, setPopupType] = useState<"success" | "error">("success");
   const [popupMsg, setPopupMsg] = useState("");
+  const [defs, setDefs] = useState<ComponentDef[]>([]);
+  const [defsLoading, setDefsLoading] = useState(false);
+  const [scanSummary, setScanSummary] = useState<ScanSummary | null>(null);
 
-  const snRef = useRef<HTMLInputElement>(null);
-  const motorRef = useRef<HTMLInputElement>(null);
-  const boxRef = useRef<HTMLInputElement>(null);
-  const pcbRef = useRef<HTMLInputElement>(null);
-  const accRef = useRef<HTMLInputElement>(null);
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const selected = regists.find((r) => r.id === registId) ?? null;
   const isOdu = (selected?.subline ?? "").toUpperCase().includes("ODU");
+
+  const resolvedCategory = useMemo(() => {
+    const candidates: unknown[] = [
+      (selected as unknown as Record<string, unknown> | null)?.product_category,
+      (selected as unknown as Record<string, unknown> | null)?.productCategory,
+      (scanSummary?.validation as unknown as Record<string, unknown> | null)?.product_category,
+      (scanSummary?.validation as unknown as Record<string, unknown> | null)?.productCategory,
+    ];
+    for (const c of candidates) {
+      if (c == null) continue;
+      const s = String(c).trim().toLowerCase();
+      if (s) return s;
+    }
+    return null;
+  }, [selected, scanSummary]);
+
+  const enabledDefs = useMemo(() => {
+    const list = defs.filter((d) => d.enabled);
+    list.sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0) || a.label.localeCompare(b.label));
+    return list;
+  }, [defs]);
+
+  const hasDynamic = enabledDefs.length > 0;
+
+  const orderedFields = useMemo(() => {
+    if (hasDynamic) {
+      const snDef = enabledDefs.find((d) => d.key === "sn");
+      const snLabel = snDef?.label ?? "Serial Number";
+      const snRequired = snDef ? !!snDef.required : true;
+      const others = enabledDefs.filter((d) => d.key !== "sn");
+      const fields: { key: string; label: string; required: boolean }[] = [
+        { key: "sn", label: snLabel, required: snRequired },
+      ];
+      for (const d of others) fields.push({ key: d.key, label: d.label, required: !!d.required });
+      return fields;
+    }
+    if (isOdu) {
+      return [
+        { key: "sn", label: "Serial Number", required: true },
+        { key: "sn_motor", label: "MOTOR", required: true },
+        { key: "sn_box", label: "BOX", required: true },
+      ] as const as { key: string; label: string; required: boolean }[];
+    }
+    return [
+      { key: "sn", label: "Serial Number", required: true },
+      { key: "pcb_idu", label: "PCB IDU", required: true },
+      { key: "sn_accessories", label: "SN Accessories", required: true },
+    ] as const as { key: string; label: string; required: boolean }[];
+  }, [hasDynamic, enabledDefs, isOdu]);
+
+  // Keep fieldValues keys in sync with orderedFields (generik reset saat kategori berubah)
+  useEffect(() => {
+    setFieldValues((prev) => {
+      const next: Record<string, string> = {};
+      for (const f of orderedFields) next[f.key] = prev[f.key] ?? "";
+      // also keep legacy hidden keys if they existed (sn_odu/sn_carton) but not in orderedFields → drop them
+      return next;
+    });
+    inputRefs.current = [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderedFields.map((f) => f.key).join("|"), hasDynamic]);
 
   useEffect(() => {
     http
       .get<{ data: Regist[] }>("/registscan?limit=100")
       .then((res) => {
         setRegists(res.data ?? []);
-        if (res.data?.length) setRegistId((prev) => prev ?? res.data![0].id);
+        if (res.data?.length) setRegistId((prev) => prev ?? res.data![0]!.id);
       })
       .catch((err) => show(`Gagal muat registrasi: ${(err as Error).message}`));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -91,95 +165,158 @@ function ScanContent() {
     if (!registId) {
       setLastScan("");
       setCount(0);
+      setScanSummary(null);
       return;
     }
     http
       .get<ScanSummary>("/rdps/scan", { extraHeaders: { idregist: registId } })
       .then((res) => {
+        setScanSummary(res);
         setLastScan(res.last?.sn ?? res.last?.sn_odu ?? "");
         if (typeof res.total === "number") setCount(res.total);
         if (res.validation) {
-          setRegists((prev) => prev.map((r) => (r.id === registId ? { ...r, ...res.validation } : r)));
+          setRegists((prev) => prev.map((r) => (r.id === registId ? ({ ...r, ...res.validation } as Regist) : r)));
         }
       })
-      .catch(() => setLastScan(""));
+      .catch(() => {
+        setLastScan("");
+        setScanSummary(null);
+      });
   }, [registId]);
 
   useEffect(() => {
     if (selected?.total != null) setCount(selected.total);
   }, [selected?.total]);
 
+  // Fetch component_definitions untuk kategori terdeteksi
   useEffect(() => {
-    const t = setTimeout(() => snRef.current?.focus(), 300);
+    if (!resolvedCategory) {
+      setDefs([]);
+      setDefsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setDefsLoading(true);
+    http
+      .get<{ data: ComponentDef[] }>(`/components?slug=${encodeURIComponent(resolvedCategory)}`)
+      .then((res) => {
+        if (cancelled) return;
+        const list = (res.data ?? []).filter((d) => d.enabled);
+        // keep original sort but ensure stable sort already handled in enabledDefs memo; we just store raw
+        setDefs(list);
+      })
+      .catch(() => {
+        if (!cancelled) setDefs([]);
+      })
+      .finally(() => {
+        if (!cancelled) setDefsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedCategory]);
+
+  useEffect(() => {
+    const t = setTimeout(() => inputRefs.current[0]?.focus(), 300);
     return () => clearTimeout(t);
-  }, [registId]);
+  }, [registId, hasDynamic, resolvedCategory, defsLoading]);
 
   // tutup popup -> auto fokus balik ke SN untuk unit berikutnya
   useEffect(() => {
     if (!popupOpen) {
-      const t = setTimeout(() => snRef.current?.focus(), 150);
+      const t = setTimeout(() => inputRefs.current[0]?.focus(), 150);
       return () => clearTimeout(t);
     }
   }, [popupOpen]);
 
-  const scan = async () => {
+  const scan = useCallback(async () => {
     if (!registId) {
       show("Pilih registrasi dulu");
       return;
     }
-    if (!sn.trim()) {
-      setPopupType("error");
-      setPopupMsg("SN wajib diisi");
-      setPopupOpen(true);
-      snRef.current?.focus();
-      return;
-    }
-    // ODU wajib: MOTOR & BOX; IDU wajib: PCB & Accessories
-    if (isOdu) {
-      if (!snMotor.trim() || !snBox.trim()) {
+    // validasi dinamis / fallback
+    if (hasDynamic) {
+      const missing = orderedFields.filter((f) => f.required && !(fieldValues[f.key] ?? "").trim());
+      if (missing.length) {
         setPopupType("error");
-        setPopupMsg("MOTOR dan BOX wajib diisi untuk ODU");
+        setPopupMsg(`Wajib isi: ${missing.map((m) => m.label).join(", ")}`);
         setPopupOpen(true);
+        const idx = orderedFields.findIndex((f) => f.required && !(fieldValues[f.key] ?? "").trim());
+        if (idx >= 0) inputRefs.current[idx]?.focus();
         return;
       }
     } else {
-      if (!pcb.trim() || !snAcc.trim()) {
+      if (!(fieldValues.sn ?? "").trim()) {
         setPopupType("error");
-        setPopupMsg("PCB IDU dan SN Accessories wajib diisi untuk IDU");
+        setPopupMsg("SN wajib diisi");
         setPopupOpen(true);
+        inputRefs.current[0]?.focus();
         return;
       }
+      if (isOdu) {
+        if (!(fieldValues.sn_motor ?? "").trim() || !(fieldValues.sn_box ?? "").trim()) {
+          setPopupType("error");
+          setPopupMsg("MOTOR dan BOX wajib diisi untuk ODU");
+          setPopupOpen(true);
+          return;
+        }
+      } else {
+        if (!(fieldValues.pcb_idu ?? "").trim() || !(fieldValues.sn_accessories ?? "").trim()) {
+          setPopupType("error");
+          setPopupMsg("PCB IDU dan SN Accessories wajib diisi untuk IDU");
+          setPopupOpen(true);
+          return;
+        }
+      }
     }
+
     setLoading(true);
     try {
-      const res = await http.post<ScanResult>(
-        "/rdps/post",
-        {
-          id_regist: registId,
-          sn: sn.trim(),
-          sn_odu: snOdu.trim(),
-          sn_motor: snMotor.trim(),
-          sn_box: snBox.trim(),
-          pcb_idu: pcb.trim(),
-          sn_carton: snCarton.trim(),
-          sn_accessories: snAcc.trim(),
-        },
-        { extraHeaders: { idregist: registId } },
-      );
-      const newSn = (res as unknown as { data?: { sn?: string } })?.data?.sn ?? sn.trim();
+      const payload: Record<string, unknown> = {
+        id_regist: registId,
+        sn: (fieldValues.sn ?? "").trim(),
+      };
+      const components: Record<string, string> = {};
+      for (const f of orderedFields) {
+        if (f.key === "sn") continue;
+        const v = (fieldValues[f.key] ?? "").trim();
+        if (v) {
+          payload[f.key] = v;
+          components[f.key] = v.toUpperCase();
+        }
+      }
+      // Hidden legacy compat: jika ada sn_odu/sn_carton yang kebetulan masih di fieldValues (tidak dirender dinamis) ikut kirim bila terisi
+      for (const k of ["sn_odu", "sn_carton"] as const) {
+        const v = (fieldValues as Record<string, string>)[k]?.trim();
+        if (v) {
+          payload[k] = v;
+          // sn_carton tidak wajib, tapi ikut components bila ada
+          if (!components[k]) components[k] = v.toUpperCase();
+        }
+      }
+      if (resolvedCategory) {
+        payload.product_category = resolvedCategory;
+        payload.productCategory = resolvedCategory;
+      }
+      if (Object.keys(components).length) {
+        payload.components = components;
+      }
+      // Backend juga menerima penyebaran key individual — sudah di payload
+      const res = await http.post<ScanResult>("/rdps/post", payload, { extraHeaders: { idregist: registId } });
+      const newSn = (res as unknown as { data?: { sn?: string } })?.data?.sn ?? (fieldValues.sn ?? "").trim();
       setLastScan(newSn);
       setCount((c) => c + 1);
       setPopupType("success");
       setPopupMsg((res as unknown as { message?: string })?.message ?? "Scan berhasil");
       setPopupOpen(true);
-      setSn("");
-      setSnOdu("");
-      setSnMotor("");
-      setSnBox("");
-      setPcb("");
-      setSnCarton("");
-      setSnAcc("");
-      // auto-close hijau setelah 1.2s
+      // reset semua field sesuai orderedFields
+      setFieldValues(() => {
+        const next: Record<string, string> = {};
+        for (const f of orderedFields) next[f.key] = "";
+        // keep hidden compat keys reset juga
+        for (const k of ["sn_odu", "sn_carton"] as const) next[k] = "";
+        return next;
+      });
       setTimeout(() => setPopupOpen(false), 1200);
     } catch (err) {
       setPopupType("error");
@@ -188,52 +325,59 @@ function ScanContent() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [registId, fieldValues, hasDynamic, isOdu, orderedFields, resolvedCategory, show]);
 
-  // Auto-enter tanpa Enter: kolom atas terisi -> pindah bawah
+  // Auto pindah generik: field ke-i terisi (len >=6 untuk i=0, >=4 lainnya) → focus i+1
   useEffect(() => {
     if (loading || popupOpen) return;
-    if (!sn.trim() || sn.trim().length < 6) return;
-    if (isOdu) {
-      if (snMotor.trim() !== "" || snBox.trim() !== "") return;
-    } else {
-      if (pcb.trim() !== "" || snAcc.trim() !== "") return;
+    if (!orderedFields.length) return;
+    if (defsLoading) return;
+    for (let i = 0; i < orderedFields.length - 1; i++) {
+      const curKey = orderedFields[i]!.key;
+      const nextKey = orderedFields[i + 1]!.key;
+      const curVal = (fieldValues[curKey] ?? "").trim();
+      const nextVal = (fieldValues[nextKey] ?? "").trim();
+      const threshold = i === 0 ? 6 : 4;
+      if (curVal.length >= threshold && nextVal === "") {
+        let prevFilled = true;
+        for (let k = 0; k <= i; k++) {
+          if (!(fieldValues[orderedFields[k]!.key] ?? "").trim()) {
+            prevFilled = false;
+            break;
+          }
+        }
+        if (!prevFilled) continue;
+        const t = setTimeout(() => inputRefs.current[i + 1]?.focus(), 280);
+        return () => clearTimeout(t);
+      }
+    }
+  }, [fieldValues, orderedFields, loading, popupOpen, defsLoading]);
+
+  // Auto submit generik: semua required terisi + field terakhir >=4 (atau >=6 bila hanya 1 field) → scan()
+  useEffect(() => {
+    if (loading || popupOpen) return;
+    if (!orderedFields.length) return;
+    if (defsLoading) return;
+    const allRequiredFilled = orderedFields.every((f) => !f.required || (fieldValues[f.key] ?? "").trim().length > 0);
+    if (!allRequiredFilled) return;
+    const lastIdx = orderedFields.length - 1;
+    const lastKey = orderedFields[lastIdx]!.key;
+    const lastVal = (fieldValues[lastKey] ?? "").trim();
+    const thLast = orderedFields.length === 1 ? 6 : 4;
+    if (lastVal.length < thLast) return;
+    for (let i = 0; i < orderedFields.length; i++) {
+      const f = orderedFields[i]!;
+      if (!f.required) continue;
+      const v = (fieldValues[f.key] ?? "").trim();
+      const th = i === 0 ? 6 : 4;
+      if (v.length < th) return;
     }
     const t = setTimeout(() => {
-      if (isOdu) motorRef.current?.focus();
-      else pcbRef.current?.focus();
-    }, 280);
-    return () => clearTimeout(t);
-  }, [sn, isOdu, snMotor, snBox, pcb, snAcc, loading, popupOpen]);
-
-  useEffect(() => {
-    if (loading || popupOpen) return;
-    if (isOdu) {
-      if (!snMotor.trim() || snMotor.trim().length < 4) return;
-      if (snBox.trim() !== "") return;
-      const t = setTimeout(() => boxRef.current?.focus(), 280);
-      return () => clearTimeout(t);
-    } else {
-      if (!pcb.trim() || pcb.trim().length < 4) return;
-      if (snAcc.trim() !== "") return;
-      const t = setTimeout(() => accRef.current?.focus(), 280);
-      return () => clearTimeout(t);
-    }
-  }, [snMotor, pcb, isOdu, snBox, snAcc, loading, popupOpen]);
-
-  useEffect(() => {
-    if (loading || popupOpen) return;
-    if (isOdu) {
-      if (!sn.trim() || !snMotor.trim() || !snBox.trim()) return;
-      if (snBox.trim().length < 4) return;
-    } else {
-      if (!sn.trim() || !pcb.trim() || !snAcc.trim()) return;
-      if (snAcc.trim().length < 4) return;
-    }
-    const t = setTimeout(() => scan(), 350);
+      void scan();
+    }, 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sn, snMotor, snBox, pcb, snAcc, isOdu, loading, popupOpen]);
+  }, [fieldValues, orderedFields, loading, popupOpen, defsLoading]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -242,6 +386,9 @@ function ScanContent() {
           <div>
             <div className="text-lg font-bold tracking-wide">{selected.model}</div>
             <div className="text-sm opacity-80">PO NUMBER: {selected.po_number}</div>
+            {resolvedCategory && (
+              <div className="mt-1 text-xs opacity-70">Kategori: {resolvedCategory}{hasDynamic ? ` • ${enabledDefs.length} komponen` : " • fallback"}</div>
+            )}
           </div>
           <div className="text-right">
             <div className="text-sm font-semibold">{selected.subline}</div>
@@ -276,117 +423,42 @@ function ScanContent() {
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="w-32 shrink-0 text-sm text-gray-900">Serial Number</div>
-            <div className="flex-1">
-              <input
-                ref={snRef}
-                value={sn}
-                onChange={(e) => setSn(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    if (isOdu) motorRef.current?.focus();
-                    else pcbRef.current?.focus();
-                  }
-                }}
-                className="h-11 w-full rounded-md border border-gray-300 bg-white px-3 text-sm outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20"
-                placeholder=""
-                autoComplete="off"
-                disabled={loading}
-              />
-            </div>
-          </div>
-
-          {isOdu ? (
-            <>
-              <div className="flex items-center gap-4">
-                <div className="w-32 shrink-0 text-sm text-gray-900">MOTOR</div>
-                <div className="flex-1">
-                  <input
-                    ref={motorRef}
-                    value={snMotor}
-                    onChange={(e) => setSnMotor(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        boxRef.current?.focus();
-                      }
-                    }}
-                    className="h-11 w-full rounded-md border border-gray-300 bg-white px-3 text-sm outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20"
-                    autoComplete="off"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="w-32 shrink-0 text-sm text-gray-900">BOX</div>
-                <div className="flex-1">
-                  <input
-                    ref={boxRef}
-                    value={snBox}
-                    onChange={(e) => setSnBox(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        scan();
-                      }
-                    }}
-                    className="h-11 w-full rounded-md border border-gray-300 bg-white px-3 text-sm outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20"
-                    autoComplete="off"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-            </>
+          {defsLoading ? (
+            <div className="py-8 text-center text-sm text-gray-500">Memuat definisi komponen...</div>
           ) : (
-            <>
-              <div className="flex items-center gap-4">
-                <div className="w-32 shrink-0 text-sm text-gray-900">PCB IDU</div>
+            orderedFields.map((f, idx) => (
+              <div key={f.key} className="flex items-center gap-4">
+                <div className="w-32 shrink-0 text-sm text-gray-900">
+                  {f.label}
+                  {f.required ? "" : <span className="text-gray-400 font-normal"> </span>}
+                </div>
                 <div className="flex-1">
                   <input
-                    ref={pcbRef}
-                    value={pcb}
-                    onChange={(e) => setPcb(e.target.value)}
+                    ref={(el) => {
+                      inputRefs.current[idx] = el;
+                    }}
+                    value={fieldValues[f.key] ?? ""}
+                    onChange={(e) => setFieldValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
-                        accRef.current?.focus();
+                        if (idx < orderedFields.length - 1) inputRefs.current[idx + 1]?.focus();
+                        else void scan();
                       }
                     }}
                     className="h-11 w-full rounded-md border border-gray-300 bg-white px-3 text-sm outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20"
+                    placeholder=""
                     autoComplete="off"
                     disabled={loading}
                   />
                 </div>
               </div>
-              <div className="flex items-center gap-4">
-                <div className="w-32 shrink-0 text-sm text-gray-900">SN Accessories</div>
-                <div className="flex-1">
-                  <input
-                    ref={accRef}
-                    value={snAcc}
-                    onChange={(e) => setSnAcc(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        scan();
-                      }
-                    }}
-                    className="h-11 w-full rounded-md border border-gray-300 bg-white px-3 text-sm outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20"
-                    autoComplete="off"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-            </>
+            ))
           )}
-
-          <input type="hidden" value={snOdu} readOnly />
-          <input type="hidden" value={snCarton} readOnly />
 
           <div className="text-center text-xs text-gray-500 min-h-4">
             Auto pindah saat kolom terisi — tidak perlu Enter • Scan terakhir auto submit
+            {hasDynamic && resolvedCategory ? ` • ${resolvedCategory}` : ""}
           </div>
         </div>
       </Card>

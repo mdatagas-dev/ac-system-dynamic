@@ -3,6 +3,7 @@
 /**
  * Registrasi batch — daftar + buat registscan.
  * Replikasi legacy: kolom Action dengan drill untuk masuk window scan.
+ * + Integrasi product_categories & component_definitions dinamis.
  */
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -13,6 +14,7 @@ import { Card } from "@/components/vm3/Card";
 import { Dialog } from "@/components/vm3/Dialog";
 import { SearchField } from "@/components/vm3/SearchField";
 import { IconButton } from "@/components/vm3/IconButton";
+import { Select } from "@/components/vm3/Select";
 import { useSnackbar } from "@/components/vm3/Snackbar";
 import { useAuth } from "@/lib/auth";
 
@@ -28,7 +30,42 @@ interface Regist {
   index?: number;
 }
 
-const EMPTY = {
+interface ProductCategory {
+  id: string;
+  slug: string;
+  name: string;
+  suffix_length?: number;
+  created_at?: string;
+}
+
+interface ComponentDef {
+  id: string;
+  category_id: string;
+  key: string;
+  label: string;
+  required: boolean;
+  enabled: boolean;
+  sort: number;
+  regex?: string | null;
+  created_at?: string;
+}
+
+const FALLBACK_CATEGORIES: ProductCategory[] = [
+  { id: "fallback-ac_split", slug: "ac_split", name: "AC Split", suffix_length: 5 },
+  { id: "fallback-ac_commercial", slug: "ac_commercial", name: "AC Commercial (HVAC)", suffix_length: 5 },
+  { id: "fallback-ac_portable", slug: "ac_portable", name: "AC Portable", suffix_length: 5 },
+  { id: "fallback-washing", slug: "washing", name: "Mesin Cuci", suffix_length: 5 },
+];
+
+const CATEGORY_LABEL_FALLBACK: Record<string, string> = {
+  ac_split: "AC Split",
+  ac_commercial: "AC Commercial (HVAC)",
+  ac_portable: "AC Portable",
+  washing: "Mesin Cuci",
+};
+
+const EMPTY: Record<string, string> = {
+  product_category: "ac_split",
   model: "",
   order_number: "",
   po_number: "",
@@ -53,11 +90,9 @@ function getRequired(subline: string) {
   if (isOdu && !isIdu) return [...base, "sn_odu", "sn_motor", "sn_box"] as const;
   if (isIdu && !isOdu) return [...base, "sn", "pcb_idu", "sn_accessories"] as const;
   if (subline.trim() === "" || subline.trim().toUpperCase() === "ODU" || subline.trim().toUpperCase() === "IDU") {
-    // fallback untuk input singkat "ODU"/"IDU" — treat sama
     if (isOdu) return [...base, "sn_odu", "sn_motor", "sn_box"] as const;
     if (isIdu) return [...base, "sn", "pcb_idu", "sn_accessories"] as const;
   }
-  // kalau subline generic / tidak jelas (mis. kosong), wajib semua biar tidak lolos setengah
   return [...base, "sn", "sn_odu", "pcb_idu", "sn_accessories", "sn_motor", "sn_box"] as const;
 }
 
@@ -70,7 +105,7 @@ export default function RegistPage() {
   const { user } = useAuth();
   const router = useRouter();
   const [rows, setRows] = useState<Regist[]>([]);
-  const [form, setForm] = useState(EMPTY);
+  const [form, setForm] = useState<Record<string, string>>(EMPTY);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,9 +114,80 @@ export default function RegistPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
-  const requiredKeys = getRequired(form.subline);
+  // product_categories & component_definitions
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [defs, setDefs] = useState<ComponentDef[]>([]);
+  const [defsLoading, setDefsLoading] = useState(false);
+
+  // Fetch product_categories saat mount
+  useEffect(() => {
+    let cancelled = false;
+    http
+      .get<{ data: ProductCategory[] }>("/product-categories")
+      .then((res) => {
+        if (cancelled) return;
+        const data = res.data ?? [];
+        if (data.length) setCategories(data);
+        else setCategories(FALLBACK_CATEGORIES);
+      })
+      .catch(() => {
+        if (!cancelled) setCategories(FALLBACK_CATEGORIES);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Fetch component_definitions ketika product_category berubah
+  useEffect(() => {
+    const slug = String(form.product_category ?? "ac_split").trim().toLowerCase();
+    if (!slug) {
+      setDefs([]);
+      return;
+    }
+    let cancelled = false;
+    setDefsLoading(true);
+    http
+      .get<{ data: ComponentDef[] }>(`/components?slug=${encodeURIComponent(slug)}`)
+      .then((res) => {
+        if (cancelled) return;
+        const list = (res.data ?? []).filter((d) => d.enabled);
+        list.sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0) || a.label.localeCompare(b.label));
+        setDefs(list);
+      })
+      .catch(() => {
+        if (!cancelled) setDefs([]);
+      })
+      .finally(() => {
+        if (!cancelled) setDefsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.product_category]);
+
+  const enabledDefs = defs.filter((d) => d.enabled);
+  const hasDynamic = enabledDefs.length > 0;
+  const dynamicRequiredKeys = enabledDefs.filter((d) => d.required).map((d) => d.key);
+
+  // Tombol Simpan disabled logic ikut definisi dinamis jika ada, else fallback getRequired
+  const fallbackRequired = getRequired(form.subline);
+  const requiredKeys: readonly string[] = hasDynamic
+    ? (["model", "order_number", "po_number", "subline", ...dynamicRequiredKeys] as const)
+    : fallbackRequired;
   const requiredSet = new Set<string>(requiredKeys as unknown as string[]);
-  const isFormValid = requiredKeys.every((k) => String((form as Record<string, unknown>)[k] ?? "").trim() !== "");
+  const isFormValid = (requiredKeys as readonly string[]).every(
+    (k) => String((form as Record<string, unknown>)[k] ?? "").trim() !== ""
+  );
+
+  const categoryOptions = (categories.length ? categories : FALLBACK_CATEGORIES).map((c) => ({
+    value: c.slug,
+    label: CATEGORY_LABEL_FALLBACK[c.slug] ?? c.name,
+  }));
+  const activeCategoryLabel =
+    CATEGORY_LABEL_FALLBACK[String(form.product_category)] ??
+    categories.find((c) => c.slug === form.product_category)?.name ??
+    String(form.product_category ?? "");
 
   const load = useCallback(async (kw = keyword, pg = page) => {
     try {
@@ -113,6 +219,7 @@ export default function RegistPage() {
     try {
       const res = await http.post<PostResult>("/registscan/post", {
         ...form,
+        product_category: String(form.product_category ?? "ac_split").trim().toLowerCase(),
         plan: Number(form.plan),
         userid: user?.username ?? "",
       });
@@ -266,6 +373,27 @@ export default function RegistPage() {
         }
       >
         <div className="mt-4 flex flex-col gap-5">
+          {/* 1) Selector Produk di atas dialog — sebelum Subline */}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-on-surface" htmlFor="produk-select">
+              Produk
+            </label>
+            <Select
+              options={categoryOptions}
+              value={String(form.product_category ?? "ac_split")}
+              onChange={(v) => setForm((prev) => ({ ...prev, product_category: v ?? "ac_split" }))}
+              placeholder="Pilih produk"
+              className="w-full"
+            />
+            {defsLoading ? (
+              <div className="mt-1.5 text-xs text-on-surface-variant">Memuat komponen...</div>
+            ) : hasDynamic ? (
+              <div className="mt-1.5 text-xs text-on-surface-variant">
+                {enabledDefs.length} komponen • {dynamicRequiredKeys.length} wajib
+              </div>
+            ) : null}
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2">
             <TextField label="Model" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} required />
             <TextField label="Order Number" value={form.order_number} onChange={(e) => setForm({ ...form, order_number: e.target.value })} required />
@@ -275,15 +403,69 @@ export default function RegistPage() {
             <TextField label="Plan" type="number" value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} />
           </div>
 
-          {/* Pilihan cepat ODU/IDU — jangan tampilkan semua field di awal */}
-          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-surface-container p-3">
-            <span className="text-sm font-medium">Pilih Subline:</span>
-            <button type="button" onClick={() => setForm({ ...form, subline: "LINE ODU ASSY INPUT" })} className={`rounded-full px-4 py-1.5 text-sm font-semibold border ${form.subline.toUpperCase().includes("ODU") ? "bg-[#0f1445] text-white border-[#0f1445]" : "bg-white text-gray-900 border-gray-300 hover:bg-gray-100"}`}>ODU</button>
-            <button type="button" onClick={() => setForm({ ...form, subline: "LINE IDU ASSY INPUT" })} className={`rounded-full px-4 py-1.5 text-sm font-semibold border ${form.subline.toUpperCase().includes("IDU") ? "bg-[#0f1445] text-white border-[#0f1445]" : "bg-white text-gray-900 border-gray-300 hover:bg-gray-100"}`}>IDU</button>
-            <span className="text-xs text-on-surface-variant ml-1">atau ketik manual di field Subline</span>
-          </div>
+          {/* 5) Pill ODU/IDU cepat untuk AC Split; kategori lain → info dinamis / sembunyikan */}
+          {hasDynamic ? (
+            <div className="rounded-lg bg-surface-container p-3">
+              <div className="text-xs font-medium text-on-surface-variant">
+                Komponen untuk <span className="font-semibold text-on-surface">{activeCategoryLabel}</span>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {enabledDefs.map((d) => (
+                  <span
+                    key={d.key}
+                    className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${d.required ? "bg-[#0f1445] text-white border-[#0f1445]" : "bg-white text-gray-700 border-gray-300"}`}
+                    title={d.key}
+                  >
+                    {d.label}
+                    {d.required ? " *" : ""}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : String(form.product_category) === "ac_split" ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg bg-surface-container p-3">
+              <span className="text-sm font-medium">Pilih Subline:</span>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, subline: "LINE ODU ASSY INPUT" })}
+                className={`rounded-full px-4 py-1.5 text-sm font-semibold border ${form.subline.toUpperCase().includes("ODU") ? "bg-[#0f1445] text-white border-[#0f1445]" : "bg-white text-gray-900 border-gray-300 hover:bg-gray-100"}`}
+              >
+                ODU
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, subline: "LINE IDU ASSY INPUT" })}
+                className={`rounded-full px-4 py-1.5 text-sm font-semibold border ${form.subline.toUpperCase().includes("IDU") ? "bg-[#0f1445] text-white border-[#0f1445]" : "bg-white text-gray-900 border-gray-300 hover:bg-gray-100"}`}
+              >
+                IDU
+              </button>
+              <span className="text-xs text-on-surface-variant ml-1">atau ketik manual di field Subline</span>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-outline-variant p-3 text-xs text-on-surface-variant">
+              Belum ada definisi komponen untuk <span className="font-semibold">{activeCategoryLabel}</span> — menampilkan field fallback IDU/ODU
+            </div>
+          )}
 
-          {!form.subline.trim() ? (
+          {/* 2) Field SN dinamis berdasarkan component_definitions, fallback ke logic lama */}
+          {hasDynamic ? (
+            <section aria-label="Komponen dinamis">
+              <div className="mb-2 text-sm font-medium text-on-surface-variant">
+                Komponen {dynamicRequiredKeys.length ? `— wajib isi ${dynamicRequiredKeys.length} field` : "(semua opsional)"}
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {enabledDefs.map((def) => (
+                  <TextField
+                    key={def.key}
+                    label={def.label}
+                    value={String((form as Record<string, unknown>)[def.key] ?? "")}
+                    onChange={(e) => setForm({ ...form, [def.key]: e.target.value })}
+                    required={def.required}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : !form.subline.trim() ? (
             <div className="rounded-lg border border-dashed border-outline-variant p-6 text-center text-sm text-on-surface-variant">
               Pilih <b>ODU</b> atau <b>IDU</b> di atas untuk menampilkan field SN yang relevan
             </div>
