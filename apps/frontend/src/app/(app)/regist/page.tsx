@@ -381,7 +381,7 @@ export default function RegistPage() {
               id="produk-native"
               value={String(form.product_category ?? "ac_split")}
               onChange={(e) => setForm((prev) => ({ ...prev, product_category: e.target.value }))}
-              className="h-11 w-full rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20"
+              className="h-11 w-full rounded-[var(--vm3-shape-lg)] border border-[var(--vm3-color-outline-variant)] bg-[var(--vm3-color-surface-container-highest)] px-3 text-sm text-[var(--vm3-color-on-surface)] outline-none focus:border-[var(--vm3-color-primary)] focus:ring-2 focus:ring-[var(--vm3-color-primary)]/20"
             >
               {(categories.length ? categories : FALLBACK_CATEGORIES).map((c) => (
                 <option key={c.slug} value={c.slug}>
