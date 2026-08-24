@@ -14,7 +14,6 @@ import { Card } from "@/components/vm3/Card";
 import { Dialog } from "@/components/vm3/Dialog";
 import { SearchField } from "@/components/vm3/SearchField";
 import { IconButton } from "@/components/vm3/IconButton";
-import { Select } from "@/components/vm3/Select";
 import { useSnackbar } from "@/components/vm3/Snackbar";
 import { useAuth } from "@/lib/auth";
 
@@ -373,31 +372,40 @@ export default function RegistPage() {
         }
       >
         <div className="mt-4 flex flex-col gap-5">
-          {/* 1) Selector Produk di atas dialog — sebelum Subline (pakai pill agar klik di Dialog tidak terhalang Portal Select) */}
+          {/* 1) Selector Produk — pakai native select agar tidak terhalang Portal di dalam Dialog */}
           <div>
-            <div className="mb-1.5 text-sm font-medium text-on-surface">Produk</div>
-            <div className="flex flex-wrap gap-2">
-              {(categories.length ? categories : FALLBACK_CATEGORIES).map((c) => {
-                const active = String(form.product_category ?? "ac_split") === c.slug;
-                return (
-                  <button
-                    key={c.slug}
-                    type="button"
-                    onClick={() => setForm((prev) => ({ ...prev, product_category: c.slug }))}
-                    className={`rounded-full px-4 py-1.5 text-sm font-semibold border transition-colors ${active ? "bg-[#0f1445] text-white border-[#0f1445]" : "bg-white text-gray-900 border-gray-300 hover:bg-gray-100"}`}
-                  >
-                    {CATEGORY_LABEL_FALLBACK[c.slug] ?? c.name}
-                  </button>
-                );
-              })}
-            </div>
+            <label className="mb-1.5 block text-sm font-medium text-on-surface" htmlFor="produk-native">
+              Produk
+            </label>
+            <select
+              id="produk-native"
+              value={String(form.product_category ?? "ac_split")}
+              onChange={(e) => setForm((prev) => ({ ...prev, product_category: e.target.value }))}
+              className="h-11 w-full rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20"
+            >
+              {(categories.length ? categories : FALLBACK_CATEGORIES).map((c) => (
+                <option key={c.slug} value={c.slug}>
+                  {CATEGORY_LABEL_FALLBACK[c.slug] ?? c.name}
+                </option>
+              ))}
+            </select>
             {defsLoading ? (
               <div className="mt-1.5 text-xs text-on-surface-variant">Memuat komponen...</div>
             ) : hasDynamic ? (
               <div className="mt-1.5 text-xs text-on-surface-variant">
                 {enabledDefs.length} komponen • {dynamicRequiredKeys.length} wajib
               </div>
-            ) : null}
+            ) : (
+              <div className="mt-1.5 text-xs text-on-surface-variant">
+                {(() => {
+                  const v = String(form.product_category ?? "ac_split");
+                  if (v === "washing") return "Mesin Cuci — tambah komponen di Master → Komponen jika kosong";
+                  if (v === "ac_portable") return "AC Portable — tambah komponen di Master jika kosong";
+                  if (v === "ac_commercial") return "AC Commercial (HVAC) — tambah komponen di Master jika kosong";
+                  return null;
+                })()}
+              </div>
+            )}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
