@@ -373,18 +373,24 @@ export default function RegistPage() {
         }
       >
         <div className="mt-4 flex flex-col gap-5">
-          {/* 1) Selector Produk di atas dialog — sebelum Subline */}
+          {/* 1) Selector Produk di atas dialog — sebelum Subline (pakai pill agar klik di Dialog tidak terhalang Portal Select) */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-on-surface" htmlFor="produk-select">
-              Produk
-            </label>
-            <Select
-              options={categoryOptions}
-              value={String(form.product_category ?? "ac_split")}
-              onChange={(v) => setForm((prev) => ({ ...prev, product_category: v ?? "ac_split" }))}
-              placeholder="Pilih produk"
-              className="w-full"
-            />
+            <div className="mb-1.5 text-sm font-medium text-on-surface">Produk</div>
+            <div className="flex flex-wrap gap-2">
+              {(categories.length ? categories : FALLBACK_CATEGORIES).map((c) => {
+                const active = String(form.product_category ?? "ac_split") === c.slug;
+                return (
+                  <button
+                    key={c.slug}
+                    type="button"
+                    onClick={() => setForm((prev) => ({ ...prev, product_category: c.slug }))}
+                    className={`rounded-full px-4 py-1.5 text-sm font-semibold border transition-colors ${active ? "bg-[#0f1445] text-white border-[#0f1445]" : "bg-white text-gray-900 border-gray-300 hover:bg-gray-100"}`}
+                  >
+                    {CATEGORY_LABEL_FALLBACK[c.slug] ?? c.name}
+                  </button>
+                );
+              })}
+            </div>
             {defsLoading ? (
               <div className="mt-1.5 text-xs text-on-surface-variant">Memuat komponen...</div>
             ) : hasDynamic ? (
