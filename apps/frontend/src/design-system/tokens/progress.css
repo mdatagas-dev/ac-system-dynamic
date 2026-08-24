@@ -1,0 +1,88 @@
+/*
+ * VM3 Feedback — Progress linear/circular, LoadingIndicator.
+ */
+@layer vm3-components {
+  /* ---------- Linear ---------- */
+  .vm3-linear {
+    position: relative;
+    width: 100%;
+    height: 4px;
+    border-radius: var(--vm3-shape-full);
+    background: var(--vm3-color-surface-container-highest);
+    overflow: hidden;
+  }
+  .vm3-linear-indicator {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: var(--vm3-color-primary);
+    border-radius: var(--vm3-shape-full);
+    transition: width var(--vm3-duration-medium3) var(--vm3-easing-emphasized-decelerate);
+  }
+  .vm3-linear-indeterminate .vm3-linear-indicator {
+    width: 40% !important;
+    animation: vm3-linear-indet 1.4s var(--vm3-easing-emphasized-decelerate) infinite;
+  }
+
+  /* ---------- Circular ---------- */
+  .vm3-circular {
+    display: inline-block;
+    width: 40px;
+    height: 40px;
+    transform: rotate(-90deg);
+  }
+  .vm3-circular-track {
+    stroke: var(--vm3-color-surface-container-highest);
+  }
+  .vm3-circular-indicator {
+    stroke: var(--vm3-color-primary);
+    transition: stroke-dashoffset var(--vm3-duration-medium3) var(--vm3-easing-emphasized-decelerate);
+  }
+  .vm3-circular-indeterminate .vm3-circular-indicator {
+    animation: vm3-circular-indet 1.4s var(--vm3-easing-emphasized-decelerate) infinite;
+  }
+
+  /* ---------- LoadingIndicator (blok) ---------- */
+  .vm3-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--vm3-space-sm);
+    color: var(--vm3-color-on-surface-variant);
+    font: var(--vm3-font-body-medium);
+  }
+}
+
+@keyframes vm3-linear-indet {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+@keyframes vm3-circular-indet {
+  0% {
+    stroke-dasharray: 1 200;
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dasharray: 89 200;
+    stroke-dashoffset: -35;
+  }
+  100% {
+    stroke-dasharray: 89 200;
+    stroke-dashoffset: -124;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vm3-linear-indeterminate .vm3-linear-indicator,
+  .vm3-circular-indeterminate .vm3-circular-indicator {
+    animation: none;
+  }
+}

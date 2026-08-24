@@ -1,0 +1,154 @@
+/*
+ * VM3 Selection — Checkbox, Radio, Switch, Slider (native input + styling M3).
+ */
+@layer vm3-components {
+  /* Aksesibilitas: input native disembunyikan tapi tetap fokus-able */
+  .vm3-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .vm3-checkbox-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--vm3-space-sm);
+    cursor: pointer;
+  }
+  .vm3-select-label {
+    font: var(--vm3-font-body-large);
+    color: var(--vm3-color-on-surface);
+  }
+
+  /* ---------- Checkbox ---------- */
+  .vm3-checkbox {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--vm3-comp-touch-target);
+    height: var(--vm3-comp-touch-target);
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    border-radius: var(--vm3-shape-full);
+  }
+  .vm3-checkbox-box {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: var(--vm3-shape-2xs, 2px);
+    box-shadow: inset 0 0 0 2px var(--vm3-color-on-surface-variant);
+    transition:
+      background-color var(--vm3-duration-short3) var(--vm3-easing-standard),
+      box-shadow var(--vm3-duration-short3) var(--vm3-easing-standard);
+  }
+  .vm3-checkbox-check {
+    font-size: 16px;
+    color: var(--vm3-color-on-primary);
+    opacity: 0;
+    transform: scale(0.4);
+    transition:
+      opacity var(--vm3-duration-short2) var(--vm3-easing-standard),
+      transform var(--vm3-duration-short3) var(--vm3-easing-emphasized-decelerate);
+  }
+  .vm3-checkbox:has(input:checked) .vm3-checkbox-box {
+    background: var(--vm3-color-primary);
+    box-shadow: none;
+  }
+  .vm3-checkbox:has(input:checked) .vm3-checkbox-check {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  /* ---------- Radio ---------- */
+  .vm3-radio {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--vm3-comp-touch-target);
+    height: var(--vm3-comp-touch-target);
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    border-radius: var(--vm3-shape-full);
+  }
+  .vm3-radio-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 2px var(--vm3-color-on-surface-variant);
+    transition: box-shadow var(--vm3-duration-short3) var(--vm3-easing-standard);
+  }
+  .vm3-radio-inner {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--vm3-color-primary);
+    transform: scale(0);
+    transition: transform var(--vm3-duration-short3) var(--vm3-easing-emphasized-decelerate);
+  }
+  .vm3-radio:has(input:checked) .vm3-radio-dot {
+    box-shadow: inset 0 0 0 2px var(--vm3-color-primary);
+  }
+  .vm3-radio:has(input:checked) .vm3-radio-inner {
+    transform: scale(1);
+  }
+
+  /* ---------- Switch ---------- */
+  .vm3-switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    width: var(--vm3-comp-switch-track-width);
+    height: var(--vm3-comp-switch-track-height);
+    border: none;
+    border-radius: var(--vm3-shape-full);
+    background: var(--vm3-color-surface-container-highest);
+    box-shadow: inset 0 0 0 2px var(--vm3-color-outline);
+    cursor: pointer;
+    transition: background-color var(--vm3-duration-short4) var(--vm3-easing-standard);
+  }
+  .vm3-switch-thumb {
+    position: absolute;
+    left: 2px;
+    top: 50%;
+    translate: 0 -50%;
+    width: calc(var(--vm3-comp-switch-thumb-size) - 4px);
+    height: calc(var(--vm3-comp-switch-thumb-size) - 4px);
+    border-radius: 50%;
+    background: var(--vm3-color-outline);
+    transition:
+      transform var(--vm3-duration-short4) var(--vm3-easing-emphasized-decelerate),
+      background-color var(--vm3-duration-short4) var(--vm3-easing-standard);
+  }
+  .vm3-switch:has(input:checked) {
+    background: var(--vm3-color-primary);
+    box-shadow: none;
+  }
+  .vm3-switch:has(input:checked) .vm3-switch-thumb {
+    transform: translateX(calc(var(--vm3-comp-switch-track-width) - var(--vm3-comp-switch-thumb-size)));
+    background: var(--vm3-color-on-primary);
+  }
+
+  /* ---------- Slider ---------- */
+  .vm3-slider {
+    width: 100%;
+    height: var(--vm3-comp-touch-target);
+    accent-color: var(--vm3-color-primary);
+    cursor: pointer;
+  }
+  .vm3-slider:disabled {
+    opacity: var(--vm3-state-disabled-content);
+  }
+}
