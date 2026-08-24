@@ -275,24 +275,58 @@ export default function RegistPage() {
             <TextField label="Plan" type="number" value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} />
           </div>
 
-          <section aria-label="IDU">
-            <div className="mb-2 text-sm font-medium text-on-surface-variant">IDU {requiredSet.has("sn") ? "" : "(opsional untuk ODU)"}</div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <TextField label="Serial Number Unit" value={form.sn} onChange={(e) => setForm({ ...form, sn: e.target.value })} required={requiredSet.has("sn")} />
-              <TextField label="SN PCB" value={form.pcb_idu} onChange={(e) => setForm({ ...form, pcb_idu: e.target.value })} required={requiredSet.has("pcb_idu")} />
-              <TextField label="SN Accessories" value={form.sn_accessories} onChange={(e) => setForm({ ...form, sn_accessories: e.target.value })} required={requiredSet.has("sn_accessories")} />
-            </div>
-          </section>
+          {/* Pilihan cepat ODU/IDU — jangan tampilkan semua field di awal */}
+          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-surface-container p-3">
+            <span className="text-sm font-medium">Pilih Subline:</span>
+            <button type="button" onClick={() => setForm({ ...form, subline: "LINE ODU ASSY INPUT" })} className={`rounded-full px-4 py-1.5 text-sm font-semibold border ${form.subline.toUpperCase().includes("ODU") ? "bg-[#0f1445] text-white border-[#0f1445]" : "bg-white border-outline-variant hover:bg-surface-container-highest"}`}>ODU</button>
+            <button type="button" onClick={() => setForm({ ...form, subline: "LINE IDU ASSY INPUT" })} className={`rounded-full px-4 py-1.5 text-sm font-semibold border ${form.subline.toUpperCase().includes("IDU") ? "bg-[#0f1445] text-white border-[#0f1445]" : "bg-white border-outline-variant hover:bg-surface-container-highest"}`}>IDU</button>
+            <span className="text-xs text-on-surface-variant ml-1">atau ketik manual di field Subline</span>
+          </div>
 
-          <section aria-label="ODU">
-            <div className="mb-2 text-sm font-medium text-on-surface-variant">ODU {requiredSet.has("sn_odu") ? "" : "(opsional untuk IDU)"}</div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <TextField label="Serial Number" value={form.sn_odu} onChange={(e) => setForm({ ...form, sn_odu: e.target.value })} required={requiredSet.has("sn_odu")} />
-              <TextField label="SN Motor" value={form.sn_motor} onChange={(e) => setForm({ ...form, sn_motor: e.target.value })} required={requiredSet.has("sn_motor")} />
-              <TextField label="SN Electrical Box" value={form.sn_box} onChange={(e) => setForm({ ...form, sn_box: e.target.value })} required={requiredSet.has("sn_box")} />
-              <TextField label="SN Carton" value={form.sn_carton} onChange={(e) => setForm({ ...form, sn_carton: e.target.value })} />
+          {!form.subline.trim() ? (
+            <div className="rounded-lg border border-dashed border-outline-variant p-6 text-center text-sm text-on-surface-variant">
+              Pilih <b>ODU</b> atau <b>IDU</b> di atas untuk menampilkan field SN yang relevan
             </div>
-          </section>
+          ) : form.subline.toUpperCase().includes("ODU") && !form.subline.toUpperCase().includes("IDU") ? (
+            <section aria-label="ODU">
+              <div className="mb-2 text-sm font-medium text-on-surface-variant">ODU — wajib isi 3 field</div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <TextField label="Serial Number" value={form.sn_odu} onChange={(e) => setForm({ ...form, sn_odu: e.target.value })} required />
+                <TextField label="SN Motor" value={form.sn_motor} onChange={(e) => setForm({ ...form, sn_motor: e.target.value })} required />
+                <TextField label="SN Electrical Box" value={form.sn_box} onChange={(e) => setForm({ ...form, sn_box: e.target.value })} required />
+                <TextField label="SN Carton" value={form.sn_carton} onChange={(e) => setForm({ ...form, sn_carton: e.target.value })} />
+              </div>
+            </section>
+          ) : form.subline.toUpperCase().includes("IDU") && !form.subline.toUpperCase().includes("ODU") ? (
+            <section aria-label="IDU">
+              <div className="mb-2 text-sm font-medium text-on-surface-variant">IDU — wajib isi 3 field</div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <TextField label="Serial Number Unit" value={form.sn} onChange={(e) => setForm({ ...form, sn: e.target.value })} required />
+                <TextField label="SN PCB" value={form.pcb_idu} onChange={(e) => setForm({ ...form, pcb_idu: e.target.value })} required />
+                <TextField label="SN Accessories" value={form.sn_accessories} onChange={(e) => setForm({ ...form, sn_accessories: e.target.value })} required />
+              </div>
+            </section>
+          ) : (
+            <>
+              <section aria-label="IDU">
+                <div className="mb-2 text-sm font-medium text-on-surface-variant">IDU {requiredSet.has("sn") ? "" : "(opsional untuk ODU)"}</div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <TextField label="Serial Number Unit" value={form.sn} onChange={(e) => setForm({ ...form, sn: e.target.value })} required={requiredSet.has("sn")} />
+                  <TextField label="SN PCB" value={form.pcb_idu} onChange={(e) => setForm({ ...form, pcb_idu: e.target.value })} required={requiredSet.has("pcb_idu")} />
+                  <TextField label="SN Accessories" value={form.sn_accessories} onChange={(e) => setForm({ ...form, sn_accessories: e.target.value })} required={requiredSet.has("sn_accessories")} />
+                </div>
+              </section>
+              <section aria-label="ODU">
+                <div className="mb-2 text-sm font-medium text-on-surface-variant">ODU {requiredSet.has("sn_odu") ? "" : "(opsional untuk IDU)"}</div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <TextField label="Serial Number" value={form.sn_odu} onChange={(e) => setForm({ ...form, sn_odu: e.target.value })} required={requiredSet.has("sn_odu")} />
+                  <TextField label="SN Motor" value={form.sn_motor} onChange={(e) => setForm({ ...form, sn_motor: e.target.value })} required={requiredSet.has("sn_motor")} />
+                  <TextField label="SN Electrical Box" value={form.sn_box} onChange={(e) => setForm({ ...form, sn_box: e.target.value })} required={requiredSet.has("sn_box")} />
+                  <TextField label="SN Carton" value={form.sn_carton} onChange={(e) => setForm({ ...form, sn_carton: e.target.value })} />
+                </div>
+              </section>
+            </>
+          )}
         </div>
       </Dialog>
 
