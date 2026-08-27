@@ -15,19 +15,20 @@ if (!process.env.DATABASE_URL || !/test/.test(process.env.DATABASE_URL)) {
 }
 
 const jwt = require("jsonwebtoken");
+const redis = require("./src/config/redis");
 require("./src/index.js"); // boot server
 
 const BASE = `http://localhost:${process.env.PORT}`;
 const uniq = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-function token(roleuser = "superuser") {
+function token(roleuser = "superuser", section = "TEST", id = "11111111-1111-1111-1111-111111111111") {
   return jwt.sign(
     {
-      id: "11111111-1111-1111-1111-111111111111",
+      id,
       username: "tester_" + uniq,
       roleuser,
       depart: "QA",
-      section: "TEST",
+      section,
     },
     process.env.JWT_SECRET,
     { expiresIn: "20m" },
@@ -53,12 +54,13 @@ async function waitForServer(timeoutMs = 10000) {
   throw new Error("server tidak boot dalam batas waktu");
 }
 
-async function api(method, route, body, t) {
+async function api(method, route, body, t, headers = {}) {
   const res = await fetch(BASE + route, {
     method,
     headers: {
       "Content-Type": "application/json",
       Authorization: "Bearer " + (t || token()),
+      ...headers,
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -91,6 +93,13 @@ async function cleanupAll() {
     } catch {
       /* abaikan */
     }
+  }
+  // bersihkan counter lockout login biar tak bocor antar-run
+  try {
+    const keys = await redis.keys("login_fail:*");
+    if (keys.length) await redis.del(keys);
+  } catch {
+    /* abaikan */
   }
 }
 

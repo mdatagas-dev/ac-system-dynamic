@@ -36,6 +36,30 @@
     color-scheme: dark;
   }
 
+  /* Token shadcn/ui — dipetakan ke palet VM3 supaya konsisten dengan tema aplikasi */
+  :root {
+    --background: var(--vm3-color-surface);
+    --foreground: var(--vm3-color-on-surface);
+    --popover: var(--vm3-color-surface-container);
+    --popover-foreground: var(--vm3-color-on-surface);
+    --card: var(--vm3-color-surface-container);
+    --card-foreground: var(--vm3-color-on-surface);
+    --primary: var(--vm3-color-primary);
+    --primary-foreground: var(--vm3-color-on-primary);
+    --secondary: var(--vm3-color-secondary);
+    --secondary-foreground: var(--vm3-color-on-secondary);
+    --muted: var(--vm3-color-surface-container-high);
+    --muted-foreground: var(--vm3-color-on-surface-variant);
+    --accent: var(--vm3-color-surface-container-high);
+    --accent-foreground: var(--vm3-color-on-surface);
+    --destructive: #d32f2f;
+    --destructive-foreground: #ffffff;
+    --border: var(--vm3-color-outline-variant);
+    --input: var(--vm3-color-outline);
+    --ring: var(--vm3-color-primary);
+    --radius: var(--vm3-shape-lg, 12px);
+  }
+
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -64,4 +88,31 @@
       scroll-behavior: auto !important;
     }
   }
+}
+
+/* Token warna shadcn/ui (dipetakan dari VM3 di atas) — @theme inline wajib top-level */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }

@@ -14,14 +14,21 @@ test("alur scan: regist via API, scan via UI, hasil muncul", async ({ page, requ
   const auth = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
   const base = "http://localhost:3010";
 
-  // setup: bomlist + registscan
-  const bom = await request.post(`${base}/bomlist/post`, { headers: auth, data: { model: modelShort, order_number: order, sn } });
+  // setup: model master + bomlist (BOM-driven) + registscan
+  const mkModel = await request.post(`${base}/model/post`, { headers: auth, data: { brand: "E2E Brand", model: modelShort, pk: 1 } });
+  expect(mkModel.status()).toBe(200);
+  const modelId = (await mkModel.json()).data.id;
+
+  const bom = await request.post(`${base}/bomlist/post`, {
+    headers: auth,
+    data: { model: modelShort, order_number: order, sn, pcb_idu: `PCB-${uniq}`, sn_accessories: `ACC-${uniq}` },
+  });
   expect(bom.status()).toBe(200);
   const bomId = (await bom.json()).data.id;
 
   const reg = await request.post(`${base}/registscan/post`, {
     headers: auth,
-    data: { model: modelFull, order_number: order, po_number: `PO-${uniq}`, subline: "LINE IDU ASSY INPUT", userid: "e2e", shift: "1", plan: 5, sn, sn_odu: `ODU-${uniq}`, pcb_idu: `PCB-${uniq}`, sn_accessories: `ACC-${uniq}`, sn_motor: `MTR-${uniq}`, sn_box: `BOX-${uniq}`, sn_carton: `CTN-${uniq}` },
+    data: { model: modelFull, order_number: order, po_number: `PO-${uniq}`, subline: "LINE IDU ASSY INPUT", userid: "e2e", shift: "1", plan: 5, sn, pcb_idu: `PCB-${uniq}`, sn_accessories: `ACC-${uniq}` },
   });
   expect(reg.status()).toBe(201);
   const regId = (await reg.json()).result.id;
@@ -30,10 +37,9 @@ test("alur scan: regist via API, scan via UI, hasil muncul", async ({ page, requ
     await login(page);
     await page.goto(`/scan?idregist=${regId}`);
 
-    // scan SN + komponen IDU (auto pindah tanpa Enter, terakhir Enter = auto submit)
+    // scan SN + komponen IDU — field dari BOM rule (auto pindah tanpa Enter, terakhir Enter = auto submit)
     await page.getByLabel("Serial Number").fill(sn);
-    // untuk IDU, auto pindah aktif: setelah SN terisi, fokus ke PCB, tapi isi manual juga oke
-    await page.getByLabel("PCB IDU").fill(`PCB-${uniq}`);
+    await page.getByLabel("SN PCB").fill(`PCB-${uniq}`);
     await page.getByLabel("SN Accessories").fill(`ACC-${uniq}`);
     await page.getByLabel("SN Accessories").press("Enter");
 
@@ -54,6 +60,7 @@ test("alur scan: regist via API, scan via UI, hasil muncul", async ({ page, requ
       }
       try { await request.delete(`${base}/registscan/delete/${regId}`, { headers: auth }); } catch {}
       try { await request.delete(`${base}/bomlist/delete/${bomId}`, { headers: auth }); } catch {}
+      try { await request.delete(`${base}/model/delete/${modelId}`, { headers: auth }); } catch {}
     } catch {}
   }
 });

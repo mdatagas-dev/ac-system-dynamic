@@ -35,6 +35,9 @@ const NAV = [
   { href: "/master", label: "Master Data", icon: "database" },
 ];
 
+// ppc (operator) hanya melihat alur kerjanya: registrasi + scan
+const PPC_ONLY = new Set(["/regist", "/scan"]);
+
 const RAIL_KEY = "vm3-rail-expanded";
 
 export default function AppShellLayout({ children }: { children: React.ReactNode }) {
@@ -72,6 +75,12 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
       return next;
     });
 
+  // ppc (operator) hanya melihat alur kerjanya: registrasi + scan
+  const navItems =
+    user?.roleuser?.toLowerCase() === "ppc"
+      ? NAV.filter((n) => PPC_ONLY.has(n.href))
+      : NAV;
+
   // Elevasi appbar saat digulir
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 4);
@@ -89,14 +98,14 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
 
   // Prefetch semua rute sidebar agar perpindahan instant (saat idle)
   useEffect(() => {
-    NAV.forEach((n) => {
+    navItems.forEach((n) => {
       try {
         router.prefetch(n.href);
       } catch {
         /* prefetch gagal — abaikan */
       }
     });
-  }, [router]);
+  }, [router, navItems]);
 
   if (initializing || !user) {
     return (
@@ -109,7 +118,7 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
   const isActive = (href: string, exact?: boolean) =>
     exact ? pathname === href : pathname.startsWith(href);
 
-  const activeNav = [...NAV].reverse().find((n) => isActive(n.href, n.exact));
+  const activeNav = [...navItems].reverse().find((n) => isActive(n.href, n.exact));
 
   const navigate = (href: string) => {
     setDrawerOpen(false);
@@ -184,7 +193,7 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
               </span>
             </button>
 
-            {NAV.map((item) => (
+            {navItems.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -242,7 +251,7 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
       {/* Navbar bawah (mobile) */}
       <div className="lg:hidden">
         <NavigationBar>
-          {NAV.map((item) => (
+          {navItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -279,7 +288,7 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
           </div>
         </div>
         <List>
-          {NAV.map((item) => (
+          {navItems.map((item) => (
             <ListItem
               key={item.href}
               leadingIcon={item.icon}

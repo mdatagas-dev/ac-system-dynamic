@@ -19,6 +19,7 @@ import { Card } from "@/components/vm3/Card";
 import { Tabs } from "@/components/vm3/Navigation";
 import { Dialog } from "@/components/vm3/Dialog";
 import { Select } from "@/components/vm3/Select";
+import { Combobox } from "@/components/vm3/Combobox";
 import { Switch } from "@/components/vm3/Switch";
 import { useSnackbar } from "@/components/vm3/Snackbar";
 
@@ -199,6 +200,52 @@ export default function MasterPage() {
   }, [categories, selectedCategoryId]);
   const [keyTouched, setKeyTouched] = useState(false);
 
+  // Model master — untuk Combobox di form BOM List
+  const [models, setModels] = useState<string[]>([]);
+  useEffect(() => {
+    if (tab !== "bomlist") return;
+    let cancelled = false;
+    http
+      .get<{ data: Record<string, unknown>[] }>("/model?limit=100")
+      .then((r) => {
+        if (cancelled) return;
+        setModels(
+          ((r.data ?? []) as Record<string, unknown>[])
+            .map((m) => String(m.model ?? ""))
+            .filter(Boolean),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setModels([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab]);
+
+  // Line master — datalist untuk Section user (subline registrasi)
+  const [lines, setLines] = useState<string[]>([]);
+  useEffect(() => {
+    if (tab !== "users") return;
+    let cancelled = false;
+    http
+      .get<{ data: Record<string, unknown>[] }>("/line")
+      .then((r) => {
+        if (cancelled) return;
+        setLines(
+          ((r.data ?? []) as Record<string, unknown>[])
+            .map((l) => String(l.line ?? ""))
+            .filter(Boolean),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setLines([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab]);
+
   const loadCategories = useCallback(async () => {
     setCategoriesLoading(true);
     try {
@@ -234,10 +281,14 @@ export default function MasterPage() {
 
   // load categories saat masuk tab components atau butuh select kategori
   useEffect(() => {
-    if (tab === "components" || tab === "product_categories") {
-      loadCategories();
-    }
-  }, [tab, loadCategories]);
+    if (tab !== "components" && tab !== "product_categories") return;
+    http
+      .get<{ data: ProductCategoryRow[] }>("/product-categories")
+      .then((r) => setCategories((r.data ?? []) as ProductCategoryRow[]))
+      .catch(() => {
+        /* silent - biar komponen tetap bisa load tanpa filter */
+      });
+  }, [tab]);
 
   useEffect(() => {
     const t = setTimeout(load, 0);
@@ -259,6 +310,8 @@ export default function MasterPage() {
       });
     } else if (entity.key === "product_categories") {
       setForm({ slug: "", name: "", suffix_length: 5 });
+    } else if (entity.key === "bomlist") {
+      setForm({ components: {} });
     } else {
       setForm({});
     }
@@ -284,6 +337,11 @@ export default function MasterPage() {
         name: String(row.name ?? ""),
         suffix_length: row.suffix_length ?? 5,
       });
+    } else if (entity.key === "bomlist") {
+      const next: Record<string, unknown> = {};
+      for (const f of entity.fields) next[f.key] = row[f.key] ?? "";
+      next.components = row.components && typeof row.components === "object" ? row.components : {};
+      setForm(next);
     } else {
       const next: Record<string, unknown> = {};
       for (const f of entity.fields) next[f.key] = row[f.key] ?? "";
@@ -375,6 +433,39 @@ export default function MasterPage() {
     const found = categories.find((c) => String(c.id) === cid);
     if (found) return `${String(found.name)} (${String(found.slug)})`;
     return cid.slice(0, 8);
+  };
+
+  const bomComponents = (form.components && typeof form.components === "object"
+    ? form.components
+    : {}) as Record<string, { label?: string; prefix?: string; required?: boolean }>;
+
+  const setComp = (key: string, patch: Partial<{ label: string; prefix: string; required: boolean }>) =>
+    setForm((prev) => ({
+      ...prev,
+      components: {
+        ...bomComponents,
+        [key]: { ...(bomComponents[key] || {}), ...patch },
+      },
+    }));
+
+  const addComp = () => {
+    let k = "sn_field";
+    let n = 1;
+    while (bomComponents[k]) k = `sn_field_${n++}`;
+    setComp(k, { label: "SN Field", prefix: "", required: true });
+  };
+
+  const renameComp = (oldKey: string, newKey: string) => {
+    if (!newKey.trim() || newKey === oldKey) return;
+    const next: Record<string, { label?: string; prefix?: string; required?: boolean }> = {};
+    for (const [k, v] of Object.entries(bomComponents)) next[k === oldKey ? newKey : k] = v;
+    setForm((prev) => ({ ...prev, components: next }));
+  };
+
+  const removeComp = (key: string) => {
+    const next: Record<string, { label?: string; prefix?: string; required?: boolean }> = {};
+    for (const [k, v] of Object.entries(bomComponents)) if (k !== key) next[k] = v;
+    setForm((prev) => ({ ...prev, components: next }));
   };
 
   // Judul dialog
@@ -637,20 +728,113 @@ export default function MasterPage() {
             />
           </div>
         ) : (
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
             {entity.fields
               .filter((f) => !(editing && f.editOnly))
-              .map((f) => (
-                <TextField
-                  key={f.key}
-                  label={f.label}
-                  type={f.type === "date" ? "date" : f.type === "number" ? "number" : f.type === "password" ? "password" : "text"}
-                  required={f.required}
-                  value={String(form[f.key] ?? "")}
-                  onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
-                />
-              ))}
-          </div>
+              .map((f) =>
+                entity.key === "bomlist" && f.key === "model" ? (
+                  <Combobox
+                    key={f.key}
+                    label={f.label}
+                    options={models}
+                    value={String(form[f.key] ?? "")}
+                    onChange={(v) => setForm({ ...form, [f.key]: v })}
+                    placeholder="Ketik untuk mencari model"
+                  />
+                ) : entity.key === "users" && f.key === "section" ? (
+                  <div key={f.key}>
+                    <label htmlFor="users-section" className="mb-1.5 block text-sm font-medium text-on-surface">
+                      Section (Line) *
+                    </label>
+                    <input
+                      id="users-section"
+                      list="users-section-options"
+                      required
+                      value={String(form[f.key] ?? "")}
+                      onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                      className="h-11 w-full rounded-[var(--vm3-shape-lg)] border border-[var(--vm3-color-outline-variant)] bg-[var(--vm3-color-surface-container-highest)] px-3 text-sm text-[var(--vm3-color-on-surface)] outline-none focus:border-[var(--vm3-color-primary)] focus:ring-2 focus:ring-[var(--vm3-color-primary)]/20"
+                      placeholder="Ketik untuk mencari line"
+                      autoComplete="off"
+                    />
+                    <datalist id="users-section-options">
+                      {lines.map((l) => (
+                        <option key={l} value={l} />
+                      ))}
+                    </datalist>
+                    <p className="mt-1 text-xs text-on-surface-variant">
+                      Dipakai otomatis sebagai subline saat registrasi
+                    </p>
+                  </div>
+                ) : (
+                  <TextField
+                    key={f.key}
+                    label={f.label}
+                    type={f.type === "date" ? "date" : f.type === "number" ? "number" : f.type === "password" ? "password" : "text"}
+                    required={f.required}
+                    value={String(form[f.key] ?? "")}
+                    onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                  />
+                ),
+              )}
+            </div>
+
+            {/* Komponen dinamis — khusus BOM List (sumber field SN universal) */}
+            {entity.key === "bomlist" && (
+              <div className="mt-4 rounded-xl border border-outline-variant p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-sm font-medium">Komponen Dinamis</div>
+                    <div className="text-xs text-on-surface-variant">
+                      Field tambahan di luar kolom SN standar — wajib diisi & nilainya mengandung prefix
+                    </div>
+                  </div>
+                  <Button icon="add" onClick={addComp} className="!h-9 shrink-0">
+                    Tambah
+                  </Button>
+                </div>
+                <div className="mt-3 flex flex-col gap-3">
+                  {Object.keys(bomComponents).length === 0 && (
+                    <div className="text-xs text-on-surface-variant">Belum ada komponen dinamis.</div>
+                  )}
+                  {Object.entries(bomComponents).map(([key, def]) => (
+                    <div key={key} className="flex flex-wrap items-center gap-2 rounded-lg bg-surface-container p-2">
+                      <input
+                        aria-label={`key ${key}`}
+                        value={key}
+                        onChange={(e) => renameComp(key, toSnakeCase(e.target.value))}
+                        className="h-9 w-28 rounded-md border border-outline-variant bg-white px-2 text-xs font-mono outline-none focus:border-primary"
+                        placeholder="key"
+                      />
+                      <input
+                        aria-label={`label ${key}`}
+                        value={def.label ?? ""}
+                        onChange={(e) => setComp(key, { label: e.target.value })}
+                        className="h-9 w-32 rounded-md border border-outline-variant bg-white px-2 text-xs outline-none focus:border-primary"
+                        placeholder="Label"
+                      />
+                      <input
+                        aria-label={`prefix ${key}`}
+                        value={def.prefix ?? ""}
+                        onChange={(e) => setComp(key, { prefix: e.target.value })}
+                        className="h-9 w-32 rounded-md border border-outline-variant bg-white px-2 text-xs outline-none focus:border-primary"
+                        placeholder="Prefix (nilai harus mengandung ini)"
+                      />
+                      <label className="flex items-center gap-1.5 text-xs font-medium">
+                        <input
+                          type="checkbox"
+                          checked={def.required !== false}
+                          onChange={(e) => setComp(key, { required: e.target.checked })}
+                        />
+                        Wajib
+                      </label>
+                      <IconButton icon="delete" label={`Hapus ${key}`} onClick={() => removeComp(key)} className="ml-auto !h-8 !w-8" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </Dialog>
 

@@ -1,6 +1,16 @@
 const express = require("express");
 const router = express.Router();
 const prisma = require("../../lib/prisma");
+const {
+  missingRequired,
+  findBomMismatch,
+  unknownKeys,
+  ruleFields,
+} = require("../rules/bom-match");
+const { stripBrandSuffix } = require("../rules/model-code");
+const { hasPermission } = require("../services/permissions");
+const requirePermission = require("../../middlewares/requirePermission");
+const { assertCanAccessRegistration } = require("../services/registration-access");
 
 const dotenv = require("dotenv");
 const path = require("path");
@@ -12,17 +22,12 @@ dotenv.config({
 router.get("/", async (req, res) => {
   const { page = 1, limit = 10, keyword = "" } = req.query;
   const skip = (Number(page) - 1) * Number(limit);
-  const isUUID =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      keyword,
-    );
 
   let params = [];
   let optionQuery = "";
   let sql = "";
   let sqlcount = "";
-  const isSuperuser =
-    req.user.roleuser && req.user.roleuser.toLowerCase() === "superuser";
+  const isSuperuser = hasPermission(req.user, "registscan:read");
 
   if (isSuperuser) {
     if (keyword) {
@@ -147,12 +152,11 @@ router.get("/checkregist", async (req, res) => {
   }
 });
 
-router.post("/post", async (req, res) => {
+router.post("/post", requirePermission("registscan:write"), async (req, res) => {
   const {
     model,
     order_number,
     po_number,
-    subline,
     userid,
     shift,
     plan,
@@ -169,78 +173,67 @@ router.post("/post", async (req, res) => {
     !model ||
     !order_number ||
     !po_number ||
-    !subline ||
     !userid ||
     !shift ||
     plan === undefined
   ) {
     return res
       .status(400)
-      .json({ error: "model, order_number, po_number, subline, userid, shift, plan wajib diisi" });
+      .json({ error: "model, order_number, po_number, userid, shift, plan wajib diisi" });
   }
 
-  // validasi SN dinamis: jika product_category ada, baca component_definitions; fallback subline ODU/IDU
+  // subline otomatis dari section user (fallback ke body untuk kompatibilitas)
+  const subline = (req.body.subline ?? req.user?.section ?? "").toString().trim();
+  if (!subline) {
+    return res.status(400).json({ error: "subline wajib diisi (isi section pada user)" });
+  }
+
+  // validasi mengikuti BOM rule (satu baris per model+order_number)
   const product_category = (req.body.product_category || req.body.productCategory || "").toString().trim().toLowerCase() || null;
-  let wajibSN;
-  let dynamicDefs = null;
-  if (product_category) {
-    try {
-      const cat = await prisma.product_categories.findUnique({ where: { slug: product_category } });
-      if (cat) {
-        dynamicDefs = await prisma.component_definitions.findMany({
-          where: { category_id: cat.id, required: true, enabled: true },
-        });
-      }
-    } catch {}
-  }
-  if (dynamicDefs && dynamicDefs.length) {
-    wajibSN = {};
-    for (const d of dynamicDefs) {
-      const val = req.body[d.key] ?? (req.body.components && req.body.components[d.key]);
-      wajibSN[d.key] = val;
-    }
-  } else {
-    const u = String(subline).toUpperCase();
-    const isOdu = u.includes("ODU");
-    const isIdu = u.includes("IDU");
-    if (isOdu && !isIdu) wajibSN = { sn_odu, sn_motor, sn_box };
-    else if (isIdu && !isOdu) wajibSN = { sn, pcb_idu, sn_accessories };
-    else wajibSN = { sn, sn_odu, pcb_idu, sn_accessories, sn_motor, sn_box };
-  }
-  const kosong = Object.entries(wajibSN).filter(([, v]) => !v || !String(v).trim());
-  if (kosong.length) {
-    return res
-      .status(400)
-      .json({ error: `Wajib diisi: ${kosong.map(([k]) => k).join(", ")}` });
-  }
 
   try {
-    const modelOnly = model.slice(0, model.length - 5);
+    const modelOnly = stripBrandSuffix(String(model).trim());
 
-    const od_eng = await prisma.bomlist.findMany({
+    const od_eng = await prisma.bomlist.findFirst({
       where: {
-        model: modelOnly.trim(),
+        model: modelOnly,
         order_number: order_number.trim(),
+        is_active: true,
       },
     });
 
-    if (od_eng <= 0) {
+    if (!od_eng) {
       return res.status(404).json({ error: "Batch tidak ada di bomlist" });
     }
 
-    const planning = Number(plan);
-    // siapkan components JSONB untuk kolom dinamis
-    let componentsData = null;
-    if (req.body.components && typeof req.body.components === "object") {
-      componentsData = req.body.components;
-    } else {
-      const baseKeys = new Set(["model","order_number","po_number","subline","userid","shift","plan","product_category","productCategory"]);
-      const comp = {};
-      for (const k of Object.keys(req.body)) {
-        if (!baseKeys.has(k)) comp[k] = req.body[k] ? String(req.body[k]).trim() : null;
-      }
-      if (Object.keys(comp).length) componentsData = comp;
+    const missing = missingRequired(od_eng, req.body);
+    if (missing) {
+      return res.status(400).json({ error: `Wajib diisi: ${missing.label}` });
     }
+
+    const mismatch = findBomMismatch(od_eng, req.body);
+    if (mismatch) {
+      return res.status(400).json({
+        error: `${mismatch.key} tidak sesuai BOM (diharapkan mengandung: ${mismatch.expected})`,
+      });
+    }
+
+    const unknown = unknownKeys(od_eng, req.body);
+    if (unknown.length) {
+      return res.status(400).json({ error: `Field tidak dikenal BOM: ${unknown.join(", ")}` });
+    }
+
+    const planning = Number(plan);
+    // components JSONB = nilai field dinamis yang dideklarasikan BOM
+    const declared = ruleFields(od_eng);
+    const componentsData = {};
+    for (const f of declared) {
+      const val = req.body[f.key];
+      if (val !== undefined && val !== null && String(val).trim() !== "") {
+        componentsData[f.key] = String(val).trim();
+      }
+    }
+
     const result = await prisma.registscan.create({
       data: {
         model: model.trim(),
@@ -258,7 +251,7 @@ router.post("/post", async (req, res) => {
         sn_carton: sn_carton ? sn_carton.trim() : null,
         pcb_idu: pcb_idu ? pcb_idu.trim() : null,
         product_category: product_category || null,
-        components: componentsData,
+        components: Object.keys(componentsData).length ? componentsData : null,
       },
     });
 
@@ -271,13 +264,12 @@ router.post("/post", async (req, res) => {
   }
 });
 
-router.put("/edit/:id", async (req, res) => {
+router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) => {
   const { id } = req.params;
   const {
     model,
     order_number,
     po_number,
-    subline,
     shift,
     plan,
     sn,
@@ -294,68 +286,65 @@ router.put("/edit/:id", async (req, res) => {
     !model ||
     !order_number ||
     !po_number ||
-    !subline ||
     !shift ||
     plan === undefined
   ) {
     return res
       .status(400)
-      .json({ error: "model, order_number, po_number, subline, shift, plan wajib diisi" });
+      .json({ error: "model, order_number, po_number, shift, plan wajib diisi" });
+  }
+
+  // subline otomatis dari section user (fallback ke body untuk kompatibilitas)
+  const subline = (req.body.subline ?? req.user?.section ?? "").toString().trim();
+  if (!subline) {
+    return res.status(400).json({ error: "subline wajib diisi (isi section pada user)" });
   }
 
   const prodCat2 = (product_category || "").toString().trim().toLowerCase() || null;
-  let wajibSN2;
-  let dyn2 = null;
-  if (prodCat2) {
-    try {
-      const cat2 = await prisma.product_categories.findUnique({ where: { slug: prodCat2 } });
-      if (cat2) dyn2 = await prisma.component_definitions.findMany({ where: { category_id: cat2.id, required: true, enabled: true } });
-    } catch {}
-  }
-  if (dyn2 && dyn2.length) {
-    wajibSN2 = {};
-    for (const d of dyn2) {
-      const val = req.body[d.key] ?? (req.body.components && req.body.components[d.key]);
-      wajibSN2[d.key] = val;
-    }
-  } else {
-    const u2 = String(subline).toUpperCase();
-    const isOdu2 = u2.includes("ODU");
-    const isIdu2 = u2.includes("IDU");
-    if (isOdu2 && !isIdu2) wajibSN2 = { sn_odu, sn_motor, sn_box };
-    else if (isIdu2 && !isOdu2) wajibSN2 = { sn, pcb_idu, sn_accessories };
-    else wajibSN2 = { sn, sn_odu, pcb_idu, sn_accessories, sn_motor, sn_box };
-  }
-  const kosong2 = Object.entries(wajibSN2).filter(([, v]) => !v || !String(v).trim());
-  if (kosong2.length) {
-    return res.status(400).json({ error: `Wajib diisi: ${kosong2.map(([k]) => k).join(", ")}` });
-  }
 
   try {
-    const modelOnly = model.slice(0, model.length - 5);
+    // akses: pemilik registrasi (atau superuser)
+    const existingReg = await prisma.registscan.findUnique({ where: { id } });
+    assertCanAccessRegistration(req.user, existingReg);
 
-    const odf = await prisma.bomlist.findMany({
+    const modelOnly = stripBrandSuffix(String(model).trim());
+    const odf = await prisma.bomlist.findFirst({
       where: {
-        model: modelOnly.trim(),
+        model: modelOnly,
         order_number: order_number.trim(),
+        is_active: true,
       },
     });
 
-    if (odf <= 0) {
+    if (!odf) {
       return res.status(404).json({ error: "Batch tidak ada di bomlist" });
     }
 
+    const missing = missingRequired(odf, req.body);
+    if (missing) {
+      return res.status(400).json({ error: `Wajib diisi: ${missing.label}` });
+    }
+
+    const mismatch = findBomMismatch(odf, req.body);
+    if (mismatch) {
+      return res.status(400).json({
+        error: `${mismatch.key} tidak sesuai BOM (diharapkan mengandung: ${mismatch.expected})`,
+      });
+    }
+
+    const unknown = unknownKeys(odf, req.body);
+    if (unknown.length) {
+      return res.status(400).json({ error: `Field tidak dikenal BOM: ${unknown.join(", ")}` });
+    }
+
     const planning = Number(plan);
-    let componentsData2 = null;
-    if (req.body.components && typeof req.body.components === "object") {
-      componentsData2 = req.body.components;
-    } else {
-      const baseKeys2 = new Set(["model","order_number","po_number","subline","shift","plan","product_category","productCategory","id"]);
-      const comp2 = {};
-      for (const k of Object.keys(req.body)) {
-        if (!baseKeys2.has(k) && k !== "userid") comp2[k] = req.body[k] ? String(req.body[k]).trim() : null;
+    const declared = ruleFields(odf);
+    const componentsData2 = {};
+    for (const f of declared) {
+      const val = req.body[f.key];
+      if (val !== undefined && val !== null && String(val).trim() !== "") {
+        componentsData2[f.key] = String(val).trim();
       }
-      if (Object.keys(comp2).length) componentsData2 = comp2;
     }
     const result = await prisma.registscan.update({
       where: { id: id },
@@ -374,27 +363,30 @@ router.put("/edit/:id", async (req, res) => {
         sn_carton: sn_carton ? sn_carton.trim() : null,
         pcb_idu: pcb_idu ? pcb_idu.trim() : null,
         product_category: product_category ? product_category.trim().toLowerCase() : undefined,
-        components: componentsData2,
+        components: Object.keys(componentsData2).length ? componentsData2 : undefined,
       },
     });
     res
       .status(200)
       .json({ message: "data successfully changed", result: result });
   } catch (error) {
-    res.status(500).json({ error: "Internal Server Error" });
+    res.status(error.status || 500).json({ error: error.message || "Internal Server Error" });
   }
 });
 
-router.delete("/delete/:id", async (req, res) => {
+router.delete("/delete/:id", requirePermission("registscan:write"), async (req, res) => {
   const { id } = req.params;
   try {
-    const result = await prisma.registscan.delete({
-      where: { id },
-    });
+    // akses: pemilik registrasi (atau superuser)
+    const existingReg = await prisma.registscan.findUnique({ where: { id } });
+    assertCanAccessRegistration(req.user, existingReg);
+    const result = await prisma.$transaction([
+      prisma.recordscan.deleteMany({ where: { id_regist: id } }),
+      prisma.registscan.delete({ where: { id } }),
+    ]);
     res.status(200).json({ message: "Deleted Successfully", result: result });
   } catch (error) {
-    // console.error(error);
-    res.status(500).json({ error: "Internal Server Error" });
+    res.status(error.status || 500).json({ error: error.message || "Internal Server Error" });
   }
 });
 

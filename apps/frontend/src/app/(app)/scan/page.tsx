@@ -1,21 +1,18 @@
 "use client";
 
 /**
- * Scan — dinamis per product_category. Auto-scan saat field terakhir terisi / Enter.
- * - product_category diambil dari regist terpilih (regists[].product_category) atau /rdps/scan validation.
- * - Jika ada, fetch GET /components?slug=product_category → enabled+sort → render dinamis.
- * - Fallback ke isOdu (MOTOR/BOX vs PCB/Accessories) bila tidak ada kategori/definisi kosong.
- * - Auto pindah generik via array refs sesuai urutan sort; terakhir auto submit.
- * - POST /rdps/post kirim product_category + field individual + components JSONB.
- * - Popup hijau/merah tetap.
+ * Scan — universal: field mengikuti BOM rule batch (dari /rdps/scan → bomlist).
+ * Auto-scan saat field terakhir terisi / Enter. Popup hijau/merah.
  */
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { http } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { Card } from "@/components/vm3/Card";
 import { Dialog } from "@/components/vm3/Dialog";
 import { Button } from "@/components/vm3/Button";
 import { Select } from "@/components/vm3/Select";
+import { TextArea } from "@/components/vm3/TextArea";
 import { useSnackbar } from "@/components/vm3/Snackbar";
 
 interface Regist {
@@ -26,21 +23,12 @@ interface Regist {
   subline: string;
   plan: number | null;
   total?: number;
-  product_category?: string | null;
-  productCategory?: string | null;
-  components?: Record<string, unknown> | null;
 }
 
-interface ComponentDef {
-  id: string;
-  category_id: string;
+interface BomRuleField {
   key: string;
   label: string;
   required: boolean;
-  enabled: boolean;
-  sort: number;
-  regex?: string | null;
-  created_at?: string;
 }
 
 interface ScanResult {
@@ -53,10 +41,38 @@ interface ScanResult {
 }
 
 interface ScanSummary {
-  validation?: Regist & { product_category?: string | null; productCategory?: string | null };
+  validation?: Regist | null;
   total?: number;
   last?: { sn?: string; sn_odu?: string } | null;
-  bomlist?: unknown[];
+  bomlist?: Array<Record<string, unknown>>;
+}
+
+const FIXED_LABELS: Record<string, string> = {
+  sn: "Serial Number",
+  sn_carton: "SN Carton",
+  pcb_idu: "SN PCB",
+  sn_box: "SN Electrical Box",
+  sn_motor: "SN Motor",
+  sn_accessories: "SN Accessories",
+  sn_odu: "Serial Number (ODU)",
+};
+
+/** Field dari BOM rule (bomlist row, sudah dibersihkan dari nilai kosong) */
+function fieldsFromBom(row: Record<string, unknown> | null | undefined): BomRuleField[] {
+  if (!row || typeof row !== "object") return [];
+  const fields: BomRuleField[] = [];
+  for (const [key, label] of Object.entries(FIXED_LABELS)) {
+    const v = row[key];
+    if (v !== undefined && v !== null && String(v).trim() !== "") {
+      fields.push({ key, label, required: true });
+    }
+  }
+  const comps = row.components && typeof row.components === "object" ? (row.components as Record<string, { label?: string; required?: boolean }>) : {};
+  for (const [key, def] of Object.entries(comps)) {
+    const d = def && typeof def === "object" ? def : {};
+    fields.push({ key, label: d.label || key, required: d.required !== false });
+  }
+  return fields;
 }
 
 export default function ScanPage() {
@@ -69,6 +85,7 @@ export default function ScanPage() {
 
 function ScanContent() {
   const { show } = useSnackbar();
+  const { user } = useAuth();
   const searchParams = useSearchParams();
   const idRegistParam = searchParams.get("idregist");
   const [regists, setRegists] = useState<Regist[]>([]);
@@ -80,75 +97,69 @@ function ScanContent() {
   const [popupOpen, setPopupOpen] = useState(false);
   const [popupType, setPopupType] = useState<"success" | "error">("success");
   const [popupMsg, setPopupMsg] = useState("");
-  const [defs, setDefs] = useState<ComponentDef[]>([]);
-  const [defsLoading, setDefsLoading] = useState(false);
   const [scanSummary, setScanSummary] = useState<ScanSummary | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importing, setImporting] = useState(false);
+
+  const isSuperuser = user?.roleuser?.toLowerCase() === "superuser";
+
+  const doImport = async () => {
+    if (!registId) {
+      show("Pilih registrasi dulu");
+      return;
+    }
+    let rows: unknown[];
+    try {
+      rows = JSON.parse(importText);
+      if (!Array.isArray(rows) || rows.length === 0) throw new Error("rows kosong");
+    } catch (err) {
+      show("Format tidak valid — isi array JSON baris scan: [{sn:\"...\"}, ...]");
+      return;
+    }
+    setImporting(true);
+    try {
+      const res = await http.post<{ message?: string; created?: number }>("/rdps/import", {
+        id_regist: registId,
+        rows,
+      });
+      show(`${res.message ?? "Import selesai"}${res.created != null ? ` (${res.created} baris)` : ""}`);
+      setImportOpen(false);
+      setImportText("");
+      // refresh total
+      http
+        .get<ScanSummary>("/rdps/scan", { extraHeaders: { idregist: registId } })
+        .then((s) => {
+          if (typeof s.total === "number") setCount(s.total);
+        })
+        .catch(() => {
+          /* abaikan */
+        });
+    } catch (err) {
+      show(`Import gagal: ${(err as Error).message}`);
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const selected = regists.find((r) => r.id === registId) ?? null;
-  const isOdu = (selected?.subline ?? "").toUpperCase().includes("ODU");
-
-  const resolvedCategory = useMemo(() => {
-    const candidates: unknown[] = [
-      (selected as unknown as Record<string, unknown> | null)?.product_category,
-      (selected as unknown as Record<string, unknown> | null)?.productCategory,
-      (scanSummary?.validation as unknown as Record<string, unknown> | null)?.product_category,
-      (scanSummary?.validation as unknown as Record<string, unknown> | null)?.productCategory,
-    ];
-    for (const c of candidates) {
-      if (c == null) continue;
-      const s = String(c).trim().toLowerCase();
-      if (s) return s;
-    }
-    return null;
-  }, [selected, scanSummary]);
-
-  const enabledDefs = useMemo(() => {
-    const list = defs.filter((d) => d.enabled);
-    list.sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0) || a.label.localeCompare(b.label));
-    return list;
-  }, [defs]);
-
-  const hasDynamic = enabledDefs.length > 0;
 
   const orderedFields = useMemo(() => {
-    if (hasDynamic) {
-      const snDef = enabledDefs.find((d) => d.key === "sn");
-      const snLabel = snDef?.label ?? "Serial Number";
-      const snRequired = snDef ? !!snDef.required : true;
-      const others = enabledDefs.filter((d) => d.key !== "sn");
-      const fields: { key: string; label: string; required: boolean }[] = [
-        { key: "sn", label: snLabel, required: snRequired },
-      ];
-      for (const d of others) fields.push({ key: d.key, label: d.label, required: !!d.required });
-      return fields;
-    }
-    if (isOdu) {
-      return [
-        { key: "sn", label: "Serial Number", required: true },
-        { key: "sn_motor", label: "MOTOR", required: true },
-        { key: "sn_box", label: "BOX", required: true },
-      ] as const as { key: string; label: string; required: boolean }[];
-    }
-    return [
-      { key: "sn", label: "Serial Number", required: true },
-      { key: "pcb_idu", label: "PCB IDU", required: true },
-      { key: "sn_accessories", label: "SN Accessories", required: true },
-    ] as const as { key: string; label: string; required: boolean }[];
-  }, [hasDynamic, enabledDefs, isOdu]);
+    return fieldsFromBom(scanSummary?.bomlist?.[0]);
+  }, [scanSummary?.bomlist]);
 
-  // Keep fieldValues keys in sync with orderedFields (generik reset saat kategori berubah)
+  // Keep fieldValues keys in sync with orderedFields (generik reset saat BOM berubah)
   useEffect(() => {
     setFieldValues((prev) => {
       const next: Record<string, string> = {};
       for (const f of orderedFields) next[f.key] = prev[f.key] ?? "";
-      // also keep legacy hidden keys if they existed (sn_odu/sn_carton) but not in orderedFields → drop them
       return next;
     });
     inputRefs.current = [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderedFields.map((f) => f.key).join("|"), hasDynamic]);
+  }, [orderedFields.map((f) => f.key).join("|")]);
 
   useEffect(() => {
     http
@@ -188,38 +199,10 @@ function ScanContent() {
     if (selected?.total != null) setCount(selected.total);
   }, [selected?.total]);
 
-  // Fetch component_definitions untuk kategori terdeteksi
-  useEffect(() => {
-    if (!resolvedCategory) {
-      setDefs([]);
-      setDefsLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setDefsLoading(true);
-    http
-      .get<{ data: ComponentDef[] }>(`/components?slug=${encodeURIComponent(resolvedCategory)}`)
-      .then((res) => {
-        if (cancelled) return;
-        const list = (res.data ?? []).filter((d) => d.enabled);
-        // keep original sort but ensure stable sort already handled in enabledDefs memo; we just store raw
-        setDefs(list);
-      })
-      .catch(() => {
-        if (!cancelled) setDefs([]);
-      })
-      .finally(() => {
-        if (!cancelled) setDefsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [resolvedCategory]);
-
   useEffect(() => {
     const t = setTimeout(() => inputRefs.current[0]?.focus(), 300);
     return () => clearTimeout(t);
-  }, [registId, hasDynamic, resolvedCategory, defsLoading]);
+  }, [registId, orderedFields.map((f) => f.key).join("|")]);
 
   // tutup popup -> auto fokus balik ke SN untuk unit berikutnya
   useEffect(() => {
@@ -234,74 +217,32 @@ function ScanContent() {
       show("Pilih registrasi dulu");
       return;
     }
-    // validasi dinamis / fallback
-    if (hasDynamic) {
-      const missing = orderedFields.filter((f) => f.required && !(fieldValues[f.key] ?? "").trim());
-      if (missing.length) {
-        setPopupType("error");
-        setPopupMsg(`Wajib isi: ${missing.map((m) => m.label).join(", ")}`);
-        setPopupOpen(true);
-        const idx = orderedFields.findIndex((f) => f.required && !(fieldValues[f.key] ?? "").trim());
-        if (idx >= 0) inputRefs.current[idx]?.focus();
-        return;
-      }
-    } else {
-      if (!(fieldValues.sn ?? "").trim()) {
-        setPopupType("error");
-        setPopupMsg("SN wajib diisi");
-        setPopupOpen(true);
-        inputRefs.current[0]?.focus();
-        return;
-      }
-      if (isOdu) {
-        if (!(fieldValues.sn_motor ?? "").trim() || !(fieldValues.sn_box ?? "").trim()) {
-          setPopupType("error");
-          setPopupMsg("MOTOR dan BOX wajib diisi untuk ODU");
-          setPopupOpen(true);
-          return;
-        }
-      } else {
-        if (!(fieldValues.pcb_idu ?? "").trim() || !(fieldValues.sn_accessories ?? "").trim()) {
-          setPopupType("error");
-          setPopupMsg("PCB IDU dan SN Accessories wajib diisi untuk IDU");
-          setPopupOpen(true);
-          return;
-        }
-      }
+    const missing = orderedFields.filter((f) => f.required && !(fieldValues[f.key] ?? "").trim());
+    if (missing.length) {
+      setPopupType("error");
+      setPopupMsg(`Wajib isi: ${missing.map((m) => m.label).join(", ")}`);
+      setPopupOpen(true);
+      const idx = orderedFields.findIndex((f) => f.required && !(fieldValues[f.key] ?? "").trim());
+      if (idx >= 0) inputRefs.current[idx]?.focus();
+      return;
     }
 
     setLoading(true);
     try {
       const payload: Record<string, unknown> = {
         id_regist: registId,
-        sn: (fieldValues.sn ?? "").trim(),
       };
       const components: Record<string, string> = {};
       for (const f of orderedFields) {
-        if (f.key === "sn") continue;
         const v = (fieldValues[f.key] ?? "").trim();
         if (v) {
           payload[f.key] = v;
           components[f.key] = v.toUpperCase();
         }
       }
-      // Hidden legacy compat: jika ada sn_odu/sn_carton yang kebetulan masih di fieldValues (tidak dirender dinamis) ikut kirim bila terisi
-      for (const k of ["sn_odu", "sn_carton"] as const) {
-        const v = (fieldValues as Record<string, string>)[k]?.trim();
-        if (v) {
-          payload[k] = v;
-          // sn_carton tidak wajib, tapi ikut components bila ada
-          if (!components[k]) components[k] = v.toUpperCase();
-        }
-      }
-      if (resolvedCategory) {
-        payload.product_category = resolvedCategory;
-        payload.productCategory = resolvedCategory;
-      }
       if (Object.keys(components).length) {
         payload.components = components;
       }
-      // Backend juga menerima penyebaran key individual — sudah di payload
       const res = await http.post<ScanResult>("/rdps/post", payload, { extraHeaders: { idregist: registId } });
       const newSn = (res as unknown as { data?: { sn?: string } })?.data?.sn ?? (fieldValues.sn ?? "").trim();
       setLastScan(newSn);
@@ -313,8 +254,6 @@ function ScanContent() {
       setFieldValues(() => {
         const next: Record<string, string> = {};
         for (const f of orderedFields) next[f.key] = "";
-        // keep hidden compat keys reset juga
-        for (const k of ["sn_odu", "sn_carton"] as const) next[k] = "";
         return next;
       });
       setTimeout(() => setPopupOpen(false), 1200);
@@ -325,13 +264,12 @@ function ScanContent() {
     } finally {
       setLoading(false);
     }
-  }, [registId, fieldValues, hasDynamic, isOdu, orderedFields, resolvedCategory, show]);
+  }, [registId, fieldValues, orderedFields, show]);
 
   // Auto pindah generik: field ke-i terisi (len >=6 untuk i=0, >=4 lainnya) → focus i+1
   useEffect(() => {
     if (loading || popupOpen) return;
     if (!orderedFields.length) return;
-    if (defsLoading) return;
     for (let i = 0; i < orderedFields.length - 1; i++) {
       const curKey = orderedFields[i]!.key;
       const nextKey = orderedFields[i + 1]!.key;
@@ -351,13 +289,12 @@ function ScanContent() {
         return () => clearTimeout(t);
       }
     }
-  }, [fieldValues, orderedFields, loading, popupOpen, defsLoading]);
+  }, [fieldValues, orderedFields, loading, popupOpen]);
 
   // Auto submit generik: semua required terisi + field terakhir >=4 (atau >=6 bila hanya 1 field) → scan()
   useEffect(() => {
     if (loading || popupOpen) return;
     if (!orderedFields.length) return;
-    if (defsLoading) return;
     const allRequiredFilled = orderedFields.every((f) => !f.required || (fieldValues[f.key] ?? "").trim().length > 0);
     if (!allRequiredFilled) return;
     const lastIdx = orderedFields.length - 1;
@@ -377,7 +314,7 @@ function ScanContent() {
     }, 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fieldValues, orderedFields, loading, popupOpen, defsLoading]);
+  }, [fieldValues, orderedFields, loading, popupOpen]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -386,8 +323,8 @@ function ScanContent() {
           <div>
             <div className="text-lg font-bold tracking-wide">{selected.model}</div>
             <div className="text-sm opacity-80">PO NUMBER: {selected.po_number}</div>
-            {resolvedCategory && (
-              <div className="mt-1 text-xs opacity-70">Kategori: {resolvedCategory}{hasDynamic ? ` • ${enabledDefs.length} komponen` : " • fallback"}</div>
+            {orderedFields.length > 0 && (
+              <div className="mt-1 text-xs opacity-70">BOM: {orderedFields.length} field • {orderedFields.filter((f) => f.required).length} wajib</div>
             )}
           </div>
           <div className="text-right">
@@ -398,17 +335,32 @@ function ScanContent() {
       )}
 
       {!idRegistParam && (
-        <div className="max-w-xs">
-          <div className="mb-2 text-sm font-medium text-on-surface-variant">Registrasi Aktif</div>
-          <Select
-            options={regists.map((r) => ({
-              value: r.id,
-              label: `${r.model} · ${r.order_number} · ${r.subline}`,
-            }))}
-            value={registId}
-            onChange={setRegistId}
-            placeholder="Pilih registrasi"
-          />
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="max-w-xs">
+            <div className="mb-2 text-sm font-medium text-on-surface-variant">Registrasi Aktif</div>
+            <Select
+              options={regists.map((r) => ({
+                value: r.id,
+                label: `${r.model} · ${r.order_number} · ${r.subline}`,
+              }))}
+              value={registId}
+              onChange={setRegistId}
+              placeholder="Pilih registrasi"
+            />
+          </div>
+          {isSuperuser && (
+            <Button icon="upload" variant="outlined" onClick={() => setImportOpen(true)}>
+              Import Scan
+            </Button>
+          )}
+        </div>
+      )}
+
+      {isSuperuser && idRegistParam && (
+        <div className="flex justify-end">
+          <Button icon="upload" variant="outlined" onClick={() => setImportOpen(true)}>
+            Import Scan
+          </Button>
         </div>
       )}
 
@@ -423,8 +375,8 @@ function ScanContent() {
             </div>
           </div>
 
-          {defsLoading ? (
-            <div className="py-8 text-center text-sm text-gray-500">Memuat definisi komponen...</div>
+          {orderedFields.length === 0 ? (
+            <div className="py-8 text-center text-sm text-gray-500">BOM rule tidak ditemukan untuk batch ini</div>
           ) : (
             orderedFields.map((f, idx) => (
               <div key={f.key} className="flex items-center gap-4">
@@ -459,7 +411,6 @@ function ScanContent() {
 
           <div className="text-center text-xs text-gray-500 min-h-4">
             Auto pindah saat kolom terisi — tidak perlu Enter • Scan terakhir auto submit
-            {hasDynamic && resolvedCategory ? ` • ${resolvedCategory}` : ""}
           </div>
         </div>
       </Card>
@@ -483,6 +434,29 @@ function ScanContent() {
             : "!bg-red-600 !text-white [&_.vm3-dialog-title]:!text-white [&_.vm3-dialog-description]:!text-white/90"
         }
       />
+
+      {/* Import scan massal (superuser) */}
+      <Dialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title="Import Scan"
+        description={`Baris scan untuk registrasi: ${selected?.model ?? ""} (${selected?.order_number ?? "-"}) — divalidasi BOM, ` + "admin only."}
+        actions={
+          <>
+            <Button variant="text" onClick={() => setImportOpen(false)}>Batal</Button>
+            <Button onClick={() => void doImport()} loading={importing}>Import</Button>
+          </>
+        }
+      >
+        <TextArea
+          className="mt-4 w-full"
+          label="Baris scan (JSON array)"
+          rows={10}
+          placeholder='[{"sn":"AC1001"},{"sn":"AC1002","sn_motor":"MTR01"}]'
+          value={importText}
+          onChange={(e) => setImportText(e.target.value)}
+        />
+      </Dialog>
     </div>
   );
 }

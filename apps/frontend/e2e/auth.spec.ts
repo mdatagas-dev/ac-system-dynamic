@@ -20,7 +20,7 @@ test.describe("Auth", () => {
     await page.getByLabel("Password").fill("salah_password");
     await page.getByRole("button", { name: /masuk/i }).click();
     await expect(page.locator("form [role=alert]")).toContainText(
-      /Username Not Found|Wrong Password|Error/i,
+      /Username atau password salah/i,
       { timeout: 10_000 },
     );
   });

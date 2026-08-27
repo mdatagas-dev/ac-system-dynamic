@@ -24,6 +24,7 @@ const productCategoriesRoutes = require("./routes/product-categories");
 const componentsRoutes = require("./routes/components");
 
 const redis = require("./config/redis");
+const requirePermission = require("../middlewares/requirePermission");
 
 const port = process.env.PORT;
 
@@ -67,16 +68,21 @@ app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ limit: "5mb", extended: true }));
 
 app.use("/login", loginRoutes);
-app.use("/users", auth, usersRoutes);
-app.use("/bomlist", auth, bomlistRoutes);
-app.use("/line", auth, lineRoutes);
-app.use("/model", auth, modelRoutes);
-app.use("/pin", auth, pinRoutes);
-app.use("/uph", auth, uphRoutes);
-app.use("/rdps", auth, rdpsRoutes);
-app.use("/registscan", auth, registscanRoutes);
-app.use("/product-categories", auth, productCategoriesRoutes);
-app.use("/components", auth, componentsRoutes);
+app.use("/users", auth, requirePermission("users:manage"), usersRoutes);
+app.use("/bomlist", auth, requirePermission("master-data:write"), bomlistRoutes);
+app.use("/line", auth, requirePermission("master-data:write"), lineRoutes);
+app.use("/model", auth, requirePermission("master-data:write"), modelRoutes);
+app.use("/pin", auth, requirePermission("pin:manage"), pinRoutes);
+app.use("/uph", auth, requirePermission("master-data:write"), uphRoutes);
+app.use("/product-categories", auth, requirePermission("master-data:write"), productCategoriesRoutes);
+app.use("/components", auth, requirePermission("master-data:write"), componentsRoutes);
+app.use(
+  "/registscan",
+  auth,
+  requirePermission(["registscan:read", "registscan:read-own", "registscan:write"]),
+  registscanRoutes,
+);
+app.use("/rdps", auth, requirePermission("scan:read"), rdpsRoutes);
 
 // 404 handler
 app.use((req, res) => {
@@ -86,7 +92,10 @@ app.use((req, res) => {
 // global error handler
 app.use((err, req, res, next) => {
   console.error("Unhandled error:", err);
-  res.status(500).json({ error: "Internal Server Error" });
+  res.status(err.status || 500).json({
+    error: err.message || "Internal Server Error",
+    ...(err.code ? { code: err.code } : {}),
+  });
 });
 
 const startServer = async () => {

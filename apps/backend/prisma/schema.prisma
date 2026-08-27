@@ -21,6 +21,7 @@ model bomlist {
   model            String?   @db.VarChar(255)
   product_category String?   @db.VarChar(50)
   components       Json?     @db.JsonB
+  is_active        Boolean   @default(true)
 }
 
 model recordscan {

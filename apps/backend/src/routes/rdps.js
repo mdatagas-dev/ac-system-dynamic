@@ -5,6 +5,11 @@ const prisma = require("../../lib/prisma");
 const dotenv = require("dotenv");
 const path = require("path");
 const redis = require("../config/redis");
+const { findBomMismatch } = require("../rules/bom-match");
+const { stripBrandSuffix } = require("../rules/model-code");
+const requirePermission = require("../../middlewares/requirePermission");
+const { assertCanAccessRegistration } = require("../services/registration-access");
+const AppError = require("../../lib/AppError");
 
 dotenv.config({
   path: path.resolve(__dirname, "../../.env"),
@@ -55,6 +60,7 @@ router.get("/scan", async (req, res) => {
       where: {
         model: modelOnly.trim(),
         order_number: resRegistScan.order_number.trim(),
+        is_active: true,
       },
     });
 
@@ -76,20 +82,13 @@ router.get("/scan", async (req, res) => {
       bomlist: cleanBomlist,
     });
   } catch (error) {
-    // console.error(error);
-    res.status(500).json({ error: error });
+    console.error(error);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
 router.get("/dashboard", async (req, res) => {
   const { keyword } = req.query;
-  const cacheKey = `dashboardUphAC:keyword=${keyword}`;
-
-  const cached = await redis.get(cacheKey);
-
-  if (cached) {
-    return res.status(200).json(JSON.parse(cached));
-  }
 
   function formatDateLocal(date) {
     const year = date.getFullYear();
@@ -109,6 +108,15 @@ router.get("/dashboard", async (req, res) => {
 
   let hour = now.getHours();
   yesterday.setDate(now.getDate() - 1);
+
+  // shift branch + tanggal menentukan hasil query — sertakan dalam key
+  const cacheKey = `dashboardUphAC:${todayStr}:${hour}:${keyword}`;
+
+  const cached = await redis.get(cacheKey);
+
+  if (cached) {
+    return res.status(200).json(JSON.parse(cached));
+  }
 
   let query;
   let params = [];
@@ -208,7 +216,7 @@ router.get("/dashboard", async (req, res) => {
         JOIN recordscan AS rcs 
             ON rgs.id = rcs.id_regist::uuid
         JOIN model AS mdl
-          ON mdl.model ILIKE rgs.model
+          ON rgs.model ILIKE mdl.model || '%'
         JOIN line AS aln
           ON aln.line ILIKE rgs.subline
         LEFT JOIN (
@@ -247,7 +255,7 @@ router.get("/dashboard", async (req, res) => {
         JOIN recordscan AS rcs 
             ON rgs.id = rcs.id_regist::uuid
         JOIN model AS mdl
-          ON mdl.model ILIKE rgs.model
+          ON rgs.model ILIKE mdl.model || '%'
         JOIN line AS aln
           ON aln.line ILIKE rgs.subline
         LEFT JOIN (
@@ -293,7 +301,7 @@ router.get("/dashboard", async (req, res) => {
         JOIN recordscan AS rcs 
             ON rgs.id = rcs.id_regist::uuid
         JOIN model AS mdl
-          ON mdl.model ILIKE rgs.model
+          ON rgs.model ILIKE mdl.model || '%'
         JOIN line AS aln
           ON aln.line ILIKE rgs.subline
         LEFT JOIN (
@@ -460,7 +468,7 @@ router.get("/history", async (req, res) => {
   });
 });
 
-router.post("/post", async (req, res) => {
+router.post("/post", requirePermission("scan:write"), async (req, res) => {
   const { id_regist, pn_carton, ...searchField } = req.body;
 
   // validasi SN mengandung karakter unik
@@ -490,6 +498,28 @@ router.post("/post", async (req, res) => {
           id: id_regist,
         },
       });
+
+      // akses: pemilik registrasi (atau superuser); 404 bila tidak ada
+      assertCanAccessRegistration(req.user, valueRegist);
+
+      // BOM check: nilai yang di-scan harus mengikuti BOM rule batch ini
+      const bomRule = await tx.bomlist.findFirst({
+        where: {
+          model: stripBrandSuffix(String(valueRegist.model).trim()),
+          order_number: valueRegist.order_number.trim(),
+          is_active: true,
+        },
+      });
+      if (!bomRule) {
+        throw Object.assign(new Error("Batch tidak ada di bomlist"), { status: 404 });
+      }
+      const scanMismatch = findBomMismatch(bomRule, searchField);
+      if (scanMismatch) {
+        throw Object.assign(
+          new Error(`${scanMismatch.key} tidak sesuai BOM (diharapkan mengandung: ${scanMismatch.expected})`),
+          { status: 400 },
+        );
+      }
 
       brandtv = await tx.model.findFirst({
         where: {
@@ -529,6 +559,22 @@ router.post("/post", async (req, res) => {
       };
 
       checkDoubleScan(valueRegist.subline.toUpperCase());
+
+      // Rule: SN harus di-scan di INPUT dulu sebelum bisa di-scan di OUTPUT line yang sama.
+      // Pengecualian PACKING OUTPUT (line terminal) - sudah dicek lewat checkMissedScan semua stage.
+      const subUpper = valueRegist.subline.toUpperCase().trim();
+      if (
+        subUpper.endsWith("OUTPUT") &&
+        !subUpper.includes("PACKING OUTPUT")
+      ) {
+        const inputStage = subUpper.replace(/OUTPUT$/, "INPUT").trim();
+        const scannedInput = allSubline.some((e) =>
+          e.subline.toUpperCase().includes(inputStage),
+        );
+        if (!scannedInput) {
+          throwBadRequest(`unit belum di-scan di ${inputStage} - scan input dulu sebelum output`);
+        }
+      }
 
       // jika user regist adalah packing
       if (valueRegist.subline.toUpperCase().includes("PACKING OUTPUT")) {
@@ -733,7 +779,84 @@ router.post("/post", async (req, res) => {
   }
 });
 
-router.put("/edit/:id", async (req, res) => {
+// Bulk import scan (admin) — baris divalidasi BOM rule batch, lalu di-insert.
+router.post("/import", requirePermission("registscan:import-sn"), async (req, res) => {
+  const { id_regist, rows } = req.body || {};
+
+  if (!id_regist || !Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ error: "id_regist dan rows wajib diisi" });
+  }
+  if (rows.length > 5000) {
+    return res.status(400).json({ error: "Maksimal 5000 baris" });
+  }
+
+  try {
+    const created = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT * FROM "recordscan" WHERE "id_regist" = ${id_regist} FOR UPDATE`;
+      const valueRegist = await tx.registscan.findUnique({ where: { id: id_regist } });
+      assertCanAccessRegistration(req.user, valueRegist);
+
+      const bomRule = await tx.bomlist.findFirst({
+        where: {
+          model: stripBrandSuffix(String(valueRegist.model).trim()),
+          order_number: valueRegist.order_number.trim(),
+          is_active: true,
+        },
+      });
+      if (!bomRule) throw new AppError("Batch tidak ada di bomlist", 404, "BOMLIST_NOT_FOUND");
+
+      const KNOWN = new Set([
+        "id_regist", "sn", "sn_odu", "sn_carton", "pcb_idu", "sn_box",
+        "sn_motor", "sn_accessories", "product_category", "productCategory", "components",
+      ]);
+      let count = 0;
+      for (const row of rows) {
+        const mismatch = findBomMismatch(bomRule, row);
+        if (mismatch) {
+          throw new AppError(
+            `baris ${row.sn || "-"}: ${mismatch.key} tidak sesuai BOM (diharapkan mengandung: ${mismatch.expected})`,
+            400,
+            "BOM_MISMATCH",
+          );
+        }
+        const dynComp = {};
+        for (const k of Object.keys(row)) {
+          if (!KNOWN.has(k) && row[k]) dynComp[k] = String(row[k]).toUpperCase();
+        }
+        if (row.components && typeof row.components === "object") {
+          for (const [k, v] of Object.entries(row.components)) if (v) dynComp[k] = String(v).toUpperCase();
+        }
+        const prodCat = (row.product_category || row.productCategory || "").toString().toLowerCase() || null;
+        await tx.recordscan.create({
+          data: {
+            id_regist,
+            sn: (row.sn || "").toUpperCase(),
+            sn_odu: (row.sn_odu || "").toUpperCase(),
+            sn_carton: (row.sn_carton || "").toUpperCase(),
+            pcb_idu: (row.pcb_idu || "").toUpperCase(),
+            sn_box: (row.sn_box || "").toUpperCase(),
+            sn_motor: (row.sn_motor || "").toUpperCase(),
+            sn_accessories: (row.sn_accessories || "").toUpperCase(),
+            product_category: prodCat,
+            components: Object.keys(dynComp).length ? dynComp : null,
+          },
+        });
+        count++;
+      }
+      return count;
+    });
+
+    return res.status(201).json({ message: `Imported ${created} rows`, created });
+  } catch (err) {
+    console.error(err);
+    return res.status(err.status || 500).json({
+      error: err.message || "Internal Server Error",
+      ...(err.code ? { code: err.code } : {}),
+    });
+  }
+});
+
+router.put("/edit/:id", requirePermission("scan:write"), async (req, res) => {
   const { id } = req.params;
   const { id_regist, sn, ...handleRequest } = req.body;
   const optionWhere = [].filter(Boolean);
@@ -765,6 +888,13 @@ router.put("/edit/:id", async (req, res) => {
     return res.status(400).json({ error: "Double scan di satu regist" });
   }
   try {
+    // akses: pemilik registrasi (atau superuser)
+    const record = await prisma.recordscan.findUnique({ where: { id } });
+    if (!record) {
+      return res.status(404).json({ error: "Record tidak ditemukan" });
+    }
+    const reg = await prisma.registscan.findUnique({ where: { id: record.id_regist } });
+    assertCanAccessRegistration(req.user, reg);
     const dynUpdate = {};
     const knownKnown = new Set(["sn_odu","sn_motor","pcb_idu","sn_box","sn_accessories","sn_carton","product_category","productCategory","components"]);
     for (const k of Object.keys(handleRequest)) {
@@ -788,11 +918,11 @@ router.put("/edit/:id", async (req, res) => {
     res.status(200).json({ message: "data update successful", data: result });
   } catch (error) {
     console.error(error);
-    res.status(500).json("Internal Server Error");
+    res.status(error.status || 500).json({ error: error.message || "Internal Server Error" });
   }
 });
 
-router.delete("/delete/:id", async (req, res) => {
+router.delete("/delete/:id", requirePermission("scan:write"), async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -805,6 +935,9 @@ router.delete("/delete/:id", async (req, res) => {
     if (!check || Object.keys(check).length < 1) {
       res.status(401).json({ error: "Id tidak terbaca di server" });
     } else {
+      // akses: pemilik registrasi (atau superuser)
+      const reg = await prisma.registscan.findUnique({ where: { id: check.id_regist } });
+      assertCanAccessRegistration(req.user, reg);
       const result = await prisma.recordscan.delete({
         where: {
           id: id,
@@ -814,7 +947,7 @@ router.delete("/delete/:id", async (req, res) => {
     }
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Internal Server Error" });
+    res.status(error.status || 500).json({ error: error.message || "Internal Server Error" });
   }
 });
 

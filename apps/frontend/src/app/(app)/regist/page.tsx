@@ -2,10 +2,10 @@
 
 /**
  * Registrasi batch — daftar + buat registscan.
- * Replikasi legacy: kolom Action dengan drill untuk masuk window scan.
- * + Integrasi product_categories & component_definitions dinamis.
+ * Universal: field SN ditentukan oleh BOM rule (model + order_number).
+ * Admin mendaftarkan BOM rule; operator registrasi batch mengikuti field-nya.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { http } from "@/lib/api";
 import { Button } from "@/components/vm3/Button";
@@ -29,46 +29,41 @@ interface Regist {
   index?: number;
 }
 
-interface ProductCategory {
-  id: string;
-  slug: string;
-  name: string;
-  suffix_length?: number;
-  created_at?: string;
-}
-
-interface ComponentDef {
-  id: string;
-  category_id: string;
+interface BomRuleField {
   key: string;
   label: string;
+  prefix: string;
   required: boolean;
-  enabled: boolean;
-  sort: number;
-  regex?: string | null;
-  created_at?: string;
 }
 
-const FALLBACK_CATEGORIES: ProductCategory[] = [
-  { id: "fallback-ac_split", slug: "ac_split", name: "AC Split", suffix_length: 5 },
-  { id: "fallback-ac_commercial", slug: "ac_commercial", name: "AC Commercial (HVAC)", suffix_length: 5 },
-  { id: "fallback-ac_portable", slug: "ac_portable", name: "AC Portable", suffix_length: 5 },
-  { id: "fallback-washing", slug: "washing", name: "Mesin Cuci", suffix_length: 5 },
-];
+interface BomRule {
+  id: string;
+  model: string;
+  order_number: string;
+  sn?: string | null;
+  sn_carton?: string | null;
+  pcb_idu?: string | null;
+  sn_box?: string | null;
+  sn_motor?: string | null;
+  sn_accessories?: string | null;
+  sn_odu?: string | null;
+  components?: Record<string, { label?: string; prefix?: string; required?: boolean }> | null;
+}
 
-const CATEGORY_LABEL_FALLBACK: Record<string, string> = {
-  ac_split: "AC Split",
-  ac_commercial: "AC Commercial (HVAC)",
-  ac_portable: "AC Portable",
-  washing: "Mesin Cuci",
+const FIXED_LABELS: Record<string, string> = {
+  sn: "Serial Number Unit",
+  sn_carton: "SN Carton",
+  pcb_idu: "SN PCB",
+  sn_box: "SN Electrical Box",
+  sn_motor: "SN Motor",
+  sn_accessories: "SN Accessories",
+  sn_odu: "Serial Number (ODU)",
 };
 
 const EMPTY: Record<string, string> = {
-  product_category: "ac_split",
   model: "",
   order_number: "",
   po_number: "",
-  subline: "",
   shift: "1",
   plan: "10",
   sn: "",
@@ -80,19 +75,27 @@ const EMPTY: Record<string, string> = {
   sn_accessories: "",
 };
 
-/** Field wajib — dinamis per subline (sn_carton selalu opsional) */
-function getRequired(subline: string) {
-  const u = subline.toUpperCase();
-  const isOdu = u.includes("ODU");
-  const isIdu = u.includes("IDU");
-  const base = ["model", "order_number", "po_number", "subline"] as const;
-  if (isOdu && !isIdu) return [...base, "sn_odu", "sn_motor", "sn_box"] as const;
-  if (isIdu && !isOdu) return [...base, "sn", "pcb_idu", "sn_accessories"] as const;
-  if (subline.trim() === "" || subline.trim().toUpperCase() === "ODU" || subline.trim().toUpperCase() === "IDU") {
-    if (isOdu) return [...base, "sn_odu", "sn_motor", "sn_box"] as const;
-    if (isIdu) return [...base, "sn", "pcb_idu", "sn_accessories"] as const;
+/** Field yang dideklarasikan BOM rule: kolom tetap terisi + kunci components JsonB */
+function bomFields(rule: BomRule | null): BomRuleField[] {
+  if (!rule) return [];
+  const fields: BomRuleField[] = [];
+  for (const [key, label] of Object.entries(FIXED_LABELS)) {
+    const v = (rule as unknown as Record<string, unknown>)[key];
+    if (v !== undefined && v !== null && String(v).trim() !== "") {
+      fields.push({ key, label, prefix: String(v), required: true });
+    }
   }
-  return [...base, "sn", "sn_odu", "pcb_idu", "sn_accessories", "sn_motor", "sn_box"] as const;
+  const comps = rule.components && typeof rule.components === "object" ? rule.components : {};
+  for (const [key, def] of Object.entries(comps)) {
+    const d = def && typeof def === "object" ? def : {};
+    fields.push({
+      key,
+      label: d.label || key,
+      prefix: d.prefix ?? "",
+      required: d.required !== false,
+    });
+  }
+  return fields;
 }
 
 interface PostResult {
@@ -113,80 +116,112 @@ export default function RegistPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
-  // product_categories & component_definitions
-  const [categories, setCategories] = useState<ProductCategory[]>([]);
-  const [defs, setDefs] = useState<ComponentDef[]>([]);
-  const [defsLoading, setDefsLoading] = useState(false);
+  // Batch belum tuntas (plan > scan) — "Harap lengkapi record berikut!"
+  const [pending, setPending] = useState<{ id: string; model: string; plan: number; total: number }[]>([]);
+  const loadPending = async () => {
+    try {
+      const res = await http.get<{ data: { id: string; model: string; plan: number; total: number }[] }>(
+        "/registscan/checkregist",
+        { extraHeaders: { iduser: user?.id ?? "" } },
+      );
+      setPending(res.data ?? []);
+    } catch {
+      setPending([]);
+    }
+  };
 
-  // Fetch product_categories saat mount
+  useEffect(() => {
+    http
+      .get<{ data: { id: string; model: string; plan: number; total: number }[] }>(
+        "/registscan/checkregist",
+        { extraHeaders: { iduser: user?.id ?? "" } },
+      )
+      .then((res) => setPending(res.data ?? []))
+      .catch(() => setPending([]));
+  }, [user?.id]);
+
+  // BOM rule (sumber field SN) — dicari dari order_number yang unik per rule
+  const [bomRule, setBomRule] = useState<BomRule | null>(null);
+  const [ruleLoading, setRuleLoading] = useState(false);
+  const [ruleError, setRuleError] = useState<string | null>(null);
+
+  // Model master — saran datalist untuk input Model
+  const [models, setModels] = useState<string[]>([]);
   useEffect(() => {
     let cancelled = false;
     http
-      .get<{ data: ProductCategory[] }>("/product-categories")
+      .get<{ data: BomRule[] }>("/model?limit=100")
       .then((res) => {
         if (cancelled) return;
-        const data = res.data ?? [];
-        if (data.length) setCategories(data);
-        else setCategories(FALLBACK_CATEGORIES);
+        setModels(((res.data ?? []) as unknown[]).map((m) => String((m as { model?: unknown }).model ?? "")).filter(Boolean));
       })
       .catch(() => {
-        if (!cancelled) setCategories(FALLBACK_CATEGORIES);
+        if (!cancelled) setModels([]);
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // Fetch component_definitions ketika product_category berubah
-  useEffect(() => {
-    const slug = String(form.product_category ?? "ac_split").trim().toLowerCase();
-    if (!slug) {
-      setDefs([]);
-      return;
-    }
-    let cancelled = false;
-    setDefsLoading(true);
-    http
-      .get<{ data: ComponentDef[] }>(`/components?slug=${encodeURIComponent(slug)}`)
-      .then((res) => {
-        if (cancelled) return;
-        const list = (res.data ?? []).filter((d) => d.enabled);
-        list.sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0) || a.label.localeCompare(b.label));
-        setDefs(list);
-      })
-      .catch(() => {
-        if (!cancelled) setDefs([]);
-      })
-      .finally(() => {
-        if (!cancelled) setDefsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [form.product_category]);
-
-  const enabledDefs = defs.filter((d) => d.enabled);
-  const hasDynamic = enabledDefs.length > 0;
-  const dynamicRequiredKeys = enabledDefs.filter((d) => d.required).map((d) => d.key);
-
-  // Tombol Simpan disabled logic ikut definisi dinamis jika ada, else fallback getRequired
-  const fallbackRequired = getRequired(form.subline);
-  const requiredKeys: readonly string[] = hasDynamic
-    ? (["model", "order_number", "po_number", "subline", ...dynamicRequiredKeys] as const)
-    : fallbackRequired;
-  const requiredSet = new Set<string>(requiredKeys as unknown as string[]);
-  const isFormValid = (requiredKeys as readonly string[]).every(
-    (k) => String((form as Record<string, unknown>)[k] ?? "").trim() !== ""
+  const modelKnown = useMemo(
+    () => !form.model.trim() || models.includes(form.model.trim()),
+    [form.model, models],
   );
 
-  const categoryOptions = (categories.length ? categories : FALLBACK_CATEGORIES).map((c) => ({
-    value: c.slug,
-    label: CATEGORY_LABEL_FALLBACK[c.slug] ?? c.name,
-  }));
-  const activeCategoryLabel =
-    CATEGORY_LABEL_FALLBACK[String(form.product_category)] ??
-    categories.find((c) => c.slug === form.product_category)?.name ??
-    String(form.product_category ?? "");
+  // Ambil BOM rule ketika model + order_number terisi
+  useEffect(() => {
+    const model = String(form.model ?? "").trim();
+    const order = String(form.order_number ?? "").trim();
+    let cancelled = false;
+    const t = setTimeout(() => {
+      if (!model || !order) {
+        setBomRule(null);
+        setRuleError(null);
+        setRuleLoading(false);
+        return;
+      }
+      setRuleLoading(true);
+      setRuleError(null);
+      http
+        .get<{ data: BomRule[] }>(`/bomlist?keyword=${encodeURIComponent(order)}`)
+        .then((res) => {
+          if (cancelled) return;
+          const hit = (res.data ?? []).find(
+            (b) => b.order_number === order && model.endsWith(b.model),
+          );
+          if (hit) {
+            setBomRule(hit);
+          } else {
+            setBomRule(null);
+            setRuleError("BOM rule tidak ditemukan untuk model + order ini");
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setBomRule(null);
+            setRuleError("Gagal memuat BOM rule");
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setRuleLoading(false);
+        });
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [form.model, form.order_number]);
+
+  const fields = useMemo(() => bomFields(bomRule), [bomRule]);
+  const requiredKeys = useMemo(
+    () => fields.filter((f) => f.required).map((f) => f.key),
+    [fields],
+  );
+  const isFormValid =
+    ["model", "order_number", "po_number"].every(
+      (k) => String((form as Record<string, unknown>)[k] ?? "").trim() !== "",
+    ) &&
+    requiredKeys.every((k) => String((form as Record<string, unknown>)[k] ?? "").trim() !== "");
 
   const load = useCallback(async (kw = keyword, pg = page) => {
     try {
@@ -218,13 +253,13 @@ export default function RegistPage() {
     try {
       const res = await http.post<PostResult>("/registscan/post", {
         ...form,
-        product_category: String(form.product_category ?? "ac_split").trim().toLowerCase(),
         plan: Number(form.plan),
-        userid: user?.username ?? "",
+        userid: user?.id ?? "",
       });
       show("Registrasi berhasil ditambahkan");
       setDialogOpen(false);
       setForm(EMPTY);
+      void loadPending();
       const newId = res.result?.id ?? (res as unknown as { data?: { id: string } })?.data?.id;
       if (newId) {
         router.push(`/scan?idregist=${newId}`);
@@ -266,6 +301,33 @@ export default function RegistPage() {
           </Button>
         </div>
       </div>
+
+      {/* Batch belum tuntas — operator diminta melengkapinya dulu */}
+      {pending.length > 0 && (
+        <Card variant="outlined" className="border-amber-400 bg-amber-50 p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="material-symbols-rounded text-amber-600" aria-hidden>warning</span>
+            <div className="min-w-0 text-sm">
+              <div className="font-semibold text-amber-900">{pending.length} batch belum tuntas — harap lengkapi scan</div>
+              <div className="truncate text-amber-800">
+                {pending.map((p) => `${p.model} (${p.total}/${p.plan})`).join(" • ")}
+              </div>
+            </div>
+            <div className="ml-auto flex flex-wrap gap-2">
+              {pending.map((p) => (
+                <Button
+                  key={p.id}
+                  variant="filled"
+                  className="!bg-[#0d7ea7] !text-white"
+                  onClick={() => router.push(`/scan?idregist=${p.id}`)}
+                >
+                  Scan {p.model}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </Card>
+      )}
 
       <Card variant="outlined" className="overflow-hidden">
         <div className="overflow-x-auto">
@@ -363,7 +425,7 @@ export default function RegistPage() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         title="Registrasi Baru"
-        description="Model akan dicocokkan dengan BOM list (5 karakter terakhir dipisah)."
+        description="Field SN mengikuti BOM rule untuk model + order number."
         actions={
           <>
             <Button variant="text" onClick={() => setDialogOpen(false)}>Batal</Button>
@@ -372,156 +434,74 @@ export default function RegistPage() {
         }
       >
         <div className="mt-4 flex flex-col gap-5">
-          {/* 1) Selector Produk — pakai native select agar tidak terhalang Portal di dalam Dialog */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-on-surface" htmlFor="produk-native">
-              Produk
-            </label>
-            <select
-              id="produk-native"
-              value={String(form.product_category ?? "ac_split")}
-              onChange={(e) => setForm((prev) => ({ ...prev, product_category: e.target.value }))}
-              className="h-11 w-full rounded-[var(--vm3-shape-lg)] border border-[var(--vm3-color-outline-variant)] bg-[var(--vm3-color-surface-container-highest)] px-3 text-sm text-[var(--vm3-color-on-surface)] outline-none focus:border-[var(--vm3-color-primary)] focus:ring-2 focus:ring-[var(--vm3-color-primary)]/20"
-            >
-              {(categories.length ? categories : FALLBACK_CATEGORIES).map((c) => (
-                <option key={c.slug} value={c.slug}>
-                  {CATEGORY_LABEL_FALLBACK[c.slug] ?? c.name}
-                </option>
-              ))}
-            </select>
-            {defsLoading ? (
-              <div className="mt-1.5 text-xs text-on-surface-variant">Memuat komponen...</div>
-            ) : hasDynamic ? (
-              <div className="mt-1.5 text-xs text-on-surface-variant">
-                {enabledDefs.length} komponen • {dynamicRequiredKeys.length} wajib
-              </div>
-            ) : (
-              <div className="mt-1.5 text-xs text-on-surface-variant">
-                {(() => {
-                  const v = String(form.product_category ?? "ac_split");
-                  if (v === "washing") return "Mesin Cuci — tambah komponen di Master → Komponen jika kosong";
-                  if (v === "ac_portable") return "AC Portable — tambah komponen di Master jika kosong";
-                  if (v === "ac_commercial") return "AC Commercial (HVAC) — tambah komponen di Master jika kosong";
-                  return null;
-                })()}
-              </div>
-            )}
-          </div>
-
           <div className="grid gap-4 sm:grid-cols-2">
-            <TextField label="Model" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} required />
+            {/* Model — combobox: ketik untuk mencari, saran dari Model Master */}
+            <div>
+              <label htmlFor="regist-model" className="vm3-field-label mb-1.5 block text-sm font-medium text-on-surface">
+                Model *
+              </label>
+              <input
+                id="regist-model"
+                list="regist-model-options"
+                value={form.model}
+                onChange={(e) => setForm({ ...form, model: e.target.value })}
+                className="h-11 w-full rounded-[var(--vm3-shape-lg)] border border-[var(--vm3-color-outline-variant)] bg-[var(--vm3-color-surface-container-highest)] px-3 text-sm text-[var(--vm3-color-on-surface)] outline-none focus:border-[var(--vm3-color-primary)] focus:ring-2 focus:ring-[var(--vm3-color-primary)]/20"
+                placeholder="Ketik untuk mencari model"
+                autoComplete="off"
+              />
+              <datalist id="regist-model-options">
+                {models.map((m) => (
+                  <option key={m} value={m} />
+                ))}
+              </datalist>
+              {!modelKnown && form.model.trim() && (
+                <p className="mt-1 text-xs text-amber-700">Model tidak ada di Model Master</p>
+              )}
+            </div>
             <TextField label="Order Number" value={form.order_number} onChange={(e) => setForm({ ...form, order_number: e.target.value })} required />
             <TextField label="PO Number" value={form.po_number} onChange={(e) => setForm({ ...form, po_number: e.target.value })} required />
-            <TextField label="Subline" value={form.subline} onChange={(e) => setForm({ ...form, subline: e.target.value })} required />
             <TextField label="Shift" value={form.shift} onChange={(e) => setForm({ ...form, shift: e.target.value })} />
             <TextField label="Plan" type="number" value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} />
           </div>
 
-          {/* 5) Pill ODU/IDU cepat untuk AC Split; kategori lain → info dinamis / sembunyikan */}
-          {hasDynamic ? (
-            <div className="rounded-lg bg-surface-container p-3">
-              <div className="text-xs font-medium text-on-surface-variant">
-                Komponen untuk <span className="font-semibold text-on-surface">{activeCategoryLabel}</span>
-              </div>
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                {enabledDefs.map((d) => (
-                  <span
-                    key={d.key}
-                    className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${d.required ? "bg-[#0f1445] text-white border-[#0f1445]" : "bg-white text-gray-700 border-gray-300"}`}
-                    title={d.key}
-                  >
-                    {d.label}
-                    {d.required ? " *" : ""}
-                  </span>
-                ))}
-              </div>
-            </div>
-          ) : String(form.product_category) === "ac_split" ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg bg-surface-container p-3">
-              <span className="text-sm font-medium">Pilih Subline:</span>
-              <button
-                type="button"
-                onClick={() => setForm({ ...form, subline: "LINE ODU ASSY INPUT" })}
-                className={`rounded-full px-4 py-1.5 text-sm font-semibold border ${form.subline.toUpperCase().includes("ODU") ? "bg-[#0f1445] text-white border-[#0f1445]" : "bg-white text-gray-900 border-gray-300 hover:bg-gray-100"}`}
-              >
-                ODU
-              </button>
-              <button
-                type="button"
-                onClick={() => setForm({ ...form, subline: "LINE IDU ASSY INPUT" })}
-                className={`rounded-full px-4 py-1.5 text-sm font-semibold border ${form.subline.toUpperCase().includes("IDU") ? "bg-[#0f1445] text-white border-[#0f1445]" : "bg-white text-gray-900 border-gray-300 hover:bg-gray-100"}`}
-              >
-                IDU
-              </button>
-              <span className="text-xs text-on-surface-variant ml-1">atau ketik manual di field Subline</span>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-dashed border-outline-variant p-3 text-xs text-on-surface-variant">
-              Belum ada definisi komponen untuk <span className="font-semibold">{activeCategoryLabel}</span> — menampilkan field fallback IDU/ODU
-            </div>
-          )}
+          {/* Subline otomatis dari section user */}
+          <div className="rounded-lg bg-surface-container px-3 py-2 text-xs text-on-surface-variant">
+            Subline otomatis dari section Anda:{" "}
+            <span className="font-semibold">{user?.section || "—"}</span>
+          </div>
 
-          {/* 2) Field SN dinamis berdasarkan component_definitions, fallback ke logic lama */}
-          {hasDynamic ? (
-            <section aria-label="Komponen dinamis">
+          {/* Status BOM rule — sumber field SN */}
+          {ruleLoading ? (
+            <div className="rounded-lg bg-surface-container p-3 text-xs text-on-surface-variant">
+              Memuat BOM rule...
+            </div>
+          ) : ruleError ? (
+            <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-xs text-red-700">
+              {ruleError} — minta admin membuat BOM rule untuk model + order ini.
+            </div>
+          ) : bomRule ? (
+            <section aria-label="Field sesuai BOM rule">
               <div className="mb-2 text-sm font-medium text-on-surface-variant">
-                Komponen {dynamicRequiredKeys.length ? `— wajib isi ${dynamicRequiredKeys.length} field` : "(semua opsional)"}
+                Field BOM ({fields.length} dideklarasikan • {requiredKeys.length} wajib) — nilai harus
+                mengandung prefix dari BOM
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
-                {enabledDefs.map((def) => (
+                {fields.map((f) => (
                   <TextField
-                    key={def.key}
-                    label={def.label}
-                    value={String((form as Record<string, unknown>)[def.key] ?? "")}
-                    onChange={(e) => setForm({ ...form, [def.key]: e.target.value })}
-                    required={def.required}
+                    key={f.key}
+                    label={f.label}
+                    value={String((form as Record<string, unknown>)[f.key] ?? "")}
+                    onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                    required={f.required}
+                    helper={f.prefix ? `Prefix BOM: ${f.prefix}` : undefined}
                   />
                 ))}
               </div>
             </section>
-          ) : !form.subline.trim() ? (
-            <div className="rounded-lg border border-dashed border-outline-variant p-6 text-center text-sm text-on-surface-variant">
-              Pilih <b>ODU</b> atau <b>IDU</b> di atas untuk menampilkan field SN yang relevan
-            </div>
-          ) : form.subline.toUpperCase().includes("ODU") && !form.subline.toUpperCase().includes("IDU") ? (
-            <section aria-label="ODU">
-              <div className="mb-2 text-sm font-medium text-on-surface-variant">ODU — wajib isi 3 field</div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <TextField label="Serial Number" value={form.sn_odu} onChange={(e) => setForm({ ...form, sn_odu: e.target.value })} required />
-                <TextField label="SN Motor" value={form.sn_motor} onChange={(e) => setForm({ ...form, sn_motor: e.target.value })} required />
-                <TextField label="SN Electrical Box" value={form.sn_box} onChange={(e) => setForm({ ...form, sn_box: e.target.value })} required />
-                <TextField label="SN Carton" value={form.sn_carton} onChange={(e) => setForm({ ...form, sn_carton: e.target.value })} />
-              </div>
-            </section>
-          ) : form.subline.toUpperCase().includes("IDU") && !form.subline.toUpperCase().includes("ODU") ? (
-            <section aria-label="IDU">
-              <div className="mb-2 text-sm font-medium text-on-surface-variant">IDU — wajib isi 3 field</div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <TextField label="Serial Number Unit" value={form.sn} onChange={(e) => setForm({ ...form, sn: e.target.value })} required />
-                <TextField label="SN PCB" value={form.pcb_idu} onChange={(e) => setForm({ ...form, pcb_idu: e.target.value })} required />
-                <TextField label="SN Accessories" value={form.sn_accessories} onChange={(e) => setForm({ ...form, sn_accessories: e.target.value })} required />
-              </div>
-            </section>
           ) : (
-            <>
-              <section aria-label="IDU">
-                <div className="mb-2 text-sm font-medium text-on-surface-variant">IDU {requiredSet.has("sn") ? "" : "(opsional untuk ODU)"}</div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <TextField label="Serial Number Unit" value={form.sn} onChange={(e) => setForm({ ...form, sn: e.target.value })} required={requiredSet.has("sn")} />
-                  <TextField label="SN PCB" value={form.pcb_idu} onChange={(e) => setForm({ ...form, pcb_idu: e.target.value })} required={requiredSet.has("pcb_idu")} />
-                  <TextField label="SN Accessories" value={form.sn_accessories} onChange={(e) => setForm({ ...form, sn_accessories: e.target.value })} required={requiredSet.has("sn_accessories")} />
-                </div>
-              </section>
-              <section aria-label="ODU">
-                <div className="mb-2 text-sm font-medium text-on-surface-variant">ODU {requiredSet.has("sn_odu") ? "" : "(opsional untuk IDU)"}</div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <TextField label="Serial Number" value={form.sn_odu} onChange={(e) => setForm({ ...form, sn_odu: e.target.value })} required={requiredSet.has("sn_odu")} />
-                  <TextField label="SN Motor" value={form.sn_motor} onChange={(e) => setForm({ ...form, sn_motor: e.target.value })} required={requiredSet.has("sn_motor")} />
-                  <TextField label="SN Electrical Box" value={form.sn_box} onChange={(e) => setForm({ ...form, sn_box: e.target.value })} required={requiredSet.has("sn_box")} />
-                  <TextField label="SN Carton" value={form.sn_carton} onChange={(e) => setForm({ ...form, sn_carton: e.target.value })} />
-                </div>
-              </section>
-            </>
+            <div className="rounded-lg border border-dashed border-outline-variant p-4 text-xs text-on-surface-variant">
+              Isi <b>Model</b> dan <b>Order Number</b> untuk memuat field SN dari BOM rule.
+            </div>
           )}
         </div>
       </Dialog>
