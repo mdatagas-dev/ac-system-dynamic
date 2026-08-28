@@ -1,10 +1,12 @@
 "use client";
 
 /**
- * VM3 SearchField — TextField dengan ikon search + tombol clear.
+ * VM3 SearchField — shadcn/ui Input + ikon search + tombol clear.
  */
 import { forwardRef, useId, type InputHTMLAttributes } from "react";
-import { cn } from "@/design-system/utilities/cn";
+import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export interface SearchFieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "onChange"> {
   value?: string;
@@ -16,46 +18,46 @@ export interface SearchFieldProps extends Omit<InputHTMLAttributes<HTMLInputElem
 }
 
 export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(
-  ({ value, onChange, onClear, placeholder, label, variant = "filled", id, className, ...rest }, ref) => {
+  ({ value, onChange, onClear, placeholder, label, id, className, ...rest }, ref) => {
     const autoId = useId();
     const fieldId = id ?? autoId;
     const hasValue = Boolean(value);
 
     return (
       <div className={cn("w-full", className)}>
-        <div
-          className={cn("vm3-field", variant === "filled" ? "vm3-field-filled" : "vm3-field-outlined")}
-        >
-          <span className="material-symbols-rounded vm3-field-icon" aria-hidden>
+        {label && (
+          <Label htmlFor={fieldId} className="mb-1.5 block text-sm font-medium text-foreground">
+            {label}
+          </Label>
+        )}
+        <div className="relative">
+          <span className="material-symbols-rounded pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-muted-foreground" aria-hidden>
             search
           </span>
-          <input
+          <Input
             ref={ref}
             id={fieldId}
-            className="vm3-field-input"
-            placeholder=" "
+            className="pl-10 pr-9"
             type="search"
             autoComplete="off"
             spellCheck={false}
             enterKeyHint="search"
+            placeholder={placeholder}
             value={value}
             onChange={(e) => onChange?.(e.target.value)}
             {...rest}
           />
-          <label htmlFor={fieldId} className="vm3-field-label">
-            {label ?? placeholder ?? "Cari"}
-          </label>
           {hasValue && (
             <button
               type="button"
               aria-label="Bersihkan pencarian"
-              className="vm3-search-clear"
+              className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
               onClick={() => {
                 onChange?.("");
                 onClear?.();
               }}
             >
-              <span className="material-symbols-rounded" aria-hidden>
+              <span className="material-symbols-rounded text-base" aria-hidden>
                 close
               </span>
             </button>

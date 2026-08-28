@@ -4,6 +4,7 @@ import { Roboto } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/design-system/themes/ThemeProvider";
 import { SnackbarProvider } from "@/components/vm3/Snackbar";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/lib/auth";
 
 const roboto = Roboto({
@@ -48,7 +49,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body>
         <ThemeProvider>
           <AuthProvider>
-            <SnackbarProvider>{children}</SnackbarProvider>
+            <SnackbarProvider>
+              <TooltipProvider>{children}</TooltipProvider>
+            </SnackbarProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

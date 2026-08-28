@@ -1,15 +1,12 @@
 "use client";
 
 /**
- * VM3 Button — 5 varian M3 (elevated/filled/tonal/outlined/text).
- * - State layer currentColor (on-container role) — M3 compliant
- * - Focus ring keyboard, disabled, loading
- * - Elevated: hover menaikkan shadow (spatial response)
+ * VM3 Button — shadcn/ui Button. Varian M3 dipetakan: filled→default,
+ * tonal→secondary, elevated→secondary, outlined→outline, text→ghost.
  */
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
-import { cn } from "@/design-system/utilities/cn";
-import { StateLayer } from "@/components/primitives/StateLayer";
-import { FocusRing } from "@/components/primitives/FocusRing";
+import { cn } from "@/lib/utils";
+import { Button as ShadButton } from "@/components/ui/button";
 
 export type ButtonVariant = "elevated" | "filled" | "tonal" | "outlined" | "text";
 
@@ -22,10 +19,18 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   fullWidth?: boolean;
 }
 
+const variantMap: Record<ButtonVariant, "default" | "secondary" | "outline" | "ghost"> = {
+  elevated: "secondary",
+  filled: "default",
+  tonal: "secondary",
+  outlined: "outline",
+  text: "ghost",
+};
+
 function Icon({ value }: { value: ReactNode }) {
   if (typeof value === "string") {
     return (
-      <span className="material-symbols-rounded vm3-btn-icon" aria-hidden>
+      <span className="material-symbols-rounded" aria-hidden>
         {value}
       </span>
     );
@@ -33,41 +38,30 @@ function Icon({ value }: { value: ReactNode }) {
   return <>{value}</>;
 }
 
-const variantClass: Record<ButtonVariant, string> = {
-  elevated: "vm3-btn-elevated",
-  filled: "vm3-btn-filled",
-  tonal: "vm3-btn-tonal",
-  outlined: "vm3-btn-outlined",
-  text: "vm3-btn-text",
-};
-
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   (
     { variant = "filled", icon, trailingIcon, loading, fullWidth, className, disabled, children, type = "button", ...rest },
     ref,
   ) => (
-    <button
+    <ShadButton
       ref={ref}
       type={type}
-      className={cn(
-        "vm3-interactive vm3-btn",
-        variantClass[variant],
-        fullWidth && "vm3-btn-full",
-        (disabled || loading) && "vm3-disabled",
-        className,
-      )}
+      variant={variantMap[variant]}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
+      className={cn(fullWidth && "w-full", className)}
       {...rest}
     >
-      <StateLayer />
-      <FocusRing />
-      <span className="vm3-btn-content">
-        {loading ? <span className="vm3-btn-spinner" aria-hidden /> : icon != null && <Icon value={icon} />}
-        {children != null && <span className="vm3-btn-label">{children}</span>}
-        {trailingIcon != null && <Icon value={trailingIcon} />}
-      </span>
-    </button>
+      {loading ? (
+        <span className="material-symbols-rounded animate-spin" aria-hidden>
+          progress_activity
+        </span>
+      ) : (
+        icon != null && <Icon value={icon} />
+      )}
+      {children != null && <span>{children}</span>}
+      {trailingIcon != null && <Icon value={trailingIcon} />}
+    </ShadButton>
   ),
 );
 Button.displayName = "Button";

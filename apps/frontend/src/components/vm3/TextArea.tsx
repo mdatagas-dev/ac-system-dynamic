@@ -1,10 +1,12 @@
 "use client";
 
 /**
- * VM3 TextArea — varian filled/outlined, label melayang, error.
+ * VM3 TextArea — shadcn/ui Textarea + Label.
  */
 import { forwardRef, useId, type TextareaHTMLAttributes } from "react";
-import { cn } from "@/design-system/utilities/cn";
+import { cn } from "@/lib/utils";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 
 export interface TextAreaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   variant?: "filled" | "outlined";
@@ -14,37 +16,24 @@ export interface TextAreaProps extends TextareaHTMLAttributes<HTMLTextAreaElemen
 }
 
 export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
-  ({ variant = "filled", label, error, errorText, id, className, ...rest }, ref) => {
+  ({ label, error, errorText, id, className, ...rest }, ref) => {
     const autoId = useId();
     const fieldId = id ?? autoId;
     const showError = error || Boolean(errorText);
 
     return (
       <div className={cn("w-full", className)}>
-        <div
-          className={cn(
-            "vm3-field vm3-textarea",
-            variant === "filled" ? "vm3-field-filled" : "vm3-field-outlined",
-          )}
-          data-error={showError || undefined}
-        >
-          <textarea
-            ref={ref}
-            id={fieldId}
-            className="vm3-field-input vm3-textarea-input"
-            placeholder=" "
-            aria-invalid={showError || undefined}
-            {...rest}
-          />
-          <label htmlFor={fieldId} className="vm3-field-label">
-            {label}
-          </label>
-        </div>
-        {errorText && (
-          <div className="vm3-field-helper" data-error="true">
-            {errorText}
-          </div>
-        )}
+        <Label htmlFor={fieldId} className="mb-1.5 block text-sm font-medium text-foreground">
+          {label}
+        </Label>
+        <Textarea
+          ref={ref}
+          id={fieldId}
+          aria-invalid={showError || undefined}
+          className={cn(showError && "border-destructive focus-visible:ring-destructive/30")}
+          {...rest}
+        />
+        {errorText && <p className="mt-1 text-xs text-destructive">{errorText}</p>}
       </div>
     );
   },

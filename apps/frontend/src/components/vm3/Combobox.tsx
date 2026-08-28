@@ -4,6 +4,7 @@
  * VM3 Combobox — shadcn/ui Combobox (Base UI) dengan trigger chevron yang terlihat:
  * klik → daftar penuh, ketik → menyaring. Field label + placeholder.
  */
+import { useId } from "react";
 import {
   Combobox as BaseCombobox,
   ComboboxInput,
@@ -24,13 +25,18 @@ export interface ComboboxProps {
 }
 
 export function Combobox({ options, value, onChange, label, placeholder, className }: ComboboxProps) {
+  const autoId = useId();
+
   return (
     <div className={cn("w-full", className)}>
       {label && (
-        <label className="mb-1.5 block text-sm font-medium text-on-surface">{label}</label>
+        <label htmlFor={autoId} className="mb-1.5 block text-sm font-medium text-foreground">
+          {label}
+        </label>
       )}
       <BaseCombobox value={value} onValueChange={(v) => onChange(v ?? "")}>
         <ComboboxInput
+          id={autoId}
           showTrigger
           showClear={!!value}
           className="w-full"

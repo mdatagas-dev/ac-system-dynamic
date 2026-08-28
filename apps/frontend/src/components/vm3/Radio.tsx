@@ -1,27 +1,35 @@
 "use client";
 
 /**
- * VM3 Radio — native input + styling M3.
+ * VM3 Radio — shadcn/ui RadioGroup (single). API native (checked + onChange).
  */
-import { forwardRef, type InputHTMLAttributes, type ReactNode } from "react";
-import { cn } from "@/design-system/utilities/cn";
-import { StateLayer } from "@/components/primitives/StateLayer";
+import { cn } from "@/lib/utils";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { type InputHTMLAttributes, type ReactNode, type ChangeEvent } from "react";
 
 export interface RadioProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "type"> {
   label?: ReactNode;
 }
 
-export const Radio = forwardRef<HTMLInputElement, RadioProps>(
-  ({ label, className, ...rest }, ref) => (
-    <label className={cn("vm3-checkbox-wrap", className)}>
-      <span className="vm3-interactive vm3-radio">
-        <StateLayer />
-        <input ref={ref} type="radio" className="vm3-sr-only" {...rest} />
-        <span className="vm3-radio-dot" aria-hidden />
-        <span className="vm3-radio-inner" aria-hidden />
-      </span>
-      {label && <span className="vm3-select-label">{label}</span>}
-    </label>
-  ),
-);
-Radio.displayName = "Radio";
+export function Radio({ label, checked, onChange, disabled, id, className }: RadioProps) {
+  return (
+    <div className={cn("inline-flex items-center gap-2", className)}>
+      <RadioGroup
+        value={checked ? "on" : "off"}
+        disabled={disabled}
+        onValueChange={() =>
+          onChange?.({
+            target: { checked: !checked },
+          } as unknown as ChangeEvent<HTMLInputElement>)
+        }
+      >
+        <RadioGroupItem value="on" id={id} />
+      </RadioGroup>
+      {label && (
+        <label htmlFor={id} className="cursor-pointer text-sm text-foreground">
+          {label}
+        </label>
+      )}
+    </div>
+  );
+}

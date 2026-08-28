@@ -1,9 +1,11 @@
 "use client";
 
 /**
- * VM3 Progress — linear/circular (determinate + indeterminate) + LoadingIndicator.
+ * VM3 Progress — LinearProgress pakai shadcn/ui Progress.
+ * CircularProgress & LoadingIndicator: tidak ada padanan shadcn, tetap custom SVG.
  */
-import { cn } from "@/design-system/utilities/cn";
+import { cn } from "@/lib/utils";
+import { Progress as ShadProgress } from "@/components/ui/progress";
 
 /* ---------- Linear ---------- */
 export interface LinearProgressProps {
@@ -13,21 +15,24 @@ export interface LinearProgressProps {
 }
 
 export function LinearProgress({ value, className, label }: LinearProgressProps) {
-  const indeterminate = value == null;
-  return (
-    <div
-      role="progressbar"
-      aria-label={label}
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={indeterminate ? undefined : value}
-      className={cn("vm3-linear", indeterminate && "vm3-linear-indeterminate", className)}
-    >
+  if (value == null) {
+    // indeterminate — animasi pulse
+    return (
       <div
-        className="vm3-linear-indicator"
-        style={indeterminate ? undefined : { width: `${Math.max(0, Math.min(100, value))}%` }}
-      />
-    </div>
+        role="progressbar"
+        aria-label={label}
+        className={cn("relative h-1.5 w-full overflow-hidden rounded-full bg-secondary", className)}
+      >
+        <div className="absolute inset-y-0 w-1/3 rounded-full bg-primary animate-pulse" />
+      </div>
+    );
+  }
+  return (
+    <ShadProgress
+      value={Math.max(0, Math.min(100, value))}
+      aria-label={label}
+      className={cn(className)}
+    />
   );
 }
 
@@ -62,10 +67,10 @@ export function CircularProgress({
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={indeterminate ? undefined : value}
-      className={cn("vm3-circular", indeterminate && "vm3-circular-indeterminate", className)}
+      className={cn(indeterminate && "animate-spin", className)}
     >
       <circle
-        className="vm3-circular-track"
+        className="stroke-muted"
         cx={size / 2}
         cy={size / 2}
         r={r}
@@ -73,7 +78,7 @@ export function CircularProgress({
         strokeWidth={strokeWidth}
       />
       <circle
-        className="vm3-circular-indicator"
+        className="stroke-primary"
         cx={size / 2}
         cy={size / 2}
         r={r}
@@ -81,7 +86,7 @@ export function CircularProgress({
         strokeWidth={strokeWidth}
         strokeLinecap="round"
         strokeDasharray={c}
-        strokeDashoffset={indeterminate ? 89 : offset}
+        strokeDashoffset={indeterminate ? c * 0.75 : offset}
       />
     </svg>
   );
@@ -95,7 +100,7 @@ export interface LoadingIndicatorProps {
 
 export function LoadingIndicator({ text, className }: LoadingIndicatorProps) {
   return (
-    <div className={cn("vm3-loading", className)}>
+    <div className={cn("flex items-center gap-3 text-sm text-muted-foreground", className)}>
       <CircularProgress label={text ?? "Memuat"} />
       {text && <span>{text}</span>}
     </div>

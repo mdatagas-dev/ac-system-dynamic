@@ -1,16 +1,28 @@
 "use client";
 
 /**
- * VM3 Slider — range input M3 (accent primary).
+ * VM3 Slider — shadcn/ui Slider. API native range input (value + onChange event).
  */
-import { forwardRef, type InputHTMLAttributes } from "react";
-import { cn } from "@/design-system/utilities/cn";
+import { cn } from "@/lib/utils";
+import { Slider as ShadSlider } from "@/components/ui/slider";
+import { type InputHTMLAttributes, type ChangeEvent } from "react";
 
 export type SliderProps = Omit<InputHTMLAttributes<HTMLInputElement>, "type">;
 
-export const Slider = forwardRef<HTMLInputElement, SliderProps>(
-  ({ className, ...rest }, ref) => (
-    <input ref={ref} type="range" className={cn("vm3-slider", className)} {...rest} />
-  ),
-);
-Slider.displayName = "Slider";
+export function Slider({ value, onChange, min = 0, max = 100, step = 1, disabled, className }: SliderProps) {
+  return (
+    <ShadSlider
+      value={[Number(value ?? min)]}
+      min={Number(min)}
+      max={Number(max)}
+      step={Number(step)}
+      disabled={disabled}
+      onValueChange={(v) =>
+        onChange?.({
+          target: { value: String(v[0]) },
+        } as unknown as ChangeEvent<HTMLInputElement>)
+      }
+      className={cn("w-full", className)}
+    />
+  );
+}

@@ -1,14 +1,17 @@
 "use client";
 
 /**
- * VM3 Select — Base UI Select + Motion. M3 style trigger + popup list.
+ * VM3 Select — shadcn/ui Select. API sama: options, value, onChange,
+ * placeholder, disabled. Opsi value "" dipetakan ke "__none__" (placeholder).
  */
-import { Select as BaseSelect } from "@base-ui/react/select";
-import { motion } from "motion/react";
-import { type ReactNode } from "react";
-import { cn } from "@/design-system/utilities/cn";
-import { scaleSmall } from "@/design-system/motion/presets";
-import { useVm3ReducedMotion, withReducedMotion } from "@/hooks/useVm3ReducedMotion";
+import { cn } from "@/lib/utils";
+import {
+  Select as ShadSelect,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
 
 export interface SelectOption {
   value: string;
@@ -24,47 +27,33 @@ export interface SelectProps {
   disabled?: boolean;
 }
 
+const NONE_KEY = "__none__";
+
 export function Select({ options, value, onChange, placeholder, className, disabled }: SelectProps) {
-  const reduced = useVm3ReducedMotion();
-  const selected = options.find((o) => o.value === value);
+  const hasNone = options.some((o) => o.value === "");
 
   return (
-    <BaseSelect.Root value={value} onValueChange={onChange} disabled={disabled}>
-      <BaseSelect.Trigger className={cn("vm3-select-trigger", className)}>
-        <span className="vm3-select-value">
-          {selected?.label ?? <span className="vm3-select-placeholder">{placeholder ?? "Pilih"}</span>}
-        </span>
-        <span className="material-symbols-rounded vm3-select-arrow" aria-hidden>
-          arrow_drop_down
-        </span>
-      </BaseSelect.Trigger>
-      <BaseSelect.Portal>
-        <BaseSelect.Positioner>
-          <BaseSelect.Popup className="vm3-select-popup">
-            <motion.div
-              variants={withReducedMotion(scaleSmall, reduced)}
-              initial="initial"
-              animate="animate"
-              className="flex flex-col"
-            >
-              {options.map((option) => (
-                <BaseSelect.Item
-                  key={option.value}
-                  value={option.value}
-                  className="vm3-interactive vm3-select-item"
-                >
-                  <span className="material-symbols-rounded vm3-select-check" aria-hidden>
-                    check
-                  </span>
-                  <BaseSelect.ItemText>{option.label}</BaseSelect.ItemText>
-                </BaseSelect.Item>
-              ))}
-            </motion.div>
-          </BaseSelect.Popup>
-        </BaseSelect.Positioner>
-      </BaseSelect.Portal>
-    </BaseSelect.Root>
+    <ShadSelect
+      value={value ? value : hasNone ? NONE_KEY : ""}
+      onValueChange={(v) => onChange(v === NONE_KEY ? null : v)}
+      disabled={disabled}
+    >
+      <SelectTrigger className={cn("w-full", className)}>
+        <SelectValue placeholder={placeholder ?? "Pilih"} />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((o) =>
+          o.value === "" ? (
+            <SelectItem key={NONE_KEY} value={NONE_KEY}>
+              {o.label}
+            </SelectItem>
+          ) : (
+            <SelectItem key={o.value} value={o.value}>
+              {o.label}
+            </SelectItem>
+          ),
+        )}
+      </SelectContent>
+    </ShadSelect>
   );
 }
-
-export type { ReactNode };

@@ -1,14 +1,19 @@
 "use client";
 
 /**
- * VM3 Dialog — Base UI Dialog + CSS transitions (overlay tokens).
- * Animasi 100% via CSS data-open/data-ending-style (compositor: opacity+scale).
- * Jauh lebih responsif daripada motion JS — enter 190ms, exit 140ms.
- * Focus trap, esc, aria: ditangani Base UI.
+ * VM3 Dialog — shadcn/ui Dialog. API sama: open, onOpenChange, title,
+ * description, actions, children.
  */
-import { Dialog as BaseDialog } from "@base-ui/react/dialog";
 import { type ReactNode } from "react";
-import { cn } from "@/design-system/utilities/cn";
+import { cn } from "@/lib/utils";
+import {
+  Dialog as ShadDialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 export interface DialogProps {
   open: boolean;
@@ -22,18 +27,15 @@ export interface DialogProps {
 
 export function Dialog({ open, onOpenChange, title, description, actions, children, className }: DialogProps) {
   return (
-    <BaseDialog.Root open={open} onOpenChange={onOpenChange}>
-      <BaseDialog.Portal>
-        <BaseDialog.Backdrop className="vm3-scrim" />
-        <BaseDialog.Popup className={cn("vm3-dialog", className)}>
-          <BaseDialog.Title className="vm3-dialog-title">{title}</BaseDialog.Title>
-          {description && (
-            <BaseDialog.Description className="vm3-dialog-description">{description}</BaseDialog.Description>
-          )}
-          {children}
-          {actions && <div className="vm3-dialog-actions">{actions}</div>}
-        </BaseDialog.Popup>
-      </BaseDialog.Portal>
-    </BaseDialog.Root>
+    <ShadDialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className={cn("sm:max-w-lg", className)}>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          {description && <DialogDescription>{description}</DialogDescription>}
+        </DialogHeader>
+        {children}
+        {actions && <DialogFooter>{actions}</DialogFooter>}
+      </DialogContent>
+    </ShadDialog>
   );
 }

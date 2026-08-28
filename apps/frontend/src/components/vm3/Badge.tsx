@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * VM3 Badge — counter kecil atau dot indikator.
+ * VM3 Badge — shadcn/ui Badge. Counter / dot indikator.
  */
-import { cn } from "@/design-system/utilities/cn";
+import { cn } from "@/lib/utils";
+import { Badge as ShadBadge } from "@/components/ui/badge";
 
 export interface BadgeProps {
   count?: number;
@@ -13,9 +14,13 @@ export interface BadgeProps {
 }
 
 export function Badge({ count, dot, max = 99, className }: BadgeProps) {
-  const label = count == null ? undefined : count > max ? `${max}+` : String(count);
   if (dot) {
-    return <span className={cn("vm3-badge vm3-badge-dot", className)} aria-hidden />;
+    return <span className={cn("size-2.5 rounded-full bg-primary", className)} aria-hidden />;
   }
-  return <span className={cn("vm3-badge", className)}>{label}</span>;
+  const label = count == null ? undefined : count > max ? `${max}+` : String(count);
+  return (
+    <ShadBadge variant="secondary" className={cn("min-w-5 justify-center", className)}>
+      {label}
+    </ShadBadge>
+  );
 }

@@ -1,12 +1,11 @@
 "use client";
 
 /**
- * VM3 BottomSheet — Base UI Dialog, menempel bawah.
- * Animasi 100% CSS (vm3-sheet data-open) — slideY 16px + opacity, compositor only.
+ * VM3 BottomSheet — shadcn/ui Sheet side=bottom.
  */
-import { Dialog as BaseDialog } from "@base-ui/react/dialog";
 import { type ReactNode } from "react";
-import { cn } from "@/design-system/utilities/cn";
+import { cn } from "@/lib/utils";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 export interface BottomSheetProps {
   open: boolean;
@@ -18,15 +17,18 @@ export interface BottomSheetProps {
 
 export function BottomSheet({ open, onOpenChange, title, children, className }: BottomSheetProps) {
   return (
-    <BaseDialog.Root open={open} onOpenChange={onOpenChange}>
-      <BaseDialog.Portal>
-        <BaseDialog.Backdrop className="vm3-scrim" />
-        <BaseDialog.Popup className={cn("vm3-sheet", className)}>
-          <div className="vm3-sheet-handle" aria-hidden />
-          {title && <BaseDialog.Title className="vm3-dialog-title">{title}</BaseDialog.Title>}
-          {children}
-        </BaseDialog.Popup>
-      </BaseDialog.Portal>
-    </BaseDialog.Root>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="bottom"
+        className={cn("mx-auto flex w-full max-w-3xl flex-col rounded-t-2xl", className)}
+      >
+        {title && (
+          <SheetHeader>
+            <SheetTitle>{title}</SheetTitle>
+          </SheetHeader>
+        )}
+        {children}
+      </SheetContent>
+    </Sheet>
   );
 }

@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * VM3 Card — elevated/filled/outlined, opsional interaktif.
+ * VM3 Card — shadcn/ui Card. Varian: elevated→shadow, filled→bg-muted, outlined→border.
  */
 import { forwardRef, type HTMLAttributes } from "react";
-import { cn } from "@/design-system/utilities/cn";
-import { StateLayer } from "@/components/primitives/StateLayer";
+import { cn } from "@/lib/utils";
+import { Card as ShadCard } from "@/components/ui/card";
 
 export type CardVariant = "elevated" | "filled" | "outlined";
 
@@ -16,21 +16,19 @@ export interface CardProps extends HTMLAttributes<HTMLDivElement> {
 
 export const Card = forwardRef<HTMLDivElement, CardProps>(
   ({ variant = "elevated", interactive, className, children, ...rest }, ref) => (
-    <div
+    <ShadCard
       ref={ref}
       className={cn(
-        "vm3-card",
-        variant === "elevated" && "vm3-card-elevated",
-        variant === "filled" && "vm3-card-filled",
-        variant === "outlined" && "vm3-card-outlined",
-        interactive && "vm3-card-interactive",
+        variant === "elevated" && "shadow-sm",
+        variant === "filled" && "bg-muted/50",
+        variant === "outlined" && "border-border",
+        interactive && "cursor-pointer transition-colors hover:bg-accent/50",
         className,
       )}
       {...rest}
     >
-      {interactive && <StateLayer />}
       {children}
-    </div>
+    </ShadCard>
   ),
 );
 Card.displayName = "Card";

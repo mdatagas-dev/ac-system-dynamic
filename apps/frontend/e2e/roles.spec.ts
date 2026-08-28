@@ -43,10 +43,12 @@ test.describe("RBAC & fitur", () => {
 
       const modelInput = page.getByLabel("Model", { exact: true });
       await expect(modelInput).toBeVisible();
+      // fokus dulu → popup terbuka, lalu ketik untuk menyaring
+      await modelInput.click();
       await modelInput.fill(modelName);
-      // Base UI Autocomplete: item = div.vm3-select-item (tanpa role option);
-      // cukup buktikan hasil pencarian muncul (menghindari click popup yang flaky)
-      const option = page.locator(".vm3-select-item", { hasText: modelName }).first();
+      // shadcn Combobox: item = [data-slot="combobox-item"];
+      // cukup buktikan hasil pencarian muncul (hindari click popup yang flaky)
+      const option = page.locator('[data-slot="combobox-item"]', { hasText: modelName }).first();
       await expect(option).toBeVisible({ timeout: 5_000 });
       // tutup dialog via Esc (popup combobox bisa menghalangi tombol Batal)
       await page.keyboard.press("Escape");

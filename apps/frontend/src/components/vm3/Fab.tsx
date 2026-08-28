@@ -1,15 +1,11 @@
 "use client";
 
 /**
- * VM3 FAB — Floating Action Button (M3: primary-container, elevasi 3).
- * - Bentuk: bulat (default) atau extended (label + ikon)
- * - Ukuran: regular (56) / small (40)
- * - Elevasi 3 → naik ke 4 saat hover (spatial response)
+ * VM3 FAB — shadcn/ui Button bulat (regular/small/extended).
  */
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
-import { cn } from "@/design-system/utilities/cn";
-import { StateLayer } from "@/components/primitives/StateLayer";
-import { FocusRing } from "@/components/primitives/FocusRing";
+import { cn } from "@/lib/utils";
+import { Button as ShadButton } from "@/components/ui/button";
 
 export interface FabProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon: ReactNode;
@@ -20,26 +16,23 @@ export interface FabProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 export const Fab = forwardRef<HTMLButtonElement, FabProps>(
   ({ icon, label, small, className, disabled, type = "button", ...rest }, ref) => (
-    <button
+    <ShadButton
       ref={ref}
       type={type}
+      disabled={disabled}
+      aria-label={typeof icon === "string" ? icon : "Aksi"}
       className={cn(
-        "vm3-interactive vm3-fab",
-        small && "vm3-fab-small",
-        label && "vm3-fab-extended",
-        disabled && "vm3-disabled",
+        "rounded-full shadow-lg",
+        small ? (label ? "h-9 px-3" : "size-10 p-0") : label ? "gap-1.5 px-4" : "size-14 p-0",
         className,
       )}
-      disabled={disabled}
       {...rest}
     >
-      <StateLayer />
-      <FocusRing />
       <span className="material-symbols-rounded" aria-hidden>
         {icon}
       </span>
-      {label && <span className="vm3-fab-label">{label}</span>}
-    </button>
+      {label && <span>{label}</span>}
+    </ShadButton>
   ),
 );
 Fab.displayName = "Fab";

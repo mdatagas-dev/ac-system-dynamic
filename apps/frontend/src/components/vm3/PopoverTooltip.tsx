@@ -1,14 +1,20 @@
 "use client";
 
 /**
- * VM3 Popover + Tooltip — Base UI + Motion (enter anim).
+ * VM3 Popover + Tooltip — shadcn/ui.
  */
-import { Popover as BasePopover, Tooltip as BaseTooltip } from "@base-ui/react";
-import { motion } from "motion/react";
 import { type ReactNode } from "react";
-import { cn } from "@/design-system/utilities/cn";
-import { scaleSmall, fade } from "@/design-system/motion/presets";
-import { useVm3ReducedMotion, withReducedMotion } from "@/hooks/useVm3ReducedMotion";
+import { cn } from "@/lib/utils";
+import {
+  Popover as ShadPopover,
+  PopoverTrigger,
+  PopoverContent,
+} from "@/components/ui/popover";
+import {
+  Tooltip as ShadTooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 
 /* ---------- Popover ---------- */
 export interface PopoverProps {
@@ -18,20 +24,11 @@ export interface PopoverProps {
 }
 
 export function Popover({ trigger, children, className }: PopoverProps) {
-  const reduced = useVm3ReducedMotion();
   return (
-    <BasePopover.Root>
-      <BasePopover.Trigger render={<span />}>{trigger}</BasePopover.Trigger>
-      <BasePopover.Portal>
-        <BasePopover.Positioner>
-          <motion.div variants={withReducedMotion(scaleSmall, reduced)} initial="initial" animate="animate">
-            <BasePopover.Popup className={cn("vm3-popover", className)}>
-              {children}
-            </BasePopover.Popup>
-          </motion.div>
-        </BasePopover.Positioner>
-      </BasePopover.Portal>
-    </BasePopover.Root>
+    <ShadPopover>
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      <PopoverContent className={cn("w-auto", className)}>{children}</PopoverContent>
+    </ShadPopover>
   );
 }
 
@@ -43,17 +40,10 @@ export interface TooltipProps {
 }
 
 export function Tooltip({ label, children, className }: TooltipProps) {
-  const reduced = useVm3ReducedMotion();
   return (
-    <BaseTooltip.Root>
-      <BaseTooltip.Trigger render={<span />}>{children}</BaseTooltip.Trigger>
-      <BaseTooltip.Portal>
-        <BaseTooltip.Positioner side="top">
-          <motion.div variants={withReducedMotion(fade, reduced)} initial="initial" animate="animate">
-            <BaseTooltip.Popup className={cn("vm3-tooltip", className)}>{label}</BaseTooltip.Popup>
-          </motion.div>
-        </BaseTooltip.Positioner>
-      </BaseTooltip.Portal>
-    </BaseTooltip.Root>
+    <ShadTooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent className={cn(className)}>{label}</TooltipContent>
+    </ShadTooltip>
   );
 }

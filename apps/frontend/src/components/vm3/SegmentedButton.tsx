@@ -1,14 +1,11 @@
 "use client";
 
 /**
- * VM3 SegmentedButton — pilihan tunggal (radio-like) atau banyak (checkbox-like).
- * Indikator pilihan: secondary-container + ikon check.
- * Aksesibilitas: role radiogroup/group, aria-pressed/aria-checked per segmen.
+ * VM3 SegmentedButton — shadcn/ui ToggleGroup. Pilihan tunggal/banyak.
  */
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
-import { cn } from "@/design-system/utilities/cn";
-import { StateLayer } from "@/components/primitives/StateLayer";
-import { FocusRing } from "@/components/primitives/FocusRing";
+import { cn } from "@/lib/utils";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 export interface Segment {
   value: string;
@@ -26,53 +23,42 @@ export interface SegmentedButtonProps extends Omit<ButtonHTMLAttributes<HTMLDivE
 export const SegmentedButton = forwardRef<HTMLDivElement, SegmentedButtonProps>(
   ({ segments, value, onChange, multiple, className, ...rest }, ref) => {
     const values = Array.isArray(value) ? value : [value];
-    const toggle = (v: string) => {
-      if (!onChange) return;
-      if (multiple) {
-        const next = values.includes(v)
-          ? values.filter((x) => x !== v)
-          : [...values, v];
-        onChange(next);
-      } else {
-        onChange(v);
-      }
-    };
+    const renderItems = () =>
+      segments.map((s) => {
+        const selected = values.includes(s.value);
+        return (
+          <ToggleGroupItem
+            key={s.value}
+            value={s.value}
+            aria-label={s.label}
+            className="flex items-center gap-1 rounded-full px-3 text-sm data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+          >
+            {selected && (
+              <span className="material-symbols-rounded text-sm" aria-hidden>
+                check
+              </span>
+            )}
+            {s.icon && (
+              <span className="material-symbols-rounded text-sm" aria-hidden>
+                {s.icon}
+              </span>
+            )}
+            {s.label}
+          </ToggleGroupItem>
+        );
+      });
 
     return (
-      <div
-        ref={ref}
-        role={multiple ? "group" : "radiogroup"}
-        className={cn("vm3-segmented", className)}
-        {...rest}
-      >
-        {segments.map((s) => {
-          const selected = values.includes(s.value);
-          return (
-            <button
-              key={s.value}
-              type="button"
-              role={multiple ? "checkbox" : "radio"}
-              aria-checked={selected}
-              aria-label={s.label}
-              className={cn("vm3-interactive vm3-segment", selected && "vm3-segment-selected")}
-              onClick={() => toggle(s.value)}
-            >
-              <StateLayer />
-              <FocusRing />
-              {selected && (
-                <span className="material-symbols-rounded vm3-segment-check" aria-hidden>
-                  check
-                </span>
-              )}
-              {s.icon && (
-                <span className="material-symbols-rounded" aria-hidden>
-                  {s.icon}
-                </span>
-              )}
-              <span className="vm3-segment-label">{s.label}</span>
-            </button>
-          );
-        })}
+      <div ref={ref} className={cn(className)} {...rest}>
+        {multiple ? (
+          <ToggleGroup type="multiple" value={values} onValueChange={(v) => onChange?.(v)} className="rounded-full border p-0.5">
+            {renderItems()}
+          </ToggleGroup>
+        ) : (
+          <ToggleGroup type="single" value={values[0] ?? ""} onValueChange={(v) => onChange?.(v ?? "")} className="rounded-full border p-0.5">
+            {renderItems()}
+          </ToggleGroup>
+        )}
       </div>
     );
   },

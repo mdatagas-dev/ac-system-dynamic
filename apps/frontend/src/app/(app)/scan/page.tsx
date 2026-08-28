@@ -430,8 +430,8 @@ function ScanContent() {
         }
         className={
           popupType === "success"
-            ? "!bg-green-600 !text-white [&_.vm3-dialog-title]:!text-white [&_.vm3-dialog-description]:!text-white/90"
-            : "!bg-red-600 !text-white [&_.vm3-dialog-title]:!text-white [&_.vm3-dialog-description]:!text-white/90"
+            ? "[&_[data-slot=dialog-overlay]]:bg-black/50 [&_[data-slot=dialog-content]]:bg-green-600 [&_[data-slot=dialog-content]]:text-white [&_[data-slot=dialog-title]]:text-white [&_[data-slot=dialog-description]]:text-white/90"
+            : "[&_[data-slot=dialog-overlay]]:bg-black/50 [&_[data-slot=dialog-content]]:bg-red-600 [&_[data-slot=dialog-content]]:text-white [&_[data-slot=dialog-title]]:text-white [&_[data-slot=dialog-description]]:text-white/90"
         }
       />
 
