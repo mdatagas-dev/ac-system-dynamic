@@ -127,6 +127,7 @@ model component_definitions {
   label       String               @db.VarChar(100)
   required    Boolean              @default(false)
   regex       String?              @db.VarChar(255)
+  prefix      String?              @db.VarChar(100)
   sort        Int                  @default(0)
   enabled     Boolean              @default(true)
   created_at  DateTime?            @default(now()) @db.Timestamp(6)

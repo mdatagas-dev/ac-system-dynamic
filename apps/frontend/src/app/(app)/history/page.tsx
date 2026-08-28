@@ -20,7 +20,7 @@ interface Regist {
   order_number: string;
   subline: string;
 }
-interface Record {
+interface ScanRecord {
   id: string;
   sn: string;
   sn_motor: string | null;
@@ -28,6 +28,7 @@ interface Record {
   pcb_idu: string | null;
   sn_carton: string | null;
   sn_accessories: string | null;
+  components?: Record<string, unknown> | null;
   timestamps: string;
 }
 
@@ -45,7 +46,7 @@ function HistoryContent() {
   const idRegistParam = searchParams.get("idregist");
   const [regists, setRegists] = useState<Regist[]>([]);
   const [registId, setRegistId] = useState<string | null>(idRegistParam);
-  const [rows, setRows] = useState<Record[]>([]);
+  const [rows, setRows] = useState<ScanRecord[]>([]);
   const [keyword, setKeyword] = useState("");
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -67,7 +68,7 @@ function HistoryContent() {
     if (!registId) return;
     setLoading(true);
     try {
-      const res = await http.get<{ data: Record[]; total: number }>(
+      const res = await http.get<{ data: ScanRecord[]; total: number }>(
         `/rdps/history?page=${page}&limit=20${keyword ? `&keyword=${encodeURIComponent(keyword)}` : ""}`,
         { extraHeaders: { idregist: registId } },
       );
@@ -126,6 +127,7 @@ function HistoryContent() {
                 <th className="p-3">Motor</th>
                 <th className="p-3">Box</th>
                 <th className="p-3">PCB</th>
+                <th className="p-3">Komponen Dinamis</th>
                 <th className="p-3">Waktu</th>
                 <th className="p-3"></th>
               </tr>
@@ -137,6 +139,20 @@ function HistoryContent() {
                   <td className="p-3">{r.sn_motor ?? "-"}</td>
                   <td className="p-3">{r.sn_box ?? "-"}</td>
                   <td className="p-3">{r.pcb_idu ?? "-"}</td>
+                  <td className="p-3">
+                    {r.components && Object.keys(r.components).length ? (
+                      <div className="flex flex-wrap gap-1">
+                        {Object.entries(r.components).map(([k, v]) => (
+                          <span key={k} className="inline-flex whitespace-nowrap rounded-full bg-surface-container px-2 py-0.5 text-xs font-mono">
+                            <span className="text-on-surface-variant">{k}:</span>
+                            <span className="ml-1 font-medium">{String(v ?? "")}</span>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
                   <td className="p-3 text-on-surface-variant">
                     {r.timestamps ? new Date(r.timestamps).toLocaleString("id-ID") : "-"}
                   </td>

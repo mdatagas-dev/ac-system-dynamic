@@ -159,6 +159,7 @@ const ENTITIES: Entity[] = [
       { key: "label", label: "Label", required: true },
       { key: "required", label: "Wajib", type: "switch" },
       { key: "regex", label: "Regex" },
+      { key: "prefix", label: "Prefix" },
       { key: "sort", label: "Sort", type: "number" },
       { key: "enabled", label: "Aktif", type: "switch" },
     ],
@@ -279,9 +280,9 @@ export default function MasterPage() {
     }
   }, [entity, isComponents, selectedCategoryId, selectedCategorySlug, show]);
 
-  // load categories saat masuk tab components atau butuh select kategori
+  // load categories saat masuk tab components / product_categories / bomlist (template)
   useEffect(() => {
-    if (tab !== "components" && tab !== "product_categories") return;
+    if (tab !== "components" && tab !== "product_categories" && tab !== "bomlist") return;
     http
       .get<{ data: ProductCategoryRow[] }>("/product-categories")
       .then((r) => setCategories((r.data ?? []) as ProductCategoryRow[]))
@@ -305,6 +306,7 @@ export default function MasterPage() {
         label: "",
         required: false,
         regex: "",
+        prefix: "",
         sort: 0,
         enabled: true,
       });
@@ -468,6 +470,26 @@ export default function MasterPage() {
     setForm((prev) => ({ ...prev, components: next }));
   };
 
+  // Template kategori → prefill editor komponen dinamis
+  const [templateCategoryId, setTemplateCategoryId] = useState("");
+  const loadFromCategory = async () => {
+    if (!templateCategoryId) return;
+    try {
+      const res = await http.get<{ data: Array<{ key: string; label: string; prefix?: string | null; required?: boolean }> }>(
+        `/components?category_id=${encodeURIComponent(templateCategoryId)}`,
+      );
+      const next: Record<string, { label?: string; prefix?: string; required?: boolean }> = { ...bomComponents };
+      for (const d of res.data ?? []) {
+        if (!d.key) continue;
+        next[d.key] = { label: d.label, prefix: d.prefix ?? "", required: !!d.required };
+      }
+      setForm((prev) => ({ ...prev, components: next }));
+      show(`Dimuat ${(res.data ?? []).length} komponen dari template`);
+    } catch {
+      show("Gagal memuat template kategori");
+    }
+  };
+
   // Judul dialog
   const dialogTitle = editing
     ? isComponents
@@ -536,6 +558,7 @@ export default function MasterPage() {
                   <th className="p-3">Kategori</th>
                   <th className="p-3">Wajib</th>
                   <th className="p-3">Regex</th>
+                  <th className="p-3">Prefix</th>
                   <th className="p-3">Sort</th>
                   <th className="p-3">Aktif</th>
                   <th className="p-3"></th>
@@ -552,6 +575,9 @@ export default function MasterPage() {
                     <td className="p-3">{row.required ? "Ya" : "Tidak"}</td>
                     <td className="p-3 max-w-[180px] truncate" title={String(row.regex ?? "")}>
                       {row.regex ? String(row.regex) : <span className="text-on-surface-variant">-</span>}
+                    </td>
+                    <td className="p-3 max-w-[140px] truncate" title={String(row.prefix ?? "")}>
+                      {row.prefix ? <code className="rounded bg-surface-container px-1.5 py-0.5 text-xs">{String(row.prefix)}</code> : <span className="text-on-surface-variant">-</span>}
                     </td>
                     <td className="p-3 tabular-nums">{String(row.sort ?? 0)}</td>
                     <td className="p-3">{row.enabled === false ? "Tidak" : "Ya"}</td>
@@ -664,6 +690,13 @@ export default function MasterPage() {
                 placeholder="mis: ^[A-Z0-9]{5,}$"
                 value={String(form.regex ?? "")}
                 onChange={(e) => setForm({ ...form, regex: e.target.value })}
+              />
+              <TextField
+                label="Prefix (opsional)"
+                placeholder="mis: DRM"
+                helper="Nilai scan wajib mengandung ini (template BOM)"
+                value={String(form.prefix ?? "")}
+                onChange={(e) => setForm({ ...form, prefix: e.target.value })}
               />
               <TextField
                 label="Sort"
@@ -782,16 +815,31 @@ export default function MasterPage() {
             {/* Komponen dinamis — khusus BOM List (sumber field SN universal) */}
             {entity.key === "bomlist" && (
               <div className="mt-4 rounded-xl border border-outline-variant p-3">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
                     <div className="text-sm font-medium">Komponen Dinamis</div>
                     <div className="text-xs text-on-surface-variant">
                       Field tambahan di luar kolom SN standar — wajib diisi & nilainya mengandung prefix
                     </div>
                   </div>
-                  <Button icon="add" onClick={addComp} className="!h-9 shrink-0">
-                    Tambah
-                  </Button>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="w-44">
+                      <label className="mb-1 block text-xs font-medium text-on-surface-variant">Muat dari Kategori</label>
+                      <Select
+                        options={categoryOptions}
+                        value={templateCategoryId || ""}
+                        onChange={(v) => setTemplateCategoryId(v ?? "")}
+                        placeholder="Pilih kategori"
+                        className="!h-9"
+                      />
+                    </div>
+                    <Button variant="outlined" icon="content_paste" onClick={() => void loadFromCategory()} className="!h-9 shrink-0">
+                      Muat
+                    </Button>
+                    <Button icon="add" onClick={addComp} className="!h-9 shrink-0">
+                      Tambah
+                    </Button>
+                  </div>
                 </div>
                 <div className="mt-3 flex flex-col gap-3">
                   {Object.keys(bomComponents).length === 0 && (

@@ -24,7 +24,7 @@ router.get("/", async (req, res) => {
 });
 
 router.post("/post", async (req, res) => {
-  let { category_id, slug, key, label, required, regex, sort, enabled } = req.body || {};
+  let { category_id, slug, key, label, required, regex, prefix, sort, enabled } = req.body || {};
   if (!key || !label) return res.status(400).json({ error: "key dan label wajib" });
   try {
     if (slug && !category_id) {
@@ -45,6 +45,7 @@ router.post("/post", async (req, res) => {
         label: label.trim(),
         required: !!required,
         regex: regex ? String(regex).trim() : null,
+        prefix: prefix ? String(prefix).trim() : null,
         sort: sort !== undefined ? Number(sort) : 0,
         enabled: enabled !== undefined ? !!enabled : true,
       },
@@ -56,7 +57,7 @@ router.post("/post", async (req, res) => {
 });
 
 router.put("/edit/:id", async (req, res) => {
-  const { key, label, required, regex, sort, enabled } = req.body || {};
+  const { key, label, required, regex, prefix, sort, enabled } = req.body || {};
   try {
     const data = await prisma.component_definitions.update({
       where: { id: req.params.id },
@@ -65,6 +66,7 @@ router.put("/edit/:id", async (req, res) => {
         ...(label ? { label: label.trim() } : {}),
         ...(required !== undefined ? { required: !!required } : {}),
         ...(regex !== undefined ? { regex: regex ? String(regex).trim() : null } : {}),
+        ...(prefix !== undefined ? { prefix: prefix ? String(prefix).trim() : null } : {}),
         ...(sort !== undefined ? { sort: Number(sort) } : {}),
         ...(enabled !== undefined ? { enabled: !!enabled } : {}),
       },
