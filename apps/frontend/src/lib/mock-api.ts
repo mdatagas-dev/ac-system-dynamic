@@ -212,7 +212,7 @@ export function mockRequest(
     const name = String(b.name ?? "").trim();
     if (!slug || !name) throw new MockError("slug dan name wajib");
     if (MASTER["product-categories"].some((r) => String(r.slug).toLowerCase() === slug)) throw new MockError("Kategori sudah ada");
-    const row = { id: uid(), slug, name, suffix_length: Number(b.suffix_length) || 5 };
+    const row = { id: uid(), slug, name };
     MASTER["product-categories"].unshift(row);
     return { message: "Created", data: row };
   }
@@ -222,80 +222,11 @@ export function mockRequest(
     if (!row) throw new MockError("Kategori tidak ditemukan", 404);
     if (b.slug) row.slug = String(b.slug).trim().toLowerCase();
     if (b.name) row.name = String(b.name).trim();
-    if (b.suffix_length !== undefined) row.suffix_length = Number(b.suffix_length);
     return { message: "Updated", data: row };
   }
   mm = /^\/product-categories\/delete\/([^/]+)$/.exec(p);
   if (mm && m === "DELETE") {
     MASTER["product-categories"] = MASTER["product-categories"].filter((r) => String(r.id) !== mm![1]);
-    // cascade delete components
-    MASTER.components = MASTER.components.filter((r) => String(r.category_id) !== mm![1]);
-    return { message: "Deleted", data: {} };
-  }
-
-  /* ---- Component Definitions (mock) ---- */
-  if (p === "/components" && m === "GET") {
-    const category_id = url.searchParams.get("category_id");
-    const slug = url.searchParams.get("slug");
-    let categoryId = category_id;
-    if (slug && !categoryId) {
-      const cat = MASTER["product-categories"].find((c) => String(c.slug) === slug);
-      if (!cat) throw new MockError("Kategori tidak ditemukan", 404);
-      categoryId = String(cat.id);
-    }
-    let data = MASTER.components;
-    if (categoryId) data = data.filter((r) => String(r.category_id) === categoryId);
-    // sort by sort asc, label asc
-    data = [...data].sort((a, b) => {
-      const sa = Number(a.sort ?? 0) - Number(b.sort ?? 0);
-      if (sa !== 0) return sa;
-      return String(a.label).localeCompare(String(b.label));
-    });
-    return { data };
-  }
-  if (p === "/components/post" && m === "POST") {
-    let category_id = String(b.category_id ?? "");
-    const slug = String(b.slug ?? "");
-    const key = String(b.key ?? "").trim().toLowerCase().replace(/[^a-z0-9_]/g, "_");
-    const label = String(b.label ?? "").trim();
-    if (!key || !label) throw new MockError("key dan label wajib");
-    if (slug && !category_id) {
-      const cat = MASTER["product-categories"].find((c) => String(c.slug) === slug);
-      if (!cat) throw new MockError("Kategori tidak ditemukan", 404);
-      category_id = String(cat.id);
-    }
-    if (!category_id) throw new MockError("category_id atau slug wajib");
-    if (MASTER.components.some((r) => String(r.category_id) === category_id && String(r.key) === key)) {
-      throw new MockError("Key sudah ada di kategori ini");
-    }
-    const row = {
-      id: uid(),
-      category_id,
-      key,
-      label,
-      required: !!b.required,
-      regex: b.regex ? String(b.regex).trim() : null,
-      sort: b.sort !== undefined ? Number(b.sort) : 0,
-      enabled: b.enabled !== undefined ? !!b.enabled : true,
-    };
-    MASTER.components.unshift(row);
-    return { message: "Created", data: row };
-  }
-  mm = /^\/components\/edit\/([^/]+)$/.exec(p);
-  if (mm && m === "PUT") {
-    const row = MASTER.components.find((r) => String(r.id) === mm![1]);
-    if (!row) throw new MockError("Komponen tidak ditemukan", 404);
-    if (b.key) row.key = String(b.key).trim().toLowerCase().replace(/[^a-z0-9_]/g, "_");
-    if (b.label) row.label = String(b.label).trim();
-    if (b.required !== undefined) row.required = !!b.required;
-    if (b.regex !== undefined) row.regex = b.regex ? String(b.regex).trim() : null;
-    if (b.sort !== undefined) row.sort = Number(b.sort);
-    if (b.enabled !== undefined) row.enabled = !!b.enabled;
-    return { message: "Updated", data: row };
-  }
-  mm = /^\/components\/delete\/([^/]+)$/.exec(p);
-  if (mm && m === "DELETE") {
-    MASTER.components = MASTER.components.filter((r) => String(r.id) !== mm![1]);
     return { message: "Deleted", data: {} };
   }
 

@@ -83,7 +83,6 @@ const deleteRoute = {
   registscan: "/registscan/delete/",
   recordscan: "/rdps/delete/",
   product_categories: "/product-categories/delete/",
-  components: "/components/delete/",
 };
 
 async function cleanupAll() {

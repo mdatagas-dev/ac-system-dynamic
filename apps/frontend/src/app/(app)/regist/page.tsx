@@ -437,7 +437,7 @@ export default function RegistPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             {/* Model — combobox: ketik untuk mencari, saran dari Model Master */}
             <div>
-              <label htmlFor="regist-model" className="vm3-field-label mb-1.5 block text-sm font-medium text-on-surface">
+              <label htmlFor="regist-model" className="mb-1.5 block text-sm font-medium text-foreground">
                 Model *
               </label>
               <input

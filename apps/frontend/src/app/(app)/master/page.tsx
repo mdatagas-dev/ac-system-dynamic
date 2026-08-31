@@ -2,13 +2,11 @@
 
 /**
  * Master Data — CRUD Model, Line, BOM, Users, PIN (satu halaman, tab)
- * + Produk (Kategori) + Komponen (Definisi) — admin eksperimen tambah kolom.
+ * + Produk (Kategori) — admin eksperimen tambah kolom.
  *
- * Produk: slug (unique), name, suffix_length  -> base /product-categories
- * Komponen: category (Select dari product_categories), key, label, required, regex, sort, enabled
- *           -> base /components, GET ?category_id= atau ?slug=, POST butuh category_id/slug
- *           Filter: saat admin pilih kategori di atas, tabel filter ke kategori itu.
- *           Tombol "+ Tambah Kolom" buka Dialog dengan key auto snake_case dari label.
+ * Produk: slug (unique), name  -> base /product-categories
+ * Setiap tab punya pencarian teks (client-side) + filter kategori
+ * (tab Model & BOM List) yang memfilter baris yang sudah dimuat.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { http } from "@/lib/api";
@@ -20,18 +18,7 @@ import { Tabs } from "@/components/vm3/Navigation";
 import { Dialog } from "@/components/vm3/Dialog";
 import { Select } from "@/components/vm3/Select";
 import { Combobox } from "@/components/vm3/Combobox";
-import { Switch } from "@/components/vm3/Switch";
 import { useSnackbar } from "@/components/vm3/Snackbar";
-
-/* ---------- helpers ---------- */
-function toSnakeCase(input: string): string {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .replace(/__+/g, "_");
-}
 
 /* ---------- Definisi entitas ---------- */
 interface Field {
@@ -63,6 +50,7 @@ const ENTITIES: Entity[] = [
     fields: [
       { key: "brand", label: "Brand", required: true },
       { key: "model", label: "Model", required: true },
+      { key: "category_id", label: "Kategori", required: true },
       { key: "pk", label: "PK", type: "number" },
       { key: "linkimage", label: "Link Image" },
     ],
@@ -142,33 +130,12 @@ const ENTITIES: Entity[] = [
     fields: [
       { key: "slug", label: "Slug", required: true },
       { key: "name", label: "Nama Kategori", required: true },
-      { key: "suffix_length", label: "Suffix Length", type: "number", required: true },
     ],
     rowKey: (r) => String(r.id),
     getList: () => http.get<{ data: Record<string, unknown>[] }>("/product-categories").then((r) => (r.data ?? []) as Record<string, unknown>[]),
     create: (d) => http.post("/product-categories/post", d),
     update: (id, d) => http.put(`/product-categories/edit/${id}`, d),
     remove: (id) => http.del(`/product-categories/delete/${id}`),
-  },
-  {
-    key: "components",
-    label: "Komponen (Definisi)",
-    base: "/components",
-    fields: [
-      { key: "key", label: "Key", required: true },
-      { key: "label", label: "Label", required: true },
-      { key: "required", label: "Wajib", type: "switch" },
-      { key: "regex", label: "Regex" },
-      { key: "prefix", label: "Prefix" },
-      { key: "sort", label: "Sort", type: "number" },
-      { key: "enabled", label: "Aktif", type: "switch" },
-    ],
-    rowKey: (r) => String(r.id),
-    // getList dioverride saat tab components (butuh filter by category)
-    getList: () => http.get<{ data: Record<string, unknown>[] }>("/components").then((r) => (r.data ?? []) as Record<string, unknown>[]),
-    create: (d) => http.post("/components/post", d),
-    update: (id, d) => http.put(`/components/edit/${id}`, d),
-    remove: (id) => http.del(`/components/delete/${id}`),
   },
 ];
 
@@ -180,7 +147,6 @@ export default function MasterPage() {
   const { show } = useSnackbar();
   const [tab, setTab] = useState("model");
   const entity = useMemo(() => ENTITIES.find((e) => e.key === tab) ?? ENTITIES[0], [tab]);
-  const isComponents = tab === "components";
 
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
@@ -189,17 +155,12 @@ export default function MasterPage() {
   const [form, setForm] = useState<Record<string, unknown>>(EMPTY_FORM);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
 
-  // Khusus komponen: kategori + filter
+  // Kategori (root hierarki) — untuk combobox model + filter
   const [categories, setCategories] = useState<ProductCategoryRow[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>(""); // "" = semua
-  const selectedCategorySlug = useMemo(() => {
-    if (!selectedCategoryId) return "";
-    const c = categories.find((x) => String(x.id) === selectedCategoryId);
-    return c ? String(c.slug) : "";
-  }, [categories, selectedCategoryId]);
-  const [keyTouched, setKeyTouched] = useState(false);
 
   // Model master — untuk Combobox di form BOM List
   const [models, setModels] = useState<string[]>([]);
@@ -262,58 +223,54 @@ export default function MasterPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      if (isComponents) {
-        // GET /components?category_id=xxx atau ?slug=xxx
-        // prioritas category_id (lebih stabil), fallback slug
-        let path = "/components";
-        if (selectedCategoryId) path = `/components?category_id=${encodeURIComponent(selectedCategoryId)}`;
-        else if (selectedCategorySlug) path = `/components?slug=${encodeURIComponent(selectedCategorySlug)}`;
-        const data = await http.get<{ data: Record<string, unknown>[] }>(path).then((r) => (r.data ?? []) as Record<string, unknown>[]);
-        setRows(data);
-      } else {
-        setRows(await entity.getList());
-      }
+      setRows(await entity.getList());
     } catch (err) {
       show(`Gagal memuat ${entity.label}: ${(err as Error).message}`);
     } finally {
       setLoading(false);
     }
-  }, [entity, isComponents, selectedCategoryId, selectedCategorySlug, show]);
+  }, [entity, show]);
 
-  // load categories saat masuk tab components / product_categories / bomlist (template)
+  // load kategori untuk tab model (combobox) / product_categories / bomlist (template)
   useEffect(() => {
-    if (tab !== "components" && tab !== "product_categories" && tab !== "bomlist") return;
+    if (tab !== "model" && tab !== "product_categories" && tab !== "bomlist") return;
     http
       .get<{ data: ProductCategoryRow[] }>("/product-categories")
       .then((r) => setCategories((r.data ?? []) as ProductCategoryRow[]))
       .catch(() => {
-        /* silent - biar komponen tetap bisa load tanpa filter */
+        /* silent */
       });
   }, [tab]);
 
   useEffect(() => {
     const t = setTimeout(load, 0);
     return () => clearTimeout(t);
-  }, [load, tab, selectedCategoryId]);
+  }, [load, tab]);
+
+  // pencarian + filter kategori dilakukan di sisi klien: tiap tab memuat
+  // maksimal 100 baris, jadi memfilter hasil yang sudah ada lebih murah
+  // daripada menambah endpoint filter per entitas. Filter di-reset saat tab
+  // berganti lewat key pada kontainer di bawah, bukan setState dalam effect.
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter((row) => {
+      if (categoryFilter) {
+        const slug = String(row.product_category ?? row.category_slug ?? "");
+        if (slug !== categoryFilter) return false;
+      }
+      if (!q) return true;
+      return entity.fields.some((f) =>
+        String(row[f.key] ?? "").toLowerCase().includes(q),
+      );
+    });
+  }, [rows, search, categoryFilter, entity]);
 
   const openCreate = () => {
     setEditing(null);
-    setKeyTouched(false);
-    if (isComponents) {
-      setForm({
-        category_id: selectedCategoryId || "",
-        key: "",
-        label: "",
-        required: false,
-        regex: "",
-        prefix: "",
-        sort: 0,
-        enabled: true,
-      });
-    } else if (entity.key === "product_categories") {
-      setForm({ slug: "", name: "", suffix_length: 5 });
-    } else if (entity.key === "bomlist") {
-      setForm({ components: {} });
+    if (entity.key === "product_categories") {
+      setForm({ slug: "", name: "" });
+    } else if (entity.key === "model") {
+      setForm({ category_id: "" });
     } else {
       setForm({});
     }
@@ -322,27 +279,14 @@ export default function MasterPage() {
 
   const openEdit = (row: Record<string, unknown>) => {
     setEditing(row);
-    setKeyTouched(true);
-    if (isComponents) {
-      setForm({
-        category_id: String(row.category_id ?? row.categoryId ?? selectedCategoryId ?? ""),
-        key: String(row.key ?? ""),
-        label: String(row.label ?? ""),
-        required: Boolean(row.required),
-        regex: String(row.regex ?? ""),
-        sort: row.sort ?? 0,
-        enabled: row.enabled !== false,
-      });
-    } else if (entity.key === "product_categories") {
+    if (entity.key === "product_categories") {
       setForm({
         slug: String(row.slug ?? ""),
         name: String(row.name ?? ""),
-        suffix_length: row.suffix_length ?? 5,
       });
     } else if (entity.key === "bomlist") {
       const next: Record<string, unknown> = {};
       for (const f of entity.fields) next[f.key] = row[f.key] ?? "";
-      next.components = row.components && typeof row.components === "object" ? row.components : {};
       setForm(next);
     } else {
       const next: Record<string, unknown> = {};
@@ -355,40 +299,11 @@ export default function MasterPage() {
   const save = async () => {
     setSaving(true);
     try {
-      // normalisasi number fields
+      // normalisasi
       const payload: Record<string, unknown> = { ...form };
       if (entity.key === "product_categories") {
         if (payload.slug) payload.slug = String(payload.slug).trim().toLowerCase();
         if (payload.name) payload.name = String(payload.name).trim();
-        if (payload.suffix_length !== undefined && payload.suffix_length !== "") payload.suffix_length = Number(payload.suffix_length);
-      }
-      if (isComponents) {
-        // key auto snake + lower
-        if (payload.key) payload.key = String(payload.key).trim().toLowerCase().replace(/[^a-z0-9_]/g, "_");
-        if (payload.label) payload.label = String(payload.label).trim();
-        if (payload.regex !== undefined) payload.regex = payload.regex ? String(payload.regex).trim() : null;
-        if (payload.sort !== undefined && payload.sort !== "") payload.sort = Number(payload.sort);
-        payload.required = !!payload.required;
-        payload.enabled = payload.enabled !== false;
-        // pastikan category_id atau slug terkirim
-        if (!payload.category_id && selectedCategorySlug) payload.slug = selectedCategorySlug;
-        if (!payload.category_id && payload.slug) {
-          // biarkan slug
-        } else if (payload.category_id) {
-          // kirim category_id (backend prioritas ini), hapus slug duplikat jika ada agar tidak bingung
-          // keep both okay, but ensure category_id valid
-        }
-        // edit: backend components PUT tidak butuh category_id
-        if (editing) {
-          delete payload.category_id;
-          delete payload.slug;
-        } else {
-          if (!payload.category_id && !payload.slug) {
-            show("Pilih kategori terlebih dahulu");
-            setSaving(false);
-            return;
-          }
-        }
       }
 
       if (editing) {
@@ -429,75 +344,16 @@ export default function MasterPage() {
     [categories],
   );
 
-  const categoryLabelForRow = (row: Record<string, unknown>) => {
-    const cid = String(row.category_id ?? row.categoryId ?? "");
-    if (!cid) return String(row.slug ?? "-");
-    const found = categories.find((c) => String(c.id) === cid);
-    if (found) return `${String(found.name)} (${String(found.slug)})`;
-    return cid.slice(0, 8);
-  };
+  // filter dropdown pakai slug sebagai value: baris model & bomlist membawa
+  // product_category sebagai slug (lihat header komentar di atas).
+  const categoryFilterOptions = useMemo(
+    () => categories.map((c) => ({ value: String(c.slug), label: `${String(c.name)} (${String(c.slug)})` })),
+    [categories],
+  );
 
-  const bomComponents = (form.components && typeof form.components === "object"
-    ? form.components
-    : {}) as Record<string, { label?: string; prefix?: string; required?: boolean }>;
-
-  const setComp = (key: string, patch: Partial<{ label: string; prefix: string; required: boolean }>) =>
-    setForm((prev) => ({
-      ...prev,
-      components: {
-        ...bomComponents,
-        [key]: { ...(bomComponents[key] || {}), ...patch },
-      },
-    }));
-
-  const addComp = () => {
-    let k = "sn_field";
-    let n = 1;
-    while (bomComponents[k]) k = `sn_field_${n++}`;
-    setComp(k, { label: "SN Field", prefix: "", required: true });
-  };
-
-  const renameComp = (oldKey: string, newKey: string) => {
-    if (!newKey.trim() || newKey === oldKey) return;
-    const next: Record<string, { label?: string; prefix?: string; required?: boolean }> = {};
-    for (const [k, v] of Object.entries(bomComponents)) next[k === oldKey ? newKey : k] = v;
-    setForm((prev) => ({ ...prev, components: next }));
-  };
-
-  const removeComp = (key: string) => {
-    const next: Record<string, { label?: string; prefix?: string; required?: boolean }> = {};
-    for (const [k, v] of Object.entries(bomComponents)) if (k !== key) next[k] = v;
-    setForm((prev) => ({ ...prev, components: next }));
-  };
-
-  // Template kategori → prefill editor komponen dinamis
-  const [templateCategoryId, setTemplateCategoryId] = useState("");
-  const loadFromCategory = async () => {
-    if (!templateCategoryId) return;
-    try {
-      const res = await http.get<{ data: Array<{ key: string; label: string; prefix?: string | null; required?: boolean }> }>(
-        `/components?category_id=${encodeURIComponent(templateCategoryId)}`,
-      );
-      const next: Record<string, { label?: string; prefix?: string; required?: boolean }> = { ...bomComponents };
-      for (const d of res.data ?? []) {
-        if (!d.key) continue;
-        next[d.key] = { label: d.label, prefix: d.prefix ?? "", required: !!d.required };
-      }
-      setForm((prev) => ({ ...prev, components: next }));
-      show(`Dimuat ${(res.data ?? []).length} komponen dari template`);
-    } catch {
-      show("Gagal memuat template kategori");
-    }
-  };
 
   // Judul dialog
-  const dialogTitle = editing
-    ? isComponents
-      ? "Edit Kolom"
-      : `Edit ${entity.label}`
-    : isComponents
-      ? "Tambah Kolom"
-      : `Tambah ${entity.label}`;
+  const dialogTitle = editing ? `Edit ${entity.label}` : `Tambah ${entity.label}`;
 
   return (
     <div className="flex flex-col gap-6">
@@ -508,123 +364,72 @@ export default function MasterPage() {
         onChange={(v) => setTab(v)}
       />
 
-      {/* Filter khusus Komponen */}
-      {isComponents && (
-        <Card variant="outlined" className="p-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="flex flex-col gap-1.5 w-full sm:max-w-sm">
-            <label className="text-xs font-medium text-on-surface-variant">Filter Kategori</label>
-            <Select
-              options={[{ value: "", label: "Semua kategori" }, ...categoryOptions]}
-              value={selectedCategoryId || ""}
-              onChange={(v) => setSelectedCategoryId(v ?? "")}
-              placeholder={categoriesLoading ? "Memuat..." : "Pilih kategori"}
-            />
-            <span className="text-xs text-on-surface-variant">
-              {selectedCategoryId ? `Menampilkan komponen untuk slug: ${selectedCategorySlug || "-"}` : "Menampilkan semua komponen"}
-            </span>
-          </div>
-          <div className="text-xs text-on-surface-variant hidden sm:block">
-            {categories.length} kategori tersedia
-          </div>
-        </Card>
-      )}
-
-      <div className="flex justify-end">
-        {isComponents ? (
-          <Button
-            icon="add"
-            onClick={openCreate}
-            disabled={categoriesLoading && categories.length === 0}
-            title={!selectedCategoryId && categories.length > 0 ? "Pilih kategori dulu atau akan diminta di dialog" : undefined}
-          >
-            + Tambah Kolom
-          </Button>
-        ) : (
-          <Button icon="add" onClick={openCreate}>
-            Tambah {entity.label}
-          </Button>
-        )}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <TextField
+            label="Cari"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={`Cari ${entity.label.toLowerCase()}…`}
+            className="w-64"
+          />
+          {(entity.key === "model" || entity.key === "bomlist") && (
+            <div className="w-56" key={tab}>
+              <label className="mb-1.5 block text-sm font-medium text-foreground">Kategori</label>
+              <Select
+                options={[{ value: "", label: "Semua kategori" }, ...categoryFilterOptions]}
+                value={categoryFilter}
+                onChange={(v) => setCategoryFilter(v)}
+                placeholder="Semua kategori"
+              />
+            </div>
+          )}
+        </div>
+        <Button icon="add" onClick={openCreate}>
+          Tambah {entity.label}
+        </Button>
       </div>
 
       <Card variant="outlined" className="overflow-hidden">
         <div className="overflow-x-auto">
-          {/* Tabel Komponen custom */}
-          {isComponents ? (
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-outline-variant text-xs uppercase text-on-surface-variant">
-                  <th className="p-3">Label</th>
-                  <th className="p-3">Key</th>
-                  <th className="p-3">Kategori</th>
-                  <th className="p-3">Wajib</th>
-                  <th className="p-3">Regex</th>
-                  <th className="p-3">Prefix</th>
-                  <th className="p-3">Sort</th>
-                  <th className="p-3">Aktif</th>
-                  <th className="p-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={entity.rowKey(row)} className="border-b border-outline-variant last:border-0">
-                    <td className="p-3 font-medium">{String(row.label ?? "-")}</td>
-                    <td className="p-3">
-                      <code className="rounded bg-surface-container px-1.5 py-0.5 text-xs">{String(row.key ?? "-")}</code>
-                    </td>
-                    <td className="p-3 text-on-surface-variant">{categoryLabelForRow(row)}</td>
-                    <td className="p-3">{row.required ? "Ya" : "Tidak"}</td>
-                    <td className="p-3 max-w-[180px] truncate" title={String(row.regex ?? "")}>
-                      {row.regex ? String(row.regex) : <span className="text-on-surface-variant">-</span>}
-                    </td>
-                    <td className="p-3 max-w-[140px] truncate" title={String(row.prefix ?? "")}>
-                      {row.prefix ? <code className="rounded bg-surface-container px-1.5 py-0.5 text-xs">{String(row.prefix)}</code> : <span className="text-on-surface-variant">-</span>}
-                    </td>
-                    <td className="p-3 tabular-nums">{String(row.sort ?? 0)}</td>
-                    <td className="p-3">{row.enabled === false ? "Tidak" : "Ya"}</td>
-                    <td className="p-1 text-right whitespace-nowrap">
-                      {canEdit && <IconButton icon="edit" label="Edit" onClick={() => openEdit(row)} />}
-                      <IconButton icon="delete" label="Hapus" onClick={() => setDeleteId(entity.rowKey(row))} />
-                    </td>
-                  </tr>
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-outline-variant text-xs uppercase text-on-surface-variant">
+                {entity.fields.map((f) => (
+                  <th key={f.key} className="p-3">
+                    {f.label}
+                  </th>
                 ))}
-              </tbody>
-            </table>
-          ) : (
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-outline-variant text-xs uppercase text-on-surface-variant">
+                <th className="p-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRows.map((row) => (
+                <tr key={entity.rowKey(row)} className="border-b border-outline-variant last:border-0">
                   {entity.fields.map((f) => (
-                    <th key={f.key} className="p-3">
-                      {f.label}
-                    </th>
-                  ))}
-                  <th className="p-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={entity.rowKey(row)} className="border-b border-outline-variant last:border-0">
-                    {entity.fields.map((f) => (
-                      <td key={f.key} className="p-3">
-                        {f.type === "password" ? "••••••" : f.type === "switch" ? (row[f.key] ? "Ya" : "Tidak") : String(row[f.key] ?? "-")}
-                      </td>
-                    ))}
-                    <td className="p-1 text-right whitespace-nowrap">
-                      {canEdit && <IconButton icon="edit" label="Edit" onClick={() => openEdit(row)} />}
-                      <IconButton icon="delete" label="Hapus" onClick={() => setDeleteId(entity.rowKey(row))} />
+                    <td key={f.key} className="p-3">
+                      {f.type === "password"
+                        ? "••••••"
+                        : entity.key === "model" && f.key === "category_id"
+                          ? String(row.category_name ?? "-")
+                          : f.type === "switch"
+                            ? row[f.key]
+                              ? "Ya"
+                              : "Tidak"
+                            : String(row[f.key] ?? "-")}
                     </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          {rows.length === 0 && !loading && (
+                  ))}
+                  <td className="p-1 text-right whitespace-nowrap">
+                    {canEdit && <IconButton icon="edit" label="Edit" onClick={() => openEdit(row)} />}
+                    <IconButton icon="delete" label="Hapus" onClick={() => setDeleteId(entity.rowKey(row))} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filteredRows.length === 0 && !loading && (
             <div className="p-8 text-center text-on-surface-variant">
-              {isComponents
-                ? selectedCategoryId
-                  ? "Belum ada kolom untuk kategori ini"
-                  : "Belum ada komponen"
-                : "Belum ada data"}
+              {rows.length === 0 ? "Belum ada data" : "Tidak ada hasil yang cocok"}
             </div>
           )}
           {loading && <div className="p-8 text-center text-on-surface-variant">Memuat...</div>}
@@ -646,244 +451,65 @@ export default function MasterPage() {
           </>
         }
       >
-        {/* Dialog Komponen: field khusus dengan Switch & Select */}
-        {isComponents ? (
-          <div className="mt-4 grid gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-on-surface-variant">Kategori *</label>
-              <Select
-                options={categoryOptions}
-                value={String(form.category_id ?? selectedCategoryId ?? "") || null}
-                onChange={(v) => setForm({ ...form, category_id: v ?? "" })}
-                placeholder={categoriesLoading ? "Memuat kategori..." : "Pilih kategori"}
-                disabled={!!editing}
-              />
-              {editing && <span className="text-xs text-on-surface-variant">Kategori tidak dapat diubah saat edit</span>}
-            </div>
-            <TextField
-              label="Label *"
-              required
-              value={String(form.label ?? "")}
-              onChange={(e) => {
-                const nextLabel = e.target.value;
-                setForm((prev) => {
-                  const next: Record<string, unknown> = { ...prev, label: nextLabel };
-                  if (!keyTouched) next.key = toSnakeCase(nextLabel);
-                  return next;
-                });
-              }}
-              helper="Contoh: No Mesin, Warna Body"
-            />
-            <TextField
-              label="Key * (snake_case)"
-              required
-              value={String(form.key ?? "")}
-              onChange={(e) => {
-                setKeyTouched(true);
-                setForm({ ...form, key: e.target.value });
-              }}
-              helper="Otomatis dari label, bisa diedit. Hanya a-z, 0-9, _"
-            />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <TextField
-                label="Regex (opsional)"
-                placeholder="mis: ^[A-Z0-9]{5,}$"
-                value={String(form.regex ?? "")}
-                onChange={(e) => setForm({ ...form, regex: e.target.value })}
-              />
-              <TextField
-                label="Prefix (opsional)"
-                placeholder="mis: DRM"
-                helper="Nilai scan wajib mengandung ini (template BOM)"
-                value={String(form.prefix ?? "")}
-                onChange={(e) => setForm({ ...form, prefix: e.target.value })}
-              />
-              <TextField
-                label="Sort"
-                type="number"
-                value={String(form.sort ?? 0)}
-                onChange={(e) => setForm({ ...form, sort: e.target.value })}
-              />
-            </div>
-            <div className="flex flex-col gap-4 rounded-xl border border-outline-variant p-3 sm:flex-row sm:items-center sm:justify-between">
-              <label className="flex items-center justify-between gap-3 sm:justify-start">
-                <span className="text-sm font-medium">Wajib (required)</span>
-                <Switch
-                  checked={Boolean(form.required)}
-                  onChange={(e) => setForm({ ...form, required: (e.target as HTMLInputElement).checked })}
-                  aria-label="Wajib"
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          {entity.fields
+            .filter((f) => !(editing && f.editOnly))
+            .map((f) =>
+              entity.key === "bomlist" && f.key === "model" ? (
+                <Combobox
+                  key={f.key}
+                  label={f.label}
+                  options={models}
+                  value={String(form[f.key] ?? "")}
+                  onChange={(v) => setForm({ ...form, [f.key]: v })}
+                  placeholder="Ketik untuk mencari model"
                 />
-              </label>
-              <label className="flex items-center justify-between gap-3 sm:justify-start">
-                <span className="text-sm font-medium">Aktif (enabled)</span>
-                <Switch
-                  checked={form.enabled !== false}
-                  onChange={(e) => setForm({ ...form, enabled: (e.target as HTMLInputElement).checked })}
-                  aria-label="Aktif"
-                />
-              </label>
-            </div>
-          </div>
-        ) : entity.key === "product_categories" ? (
-          <div className="mt-4 grid gap-4">
-            <TextField
-              label="Slug *"
-              required
-              placeholder="mis: ac_split"
-              value={String(form.slug ?? "")}
-              onChange={(e) => setForm({ ...form, slug: e.target.value })}
-              helper="Unique, lower snake_case"
-            />
-            <TextField
-              label="Nama Kategori *"
-              required
-              placeholder="mis: AC Split"
-              value={String(form.name ?? "")}
-              onChange={(e) => {
-                const v = e.target.value;
-                setForm((prev) => {
-                  // auto slug bila slug belum diisi manual atau masih kosong
-                  const prevSlug = String(prev.slug ?? "");
-                  const next: Record<string, unknown> = { ...prev, name: v };
-                  if (!editing && (!prevSlug || toSnakeCase(String(prev.name ?? "")) === prevSlug)) {
-                    next.slug = toSnakeCase(v);
-                  }
-                  return next;
-                });
-              }}
-            />
-            <TextField
-              label="Suffix Length *"
-              type="number"
-              required
-              value={String(form.suffix_length ?? 5)}
-              onChange={(e) => setForm({ ...form, suffix_length: e.target.value })}
-            />
-          </div>
-        ) : (
-          <>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            {entity.fields
-              .filter((f) => !(editing && f.editOnly))
-              .map((f) =>
-                entity.key === "bomlist" && f.key === "model" ? (
-                  <Combobox
-                    key={f.key}
-                    label={f.label}
-                    options={models}
-                    value={String(form[f.key] ?? "")}
-                    onChange={(v) => setForm({ ...form, [f.key]: v })}
-                    placeholder="Ketik untuk mencari model"
+              ) : entity.key === "model" && f.key === "category_id" ? (
+                <div key={f.key}>
+                  <label className="mb-1.5 block text-sm font-medium text-foreground">Kategori *</label>
+                  <Select
+                    options={categoryOptions}
+                    value={String(form.category_id ?? "") || ""}
+                    onChange={(v) => setForm({ ...form, category_id: v ?? "" })}
+                    placeholder={categoriesLoading ? "Memuat kategori..." : "Pilih kategori"}
                   />
-                ) : entity.key === "users" && f.key === "section" ? (
-                  <div key={f.key}>
-                    <label htmlFor="users-section" className="mb-1.5 block text-sm font-medium text-on-surface">
-                      Section (Line) *
-                    </label>
-                    <input
-                      id="users-section"
-                      list="users-section-options"
-                      required
-                      value={String(form[f.key] ?? "")}
-                      onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
-                      className="h-11 w-full rounded-[var(--vm3-shape-lg)] border border-[var(--vm3-color-outline-variant)] bg-[var(--vm3-color-surface-container-highest)] px-3 text-sm text-[var(--vm3-color-on-surface)] outline-none focus:border-[var(--vm3-color-primary)] focus:ring-2 focus:ring-[var(--vm3-color-primary)]/20"
-                      placeholder="Ketik untuk mencari line"
-                      autoComplete="off"
-                    />
-                    <datalist id="users-section-options">
-                      {lines.map((l) => (
-                        <option key={l} value={l} />
-                      ))}
-                    </datalist>
-                    <p className="mt-1 text-xs text-on-surface-variant">
-                      Dipakai otomatis sebagai subline saat registrasi
-                    </p>
-                  </div>
-                ) : (
-                  <TextField
-                    key={f.key}
-                    label={f.label}
-                    type={f.type === "date" ? "date" : f.type === "number" ? "number" : f.type === "password" ? "password" : "text"}
-                    required={f.required}
+                </div>
+              ) : entity.key === "users" && f.key === "section" ? (
+                <div key={f.key}>
+                  <label htmlFor="users-section" className="mb-1.5 block text-sm font-medium text-foreground">
+                    Section (Line) *
+                  </label>
+                  <input
+                    id="users-section"
+                    list="users-section-options"
+                    required
                     value={String(form[f.key] ?? "")}
                     onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                    className="h-11 w-full rounded-[var(--vm3-shape-lg)] border border-[var(--vm3-color-outline-variant)] bg-[var(--vm3-color-surface-container-highest)] px-3 text-sm text-[var(--vm3-color-on-surface)] outline-none focus:border-[var(--vm3-color-primary)] focus:ring-2 focus:ring-[var(--vm3-color-primary)]/20"
+                    placeholder="Ketik untuk mencari line"
+                    autoComplete="off"
                   />
-                ),
-              )}
-            </div>
-
-            {/* Komponen dinamis — khusus BOM List (sumber field SN universal) */}
-            {entity.key === "bomlist" && (
-              <div className="mt-4 rounded-xl border border-outline-variant p-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <div className="text-sm font-medium">Komponen Dinamis</div>
-                    <div className="text-xs text-on-surface-variant">
-                      Field tambahan di luar kolom SN standar — wajib diisi & nilainya mengandung prefix
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-end gap-2">
-                    <div className="w-44">
-                      <label className="mb-1 block text-xs font-medium text-on-surface-variant">Muat dari Kategori</label>
-                      <Select
-                        options={categoryOptions}
-                        value={templateCategoryId || ""}
-                        onChange={(v) => setTemplateCategoryId(v ?? "")}
-                        placeholder="Pilih kategori"
-                        className="!h-9"
-                      />
-                    </div>
-                    <Button variant="outlined" icon="content_paste" onClick={() => void loadFromCategory()} className="!h-9 shrink-0">
-                      Muat
-                    </Button>
-                    <Button icon="add" onClick={addComp} className="!h-9 shrink-0">
-                      Tambah
-                    </Button>
-                  </div>
+                  <datalist id="users-section-options">
+                    {lines.map((l) => (
+                      <option key={l} value={l} />
+                    ))}
+                  </datalist>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Dipakai otomatis sebagai subline saat registrasi
+                  </p>
                 </div>
-                <div className="mt-3 flex flex-col gap-3">
-                  {Object.keys(bomComponents).length === 0 && (
-                    <div className="text-xs text-on-surface-variant">Belum ada komponen dinamis.</div>
-                  )}
-                  {Object.entries(bomComponents).map(([key, def]) => (
-                    <div key={key} className="flex flex-wrap items-center gap-2 rounded-lg bg-surface-container p-2">
-                      <input
-                        aria-label={`key ${key}`}
-                        value={key}
-                        onChange={(e) => renameComp(key, toSnakeCase(e.target.value))}
-                        className="h-9 w-28 rounded-md border border-outline-variant bg-white px-2 text-xs font-mono outline-none focus:border-primary"
-                        placeholder="key"
-                      />
-                      <input
-                        aria-label={`label ${key}`}
-                        value={def.label ?? ""}
-                        onChange={(e) => setComp(key, { label: e.target.value })}
-                        className="h-9 w-32 rounded-md border border-outline-variant bg-white px-2 text-xs outline-none focus:border-primary"
-                        placeholder="Label"
-                      />
-                      <input
-                        aria-label={`prefix ${key}`}
-                        value={def.prefix ?? ""}
-                        onChange={(e) => setComp(key, { prefix: e.target.value })}
-                        className="h-9 w-32 rounded-md border border-outline-variant bg-white px-2 text-xs outline-none focus:border-primary"
-                        placeholder="Prefix (nilai harus mengandung ini)"
-                      />
-                      <label className="flex items-center gap-1.5 text-xs font-medium">
-                        <input
-                          type="checkbox"
-                          checked={def.required !== false}
-                          onChange={(e) => setComp(key, { required: e.target.checked })}
-                        />
-                        Wajib
-                      </label>
-                      <IconButton icon="delete" label={`Hapus ${key}`} onClick={() => removeComp(key)} className="ml-auto !h-8 !w-8" />
-                    </div>
-                  ))}
-                </div>
-              </div>
+              ) : (
+                <TextField
+                  key={f.key}
+                  label={f.label}
+                  type={f.type === "date" ? "date" : f.type === "number" ? "number" : f.type === "password" ? "password" : "text"}
+                  required={f.required}
+                  value={String(form[f.key] ?? "")}
+                  onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                />
+              ),
             )}
-          </>
-        )}
+        </div>
       </Dialog>
 
       <Dialog

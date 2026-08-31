@@ -24,28 +24,40 @@ router.get("/", async (req, res) => {
       where,
       skip: Number.isNaN(skip) ? 0 : skip,
       take: Number(limit),
+      include: { category: { select: { slug: true, name: true } } },
     });
 
-    const resultIndex = result.map((item, index) => ({
+    const resultIndex = result.map(({ category, ...item }, index) => ({
       ...item,
+      product_category: category?.slug ?? null,
+      category_name: category?.name ?? null,
       index: skip + index + 1,
-    }));
-    res.status(200).json({
+    }));    res.status(200).json({
       data: resultIndex,
       total,
       currentPages: Number(page),
       totalPages: Math.ceil(total / limit),
     });
   } catch (error) {
-    // console.error(error);
+    console.error(error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
 router.post("/post", async (req, res) => {
-  const { brand, model, pk, linkimage } = req.body;
+  const { brand, model, pk, linkimage, category_id } = req.body;
 
   try {
+    if (!category_id) {
+      return res.status(400).json({ error: "Kategori wajib dipilih" });
+    }
+    const category = await prisma.product_categories.findUnique({
+      where: { id: category_id },
+    });
+    if (!category) {
+      return res.status(404).json({ error: "Kategori tidak ditemukan" });
+    }
+
     const checkModel = await prisma.model.findFirst({
       where: {
         model: model,
@@ -63,19 +75,29 @@ router.post("/post", async (req, res) => {
         model,
         pk: Number(pk),
         linkimage,
+        category_id,
       },
+      include: { category: { select: { slug: true, name: true } } },
     });
     res.status(200).json({ message: "Data berhasil ditambah", data: result });
   } catch (error) {
-    // console.error(error.message);
+    console.error(error);
     res.status(500).json({ error: "Gagal menambahkan data" });
   }
 });
 
 router.put("/edit/:id", async (req, res) => {
   const { id } = req.params;
-  const { brand, model, linkimage } = req.body;
+  const { brand, model, linkimage, category_id } = req.body;
   try {
+    if (category_id) {
+      const category = await prisma.product_categories.findUnique({
+        where: { id: category_id },
+      });
+      if (!category) {
+        return res.status(404).json({ error: "Kategori tidak ditemukan" });
+      }
+    }
     const result = await prisma.model.update({
       where: {
         id: id,
@@ -84,11 +106,13 @@ router.put("/edit/:id", async (req, res) => {
         brand,
         model,
         linkimage,
+        ...(category_id ? { category_id } : {}),
       },
+      include: { category: { select: { slug: true, name: true } } },
     });
     res.status(201).json(result);
   } catch (error) {
-    // console.error(error);
+    console.error(error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });

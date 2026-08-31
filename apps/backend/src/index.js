@@ -21,7 +21,6 @@ const pinRoutes = require("./routes/pin");
 const bomlistRoutes = require("./routes/bomlist");
 const uphRoutes = require("./routes/uph");
 const productCategoriesRoutes = require("./routes/product-categories");
-const componentsRoutes = require("./routes/components");
 
 const redis = require("./config/redis");
 const requirePermission = require("../middlewares/requirePermission");
@@ -75,7 +74,6 @@ app.use("/model", auth, requirePermission("master-data:write"), modelRoutes);
 app.use("/pin", auth, requirePermission("pin:manage"), pinRoutes);
 app.use("/uph", auth, requirePermission("master-data:write"), uphRoutes);
 app.use("/product-categories", auth, requirePermission("master-data:write"), productCategoriesRoutes);
-app.use("/components", auth, requirePermission("master-data:write"), componentsRoutes);
 app.use(
   "/registscan",
   auth,

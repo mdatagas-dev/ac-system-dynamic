@@ -12,10 +12,15 @@ const SN = "SN-" + uniq;
 
 before(async () => {
   await waitForServer();
-  // BOM-driven: bomlist.post mensyaratkan model sudah ada di Model Master.
-  // Buat sekali; jika sudah ada dari run sebelumnya, 409 ditoleransi.
-  await api("POST", "/model/post", { brand: "TDD-MASTER", model: MODEL_SHORT, pk: 1 });
+  // BOM-driven: bomlist.post mensyaratkan model master; model wajib kategori.
+  // Jika sudah ada dari run sebelumnya, 409/400 ditoleransi.
+  const cat = await api("POST", "/product-categories/post", { slug: "tdd-master-cat-" + uniq, name: "TDD Master Cat" });
+  const catId = cat.data?.data?.id;
+  if (catId) track("product_categories", catId);
+  MASTER_CAT_ID = catId ?? (await api("GET", "/product-categories")).data?.data?.find((c) => c.slug === "tdd-master-cat-" + uniq)?.id ?? "";
+  await api("POST", "/model/post", { brand: "TDD-MASTER", model: MODEL_SHORT, pk: 1, category_id: MASTER_CAT_ID });
 });
+let MASTER_CAT_ID = "";
 
 after(async () => {
   await cleanupAll();
@@ -95,13 +100,15 @@ test("USERS: update + delete -> 201 / 200", async () => {
 // ---------- MODEL ----------
 test("MODEL: post 200, duplikat 409, edit 201, delete 200", async () => {
   const mName = "TDDM-" + uniq; // nama unik, tidak bentrok dengan master dari before()
-  let r = await api("POST", "/model/post", { brand: "BRAND-" + uniq, model: mName, pk: 10, linkimage: "http://x" });
+  let r = await api("POST", "/model/post", { brand: "BRAND-" + uniq, model: mName, pk: 10, linkimage: "http://x", category_id: MASTER_CAT_ID });
   assert.strictEqual(r.status, 200);
   modelId = r.data.data?.id;
   track("model", modelId);
-  r = await api("POST", "/model/post", { brand: "BRAND-" + uniq, model: mName, pk: 10 });
+  r = await api("POST", "/model/post", { brand: "BRAND-" + uniq, model: mName, pk: 10, category_id: MASTER_CAT_ID });
   assert.strictEqual(r.status, 409);
-  r = await api("PUT", "/model/edit/" + modelId, { brand: "BRAND2", model: mName, inch: 12, linkimage: "http://y" });
+  r = await api("POST", "/model/post", { brand: "BRAND-" + uniq, model: "NOCAT-" + uniq, pk: 10 });
+  assert.strictEqual(r.status, 400, "model tanpa kategori ditolak");
+  r = await api("PUT", "/model/edit/" + modelId, { brand: "BRAND2", model: mName, inch: 12, linkimage: "http://y", category_id: MASTER_CAT_ID });
   assert.strictEqual(r.status, 201);
   r = await api("DELETE", "/model/delete/" + modelId);
   assert.strictEqual(r.status, 200);
@@ -156,7 +163,7 @@ test("BOMLIST: post 200, edit 200, delete 200", async () => {
 test("UPH: post 201, edit 200, delete 200", async () => {
   const rLine = await api("POST", "/line/post", { line: "LINE-U-" + uniq });
   track("line", rLine.data.data?.id);
-  const rModel = await api("POST", "/model/post", { brand: "B", model: "MOD-U-" + uniq, pk: 1 });
+  const rModel = await api("POST", "/model/post", { brand: "B", model: "MOD-U-" + uniq, pk: 1, category_id: MASTER_CAT_ID });
   track("model", rModel.data.data?.id);
   let r = await api("POST", "/uph/post", { model: rModel.data.data?.id, line: rLine.data.data?.id, uph: 100 });
   assert.strictEqual(r.status, 201);
@@ -352,7 +359,7 @@ test("TDD/DASHBOARD: agregasi UPH per jam menjumlah scan hari ini", async () => 
   const sub = "LINE DASH IDU ASSY " + uniq;
   const PO = "PO-DASH-" + uniq;
 
-  const rModel = await api("POST", "/model/post", { brand: "B-DASH", model: MODEL_DASH_FULL.slice(0, -5), pk: 1 });
+  const rModel = await api("POST", "/model/post", { brand: "B-DASH", model: MODEL_DASH_FULL.slice(0, -5), pk: 1, category_id: MASTER_CAT_ID });
   assert.strictEqual(rModel.status, 200);
   track("model", rModel.data.data?.id);
   const rLine = await api("POST", "/line/post", { line: sub });
@@ -464,10 +471,10 @@ test("TDD/REFRESH: login -> akses -> refresh -> akses lagi, token invalid -> 401
   assert.strictEqual(r.status, 401, "tanpa refresh token harus 401");
 });
 
-// ---------- PRODUCT CATEGORIES ----------
-test("PRODUCT_CATEGORIES: CRUD + slug unique", async () => {
+// ---------- PRODUCT CATEGORIES + HIERARKI kategori -> model -> bomlist ----------
+test("PRODUCT_CATEGORIES: CRUD + slug unique + dipakai model", async () => {
   const slug = "tdd-cat-" + uniq;
-  let r = await api("POST", "/product-categories/post", { slug, name: "TDD Cat", suffix_length: 4 });
+  let r = await api("POST", "/product-categories/post", { slug, name: "TDD Cat" });
   assert.strictEqual(r.status, 201);
   const catId = r.data.data?.id;
   assert.ok(catId);
@@ -479,52 +486,37 @@ test("PRODUCT_CATEGORIES: CRUD + slug unique", async () => {
 
   r = await api("GET", "/product-categories");
   assert.strictEqual(r.status, 200);
-  assert.ok(Array.isArray(r.data.data));
   assert.ok(r.data.data.some((c) => c.slug === slug));
 
-  r = await api("PUT", "/product-categories/edit/" + catId, { name: "TDD Cat Edited", suffix_length: 5 });
+  r = await api("PUT", "/product-categories/edit/" + catId, { name: "TDD Cat Edited" });
   assert.strictEqual(r.status, 200);
 
+  // kategori terpakai model -> hapus ditolak
+  const rm = await api("POST", "/model/post", { brand: "B-CAT", model: "CAT-MOD-" + uniq, pk: 1, category_id: catId });
+  assert.strictEqual(rm.status, 200);
+  const rModelId = rm.data.data?.id;
+  track("model", rModelId);
+
+  r = await api("DELETE", "/product-categories/delete/" + catId);
+  assert.strictEqual(r.status, 400);
+  assert.match(JSON.stringify(r.data), /dipakai/);
+
+  // bomlist mewarisi product_category dari kategori model
+  const ordCat = "ORDCAT-" + uniq;
+  const rb = await api("POST", "/bomlist/post", { model: "CAT-MOD-" + uniq, order_number: ordCat, sn: SN });
+  assert.strictEqual(rb.status, 200);
+  assert.strictEqual(rb.data.data?.product_category, slug, "bomlist.product_category = slug kategori model");
+  track("bomlist", rb.data.data?.id);
+
+  // hapus model -> kategori bisa dihapus
+  r = await api("DELETE", "/model/delete/" + rModelId);
+  assert.strictEqual(r.status, 200);
   r = await api("DELETE", "/product-categories/delete/" + catId);
   assert.strictEqual(r.status, 200);
 });
 
-test("COMPONENTS: CRUD dinamis per kategori + validasi washing", async () => {
-  const slug = "washing-tdd-" + uniq;
-  let r = await api("POST", "/product-categories/post", { slug, name: "Washing TDD", suffix_length: 5 });
-  assert.strictEqual(r.status, 201);
-  const catId = r.data.data?.id;
-  track("product_categories", catId);
-
-  // buat komponen wajib + opsional
-  r = await api("POST", "/components/post", { category_id: catId, key: "sn_drum", label: "SN Drum", required: true, sort: 1 });
-  assert.strictEqual(r.status, 201);
-  const compId1 = r.data.data?.id;
-  track("components", compId1);
-
-  r = await api("POST", "/components/post", { category_id: catId, key: "sn_pump", label: "SN Pump", required: false, sort: 2 });
-  assert.strictEqual(r.status, 201);
-  track("components", r.data.data?.id);
-
-  // duplicate key di kategori sama -> 400
-  r = await api("POST", "/components/post", { category_id: catId, key: "sn_drum", label: "Dup" });
-  assert.strictEqual(r.status, 400);
-
-  // GET filter by slug
-  r = await api("GET", "/components?slug=" + slug);
-  assert.strictEqual(r.status, 200);
-  assert.strictEqual(r.data.data.length, 2);
-
-  // GET filter by category_id
-  r = await api("GET", "/components?category_id=" + catId);
-  assert.strictEqual(r.status, 200);
-  assert.ok(r.data.data.some((c) => c.key === "sn_drum"));
-
-  // edit komponen
-  r = await api("PUT", "/components/edit/" + compId1, { label: "SN Drum Updated", required: true });
-  assert.strictEqual(r.status, 200);
-
-  // siapkan BOM rule yang mendeklarasikan komponen dinamis washing
+// ---------- TDD SLICE: KOMPONEN DINAMIS VIA BOM (washing) ----------
+test("TDD/WASHING: komponen dinamis dari bomlist.components", async () => {
   const wOrd = "WASHORD-" + uniq;
   const rb = await api("POST", "/bomlist/post", {
     model: MODEL_SHORT, order_number: wOrd, sn: SN,
@@ -536,7 +528,7 @@ test("COMPONENTS: CRUD dinamis per kategori + validasi washing", async () => {
   track("bomlist", rb.data?.data?.id);
 
   // tanpa komponen wajib sn_drum -> 400
-  r = await api("POST", "/registscan/post", {
+  let r = await api("POST", "/registscan/post", {
     model: MODEL_FULL, order_number: wOrd, po_number: "PO-" + uniq, subline: "LINE WASHING INPUT",
     userid: "u_" + uniq, shift: "1", plan: 10, sn: SN, sn_pump: "PMP-" + uniq,
   });
@@ -556,10 +548,6 @@ test("COMPONENTS: CRUD dinamis per kategori + validasi washing", async () => {
   r = await api("POST", "/rdps/post", { id_regist: washRegistId, sn_drum: "DRM-" + uniq, sn_pump: "PMP-" + uniq, sn: SN });
   assert.strictEqual(r.status, 201);
   track("recordscan", r.data.data?.id);
-
-  // cleanup komponen & kategori (hapus record/regist dulu sudah di track, hapus bom)
-  r = await api("DELETE", "/components/delete/" + compId1);
-  assert.strictEqual(r.status, 200);
 });
 
 // ---------- TDD SLICE: BULK IMPORT + SOFT-DELETE BOM ----------

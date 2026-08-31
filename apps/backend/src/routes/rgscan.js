@@ -189,7 +189,6 @@ router.post("/post", requirePermission("registscan:write"), async (req, res) => 
   }
 
   // validasi mengikuti BOM rule (satu baris per model+order_number)
-  const product_category = (req.body.product_category || req.body.productCategory || "").toString().trim().toLowerCase() || null;
 
   try {
     const modelOnly = stripBrandSuffix(String(model).trim());
@@ -205,6 +204,9 @@ router.post("/post", requirePermission("registscan:write"), async (req, res) => 
     if (!od_eng) {
       return res.status(404).json({ error: "Batch tidak ada di bomlist" });
     }
+
+    // product_category turunan dari kategori model (via BOM rule)
+    const product_category = od_eng.product_category ?? null;
 
     const missing = missingRequired(od_eng, req.body);
     if (missing) {
@@ -279,7 +281,6 @@ router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) 
     pcb_idu,
     sn_carton,
     sn_accessories,
-    product_category,
   } = req.body || {};
 
   if (
@@ -300,8 +301,6 @@ router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) 
     return res.status(400).json({ error: "subline wajib diisi (isi section pada user)" });
   }
 
-  const prodCat2 = (product_category || "").toString().trim().toLowerCase() || null;
-
   try {
     // akses: pemilik registrasi (atau superuser)
     const existingReg = await prisma.registscan.findUnique({ where: { id } });
@@ -319,6 +318,9 @@ router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) 
     if (!odf) {
       return res.status(404).json({ error: "Batch tidak ada di bomlist" });
     }
+
+    // product_category turunan dari kategori model (via BOM rule)
+    const product_category = odf.product_category ?? null;
 
     const missing = missingRequired(odf, req.body);
     if (missing) {
@@ -362,7 +364,7 @@ router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) 
         sn_accessories: sn_accessories ? sn_accessories.trim() : null,
         sn_carton: sn_carton ? sn_carton.trim() : null,
         pcb_idu: pcb_idu ? pcb_idu.trim() : null,
-        product_category: product_category ? product_category.trim().toLowerCase() : undefined,
+        product_category: product_category ?? undefined,
         components: Object.keys(componentsData2).length ? componentsData2 : undefined,
       },
     });

@@ -62,7 +62,10 @@ router.post("/post", async (req, res) => {
       return res.status(400).json({ error: "model dan order_number wajib diisi" });
     }
 
-    const master = await prisma.model.findFirst({ where: { model } });
+    const master = await prisma.model.findFirst({
+      where: { model },
+      include: { category: { select: { slug: true } } },
+    });
     if (!master) {
       return res.status(400).json({ error: "Create the model first in Model Master" });
     }
@@ -90,6 +93,7 @@ router.post("/post", async (req, res) => {
         order_number: orderNumber,
         sn: handleData.sn,
         components,
+        product_category: master.category?.slug ?? null,
       },
     });
     res.status(200).json({ message: "success", data: result });
@@ -110,7 +114,10 @@ router.put("/edit/:id", async (req, res) => {
       return res.status(400).json({ error: "model dan order_number wajib diisi" });
     }
 
-    const master = await prisma.model.findFirst({ where: { model } });
+    const master = await prisma.model.findFirst({
+      where: { model },
+      include: { category: { select: { slug: true } } },
+    });
     if (!master) {
       return res.status(400).json({ error: "Create the model first in Model Master" });
     }
@@ -138,6 +145,7 @@ router.put("/edit/:id", async (req, res) => {
         sn_accessories: handleData.sn_accessories,
         order_number: orderNumber,
         sn: handleData.sn,
+        product_category: master.category?.slug ?? null,
         ...(components ? { components } : {}),
       },
     });

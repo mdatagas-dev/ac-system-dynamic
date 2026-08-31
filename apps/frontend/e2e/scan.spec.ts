@@ -15,7 +15,13 @@ test("alur scan: regist via API, scan via UI, hasil muncul", async ({ page, requ
   const base = "http://localhost:3010";
 
   // setup: model master + bomlist (BOM-driven) + registscan
-  const mkModel = await request.post(`${base}/model/post`, { headers: auth, data: { brand: "E2E Brand", model: modelShort, pk: 1 } });
+  const cat = await request.post(`${base}/product-categories/post`, {
+    headers: auth,
+    data: { slug: `e2e-scan-cat-${uniq}`, name: `E2E Scan Cat ${uniq}` },
+  });
+  expect(cat.status()).toBe(201);
+  const catId = (await cat.json()).data.id;
+  const mkModel = await request.post(`${base}/model/post`, { headers: auth, data: { brand: "E2E Brand", model: modelShort, pk: 1, category_id: catId } });
   expect(mkModel.status()).toBe(200);
   const modelId = (await mkModel.json()).data.id;
 
@@ -61,6 +67,7 @@ test("alur scan: regist via API, scan via UI, hasil muncul", async ({ page, requ
       try { await request.delete(`${base}/registscan/delete/${regId}`, { headers: auth }); } catch {}
       try { await request.delete(`${base}/bomlist/delete/${bomId}`, { headers: auth }); } catch {}
       try { await request.delete(`${base}/model/delete/${modelId}`, { headers: auth }); } catch {}
+      try { await request.delete(`${base}/product-categories/delete/${catId}`, { headers: auth }); } catch {}
     } catch {}
   }
 });

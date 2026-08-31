@@ -118,15 +118,10 @@ export const SEED_MASTER: Record<string, Record<string, unknown>[]> = {
     { id: "pn-yesterday", date: new Date(Date.now() - 86_400_000).toISOString().slice(0, 10), pin: 1350 },
   ],
   "product-categories": [
-    { id: "pc-1", slug: "ac_split", name: "AC Split", suffix_length: 5 },
-    { id: "pc-2", slug: "ac_window", name: "AC Window", suffix_length: 4 },
-    { id: "pc-3", slug: "ac_commercial", name: "AC Commercial (HVAC)", suffix_length: 5 },
-    { id: "pc-4", slug: "ac_portable", name: "AC Portable", suffix_length: 5 },
-    { id: "pc-5", slug: "washing", name: "Mesin Cuci", suffix_length: 5 },
-  ],
-  components: [
-    { id: "cp-1", category_id: "pc-1", key: "sn_odu", label: "SN ODU", required: false, regex: null, sort: 0, enabled: true },
-    { id: "cp-2", category_id: "pc-1", key: "sn_motor", label: "SN Motor", required: true, regex: "^MTR-[0-9]+$", sort: 1, enabled: true },
-    { id: "cp-3", category_id: "pc-1", key: "pcb_idu", label: "PCB IDU", required: true, regex: null, sort: 2, enabled: true },
+    { id: "pc-1", slug: "ac_split", name: "AC Split" },
+    { id: "pc-2", slug: "ac_window", name: "AC Window" },
+    { id: "pc-3", slug: "ac_commercial", name: "AC Commercial (HVAC)" },
+    { id: "pc-4", slug: "ac_portable", name: "AC Portable" },
+    { id: "pc-5", slug: "washing", name: "Mesin Cuci" },
   ],
 };

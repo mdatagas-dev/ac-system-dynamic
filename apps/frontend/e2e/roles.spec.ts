@@ -26,12 +26,18 @@ test.describe("RBAC & fitur", () => {
   });
 
   test("bomlist: Model pakai combobox (cari → pilih dari Model Master)", async ({ page, request }) => {
-    // siapkan model master via API (combobox mengisi dari /model)
+    // siapkan kategori + model master via API (model wajib kategori)
     const token = await (await import("./helpers")).apiLogin(request);
     const uniq = Date.now().toString(36);
     const modelName = `E2E-CB-${uniq}`;
     const auth = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-    const mk = await request.post("http://localhost:3010/model/post", { headers: auth, data: { brand: "E2E", model: modelName, pk: 1 } });
+    const cat = await request.post("http://localhost:3010/product-categories/post", {
+      headers: auth,
+      data: { slug: `e2e-cb-cat-${uniq}`, name: `E2E CB Cat ${uniq}` },
+    });
+    expect(cat.status()).toBe(201);
+    const catId = (await cat.json()).data.id;
+    const mk = await request.post("http://localhost:3010/model/post", { headers: auth, data: { brand: "E2E", model: modelName, pk: 1, category_id: catId } });
     expect(mk.status()).toBe(200);
     const modelId = (await mk.json()).data.id;
 
@@ -55,6 +61,11 @@ test.describe("RBAC & fitur", () => {
     } finally {
       try {
         await request.delete(`http://localhost:3010/model/delete/${modelId}`, { headers: auth });
+      } catch {
+        /* abaikan */
+      }
+      try {
+        await request.delete(`http://localhost:3010/product-categories/delete/${catId}`, { headers: auth });
       } catch {
         /* abaikan */
       }
