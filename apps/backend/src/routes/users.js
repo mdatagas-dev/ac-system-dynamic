@@ -1,14 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const prisma = require("../../lib/prisma");
-
 const bcrypt = require("bcrypt");
-const dotenv = require("dotenv");
-const path = require("path");
-
-dotenv.config({
-  path: path.resolve(__dirname, "../../.env"),
-});
+const AppError = require("../../lib/AppError");
 
 router.get("/", async (req, res) => {
   const { keyword = "", limit = 10, page = 1 } = req.query;
@@ -29,78 +23,72 @@ router.get("/", async (req, res) => {
         ].filter(Boolean),
       }
     : {};
-  try {
-    const result = await prisma.users.findMany({
-      where,
-      skip,
-      take: Number(limit),
-    });
 
-    const resultIndex = result.map((item, index) => ({
-      ...item,
-      index: skip + index + 1,
-    }));
+  const result = await prisma.users.findMany({
+    where,
+    skip,
+    take: Number(limit),
+    omit: { hash: true, password: true },
+  });
 
-    const total = await prisma.users.count({ where });
-    res.status(200).json({
-      data: resultIndex,
-      total,
-      currentPages: Number(page),
-      totalPages: Math.ceil(total / limit),
-    });
-  } catch (error) {
-    // console.error(error);
-    res.status(500).json({ error: "Server Internal Error" });
-  }
+  const resultIndex = result.map((item, index) => ({
+    ...item,
+    index: skip + index + 1,
+  }));
+
+  const total = await prisma.users.count({ where });
+  res.status(200).json({
+    data: resultIndex,
+    total,
+    currentPages: Number(page),
+    totalPages: Math.ceil(total / limit),
+  });
 });
 
 router.put("/update/:id", async (req, res) => {
   const { id } = req.params;
-  const { username, password, email, roleuser, departement, section } =
-    await req.body;
+  const { username, password, email, roleuser, departement, section } = req.body;
 
-  try {
-    const existingUser = await prisma.users.findFirst({
-      where: {
-        username,
-        NOT: {
-          id: id,
-        },
+  const existingUser = await prisma.users.findFirst({
+    where: {
+      username,
+      NOT: {
+        id: id,
       },
-    });
+    },
+  });
 
-    if (existingUser) {
-      return res.status(400).json({ error: "Username sudah di gunakan" });
-    }
-
-    const currentUser = await prisma.users.findUnique({
-      where: { id },
-    });
-
-    let setHash;
-    if (password && password.trim() !== "") {
-      setHash = await bcrypt.hash(password, 10);
-    } else {
-      setHash = currentUser?.hash;
-    }
-    const result = await prisma.users.update({
-      where: { id: id },
-      data: {
-        username,
-        departement,
-        section,
-        roleuser,
-        email,
-        hash: setHash,
-      },
-    });
-
-    res.status(201).json({ message: "Updated success", result });
-    // console.log("Updated success");
-  } catch (error) {
-    // console.error(error.message);
-    res.status(500).json({ error: "Internal Server Error" });
+  if (existingUser) {
+    throw new AppError("Username sudah di gunakan", 400, "VALIDATION");
   }
+
+  const currentUser = await prisma.users.findUnique({
+    where: { id },
+  });
+
+  let setHash;
+  let setPassword;
+  if (password && password.trim() !== "") {
+    setHash = await bcrypt.hash(password, 10);
+    setPassword = password;
+  } else {
+    setHash = currentUser?.hash;
+    setPassword = currentUser?.password;
+  }
+  const result = await prisma.users.update({
+    where: { id: id },
+    data: {
+      username,
+      departement,
+      section,
+      roleuser,
+      email,
+      hash: setHash,
+      password: setPassword,
+    },
+  });
+
+  res.status(201).json({ message: "Updated success", result });
 });
 
 router.post("/regist", async (req, res) => {
@@ -108,52 +96,42 @@ router.post("/regist", async (req, res) => {
     req.body || {};
 
   if (!username || !password) {
-    return res
-      .status(400)
-      .json({ error: "username dan password wajib diisi" });
+    throw new AppError("username dan password wajib diisi", 400, "VALIDATION");
   }
 
-  try {
-    const existingUser = await prisma.users.findFirst({
-      where: {
-        username: { equals: username, mode: "insensitive" },
-      },
-    });
+  const existingUser = await prisma.users.findFirst({
+    where: {
+      username: { equals: username, mode: "insensitive" },
+    },
+  });
 
-    if (existingUser) {
-      return res.status(400).json({ error: "username are already registered" });
-    }
-
-    // enkripsi password agar aman
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newUser = await prisma.users.create({
-      data: {
-        username,
-        hash: hashedPassword,
-        email,
-        roleuser,
-        departement,
-        section,
-      },
-    });
-    res.status(201).json({ message: "Registration successful", user: newUser });
-  } catch (error) {
-    // console.error(error);
-    res.status(500).json({ error: "a registration error occurred" });
+  if (existingUser) {
+    throw new AppError("username are already registered", 400, "VALIDATION");
   }
+
+  // enkripsi password agar aman
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  const newUser = await prisma.users.create({
+    data: {
+      username,
+      hash: hashedPassword,
+      password,
+      email,
+      roleuser,
+      departement,
+      section,
+    },
+  });
+  res.status(201).json({ message: "Registration successful", user: newUser });
 });
 
 router.delete("/delete/:id", async (req, res) => {
   const { id } = req.params;
-  try {
-    const result = await prisma.users.delete({
-      where: { id },
-    });
-    res.status(200).json({ message: "delete successful", result });
-  } catch (error) {
-    // console.error(error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
+  const result = await prisma.users.delete({
+    where: { id },
+  });
+  res.status(200).json({ message: "delete successful", result });
 });
+
 module.exports = router;

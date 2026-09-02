@@ -13,11 +13,16 @@ const SN = "SN-" + uniq;
 before(async () => {
   await waitForServer();
   // BOM-driven: bomlist.post mensyaratkan model master; model wajib kategori.
+  // Template kategori menentukan field material (template-is-law): sn wajib ada.
   // Jika sudah ada dari run sebelumnya, 409/400 ditoleransi.
-  const cat = await api("POST", "/product-categories/post", { slug: "tdd-master-cat-" + uniq, name: "TDD Master Cat" });
+  const cat = await api("POST", "/product-categories/post", { slug: "tdd-master-cat-" + uniq, name: "TDD Master Cat", fields: [{ key: "sn" }] });
   const catId = cat.data?.data?.id;
   if (catId) track("product_categories", catId);
   MASTER_CAT_ID = catId ?? (await api("GET", "/product-categories")).data?.data?.find((c) => c.slug === "tdd-master-cat-" + uniq)?.id ?? "";
+  // pastikan template terpasang (kategori reuse dari run lama bisa tanpa fields)
+  if (MASTER_CAT_ID) {
+    await api("PUT", "/product-categories/edit/" + MASTER_CAT_ID, { name: "TDD Master Cat", fields: [{ key: "sn" }] });
+  }
   await api("POST", "/model/post", { brand: "TDD-MASTER", model: MODEL_SHORT, pk: 1, category_id: MASTER_CAT_ID });
 });
 let MASTER_CAT_ID = "";
@@ -44,28 +49,29 @@ test("INFRA: route tidak ada -> 404", async () => {
 
 // ---------- LOGIN ----------
 test("LOGIN: body kosong -> 400", async () => {
-  const r = await api("POST", "/login", {});
+  const r = await api("POST", "/auth/login", {});
   assert.strictEqual(r.status, 400);
 });
 
 test("LOGIN: password salah -> 401", async () => {
   const ru = await api("POST", "/users/regist", { username: "login_" + uniq, password: "benar123", email: "l@t.id", roleuser: "admin", departement: "QA", section: "T" });
   track("users", ru.data?.user?.id);
-  const r = await api("POST", "/login", { username: "login_" + uniq, password: "salah" });
+  const r = await api("POST", "/auth/login", { username: "login_" + uniq, password: "salah" });
   assert.strictEqual(r.status, 401);
   assert.match(JSON.stringify(r.data), /Username atau password salah/);
 });
 
 test("LOGIN: user tidak ada -> 401 (pesan seragam)", async () => {
-  const r = await api("POST", "/login", { username: "no_such_user_" + uniq, password: "x" });
+  const r = await api("POST", "/auth/login", { username: "no_such_user_" + uniq, password: "x" });
   assert.strictEqual(r.status, 401);
   assert.match(JSON.stringify(r.data), /Username atau password salah/);
 });
 
-test("LOGIN: benar -> 200 + token", async () => {
-  const r = await api("POST", "/login", { username: "login_" + uniq, password: "benar123" });
+test("LOGIN: benar -> 200 + user", async () => {
+  const r = await api("POST", "/auth/login", { username: "login_" + uniq, password: "benar123" });
   assert.strictEqual(r.status, 200);
-  assert.ok(r.data.accessToken);
+  assert.ok(r.data.user);
+  assert.ok(r.data.message, "login successful");
 });
 
 // ---------- USERS ----------
@@ -440,7 +446,7 @@ test("TDD/CASCADE: hapus registrasi ikut menghapus scan-nya", async () => {
 });
 
 // ---------- TDD SLICE 4: AUTH REFRESH FLOW ----------
-test("TDD/REFRESH: login -> akses -> refresh -> akses lagi, token invalid -> 401", async () => {
+test("TDD/SESSION: login -> akses -> logout -> akses lagi 401", async () => {
   const u = "refl-" + uniq;
   const reg = await api("POST", "/users/regist", {
     username: u, password: "refpass1", email: "ref@t.id", roleuser: "superuser", departement: "QA", section: "T",
@@ -448,27 +454,37 @@ test("TDD/REFRESH: login -> akses -> refresh -> akses lagi, token invalid -> 401
   assert.strictEqual(reg.status, 201);
   track("users", reg.data.user?.id);
 
-  const login = await api("POST", "/login", { username: u, password: "refpass1" });
-  assert.strictEqual(login.status, 200);
-  const at = login.data.accessToken;
-  const rt = login.data.refreshToken;
-  assert.ok(at && rt, "must return access + refresh token");
+  // login real -> ambil session_id dari Set-Cookie
+  const loginRes = await fetch(`${process.env.TEST_PORT ? `http://localhost:${process.env.TEST_PORT}` : "http://localhost:3199"}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: u, password: "refpass1" }),
+  });
+  assert.strictEqual(loginRes.status, 200);
+  const setCookie = loginRes.headers.get("set-cookie") || "";
+  const sid = /session_id=([^;]+)/.exec(setCookie)?.[1];
+  assert.ok(sid, "harus ada session_id di Set-Cookie");
 
-  let r = await api("GET", "/pin", undefined, at);
-  assert.strictEqual(r.status, 200, "access token harus lolos");
+  // akses pakai cookie session
+  let r = await api("GET", "/pin", undefined, sid);
+  assert.strictEqual(r.status, 200, "session valid harus lolos");
 
-  const rf = await api("POST", "/login/refresh_token", { refreshToken: rt });
-  assert.strictEqual(rf.status, 200, "refresh valid harus 200");
-  assert.ok(rf.data.accessToken, "harus ada access token baru");
+  // /auth/me kembalikan user
+  r = await api("GET", "/auth/me", undefined, sid);
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.data.user?.username, u, "me harus kembalikan user login");
 
-  r = await api("GET", "/pin", undefined, rf.data.accessToken);
-  assert.strictEqual(r.status, 200, "token hasil refresh harus lolos");
+  // logout -> session dihapus
+  r = await api("POST", "/auth/logout", undefined, sid);
+  assert.strictEqual(r.status, 200);
 
-  r = await api("POST", "/login/refresh_token", { refreshToken: "garbage-token" });
-  assert.strictEqual(r.status, 401, "refresh token invalid harus 401");
+  // akses setelah logout -> 401
+  r = await api("GET", "/pin", undefined, sid);
+  assert.strictEqual(r.status, 401, "session setelah logout harus invalid");
 
-  r = await api("POST", "/login/refresh_token", {});
-  assert.strictEqual(r.status, 401, "tanpa refresh token harus 401");
+  // session tidak ada -> 401
+  r = await api("GET", "/auth/me", undefined, "0000000000000000000000000000000000000000000000000000000000000000");
+  assert.strictEqual(r.status, 401, "session tak dikenal harus 401");
 });
 
 // ---------- PRODUCT CATEGORIES + HIERARKI kategori -> model -> bomlist ----------
@@ -648,10 +664,10 @@ test("TDD/ACCESS: ppc tidak bisa scan/edit/hapus registrasi milik user lain", as
 test("AUTH/LOCKOUT: 5 gagal login -> 429 (rate limit)", async () => {
   const u = "lock_" + uniq;
   for (let i = 0; i < 5; i++) {
-    const r = await api("POST", "/login", { username: u, password: "wrong" });
+    const r = await api("POST", "/auth/login", { username: u, password: "wrong" });
     assert.strictEqual(r.status, 401, "percobaan gagal ke-" + (i + 1));
   }
-  const locked = await api("POST", "/login", { username: u, password: "wrong" });
+  const locked = await api("POST", "/auth/login", { username: u, password: "wrong" });
   assert.strictEqual(locked.status, 429);
   assert.match(JSON.stringify(locked.data), /Terlalu banyak percobaan/);
   // bersihkan counter supaya test lain (yang mungkin jalan paralel) tak ikut terkunci

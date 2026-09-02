@@ -10,35 +10,13 @@ import {
 
 export const MOCK_ENABLED = process.env.NEXT_PUBLIC_MOCK === "1";
 
+const MOCK_USER = { id: "us-2", username: "operator", roleuser: "superuser", depart: "PRODUCTION", section: "INDOOR" };
+
 let REGISTS: MockRegist[] = structuredClone(SEED_REGISTS);
 let RECORDS: MockRecord[] = structuredClone(SEED_RECORDS);
 const MASTER: Record<string, Record<string, unknown>[]> = structuredClone(SEED_MASTER);
 let nextId = 1000;
 const uid = () => `m${nextId++}`;
-
-/* JWT palsu — payload terbaca oleh decodeUser di lib/auth */
-const b64url = (o: unknown) =>
-  btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-
-function makeToken(username: string): { accessToken: string; refreshToken: string } {
-  const payload = { id: "us-2", username, roleuser: "superuser", depart: "PRODUCTION", section: "INDOOR" };
-  const head = b64url({ alg: "HS256", typ: "JWT" });
-  return {
-    accessToken: `${head}.${b64url(payload)}.mock-access`,
-    refreshToken: `${head}.${b64url(payload)}.mock-refresh`,
-  };
-}
-
-/** Dipakai refreshAccessToken() bila mock aktif */
-export function mockRefresh(token: string | null): string | null {
-  if (!token) return null;
-  try {
-    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
-    return makeToken(payload.username ?? "operator.idu").accessToken;
-  } catch {
-    return null;
-  }
-}
 
 class MockError extends Error {
   status: number;
@@ -94,11 +72,18 @@ export function mockRequest(
   const m = method.toUpperCase();
   const b = (body ?? {}) as Record<string, unknown>;
 
-  /* ---- Auth ---- */
-  if (p === "/login" && m === "POST") {
+  /* ---- Auth (session) ---- */
+  if (p === "/auth/login" && m === "POST") {
     const username = String(b.username ?? "").trim();
-    if (!username || !b.password) throw new MockError("Username / password salah", 401);
-    return makeToken(username);
+    if (!username || !b.password) throw new MockError("Username atau password salah", 401);
+    if (String(b.password) !== "admin") throw new MockError("Username atau password salah", 401);
+    return { message: "login successful", user: MOCK_USER };
+  }
+  if (p === "/auth/logout" && m === "POST") {
+    return { message: "logout successful" };
+  }
+  if (p === "/auth/me" && m === "GET") {
+    return { user: MOCK_USER };
   }
 
   /* ---- Scan summary (header Last Scan) ---- */

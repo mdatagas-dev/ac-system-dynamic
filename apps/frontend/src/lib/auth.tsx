@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * VM3 Auth — context login/logout, token di lib/api.
+ * VM3 Auth — context login/logout session-based (cookie HttpOnly).
+ * Session dikelola server (Redis); token tidak pernah terlihat JS.
  */
 import {
   createContext,
@@ -12,7 +13,7 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
-import { http, setTokens, clearTokens, getAccessToken, getRefreshToken, refreshAccessToken } from "@/lib/api";
+import { http } from "@/lib/api";
 
 export interface AuthUser {
   id: string;
@@ -31,37 +32,26 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function decodeUser(token: string): AuthUser | null {
-  try {
-    const payload = token.split(".")[1];
-    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
-  } catch {
-    return null;
-  }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [initializing, setInitializing] = useState(true);
   const router = useRouter();
 
+  // Cek session saat load: coba akses endpoint publik yang mengembalikan user
+  // Kalau session masih valid, setUser. Kalau tidak, user=null.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      // reload: pulihkan sesi — coba refresh bila token access hilang
-      let token = getAccessToken();
-      if (!token && getRefreshToken()) {
-        try {
-          token = await refreshAccessToken();
-        } catch {
-          /* token refresh kedaluwarsa */
-        }
-      }
-      if (!cancelled) {
-        setUser(token ? decodeUser(token) : null);
-        setInitializing(false);
-      }
-    })();
+    http
+      .get<{ user: AuthUser }>("/auth/me")
+      .then((res) => {
+        if (!cancelled) setUser(res.user);
+      })
+      .catch(() => {
+        if (!cancelled) setUser(null);
+      })
+      .finally(() => {
+        if (!cancelled) setInitializing(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -69,20 +59,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (username: string, password: string) => {
-      const data = await http.post<{ accessToken: string; refreshToken: string }>(
-        "/login",
+      const data = await http.post<{ message: string; user: AuthUser }>(
+        "/auth/login",
         { username, password },
-        { auth: false },
       );
-      setTokens(data.accessToken, data.refreshToken);
-      setUser(decodeUser(data.accessToken));
+      setUser(data.user);
       router.replace("/");
     },
     [router],
   );
 
-  const logout = useCallback(() => {
-    clearTokens();
+  const logout = useCallback(async () => {
+    try {
+      await http.post("/auth/logout");
+    } catch {
+      /* abaikan — cookie tetap dihapus server walau gagal */
+    }
     setUser(null);
     router.replace("/login");
   }, [router]);

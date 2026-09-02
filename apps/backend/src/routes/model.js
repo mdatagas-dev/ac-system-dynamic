@@ -1,14 +1,12 @@
 const express = require("express");
 const router = express.Router();
 const prisma = require("../../lib/prisma");
+const AppError = require("../../lib/AppError");
+const requirePermission = require("../../middlewares/requirePermission");
 
 router.get("/", async (req, res) => {
   const { page = 1, limit = 10, keyword = "" } = req.query;
   const skip = (Number(page) - 1) * Number(limit);
-  const isUUID =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      keyword,
-    );
 
   const where = keyword
     ? {
@@ -18,119 +16,102 @@ router.get("/", async (req, res) => {
         ],
       }
     : {};
-  try {
-    const total = await prisma.model.count({ where });
-    const result = await prisma.model.findMany({
-      where,
-      skip: Number.isNaN(skip) ? 0 : skip,
-      take: Number(limit),
-      include: { category: { select: { slug: true, name: true } } },
-    });
 
-    const resultIndex = result.map(({ category, ...item }, index) => ({
-      ...item,
-      product_category: category?.slug ?? null,
-      category_name: category?.name ?? null,
-      index: skip + index + 1,
-    }));    res.status(200).json({
-      data: resultIndex,
-      total,
-      currentPages: Number(page),
-      totalPages: Math.ceil(total / limit),
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
+  const total = await prisma.model.count({ where });
+  const result = await prisma.model.findMany({
+    where,
+    skip: Number.isNaN(skip) ? 0 : skip,
+    take: Number(limit),
+    include: { category: { select: { slug: true, name: true } } },
+  });
+
+  const resultIndex = result.map(({ category, ...item }, index) => ({
+    ...item,
+    product_category: category?.slug ?? null,
+    category_name: category?.name ?? null,
+    index: skip + index + 1,
+  }));
+  res.status(200).json({
+    data: resultIndex,
+    total,
+    currentPages: Number(page),
+    totalPages: Math.ceil(total / limit),
+  });
 });
 
-router.post("/post", async (req, res) => {
-  const { brand, model, pk, linkimage, category_id } = req.body;
+router.post("/post", requirePermission("master-data:write"), async (req, res) => {
+  const { brand, model, pk, linkimage, category_id, product } = req.body;
 
-  try {
-    if (!category_id) {
-      return res.status(400).json({ error: "Kategori wajib dipilih" });
-    }
+  if (!category_id) {
+    throw new AppError("Kategori wajib dipilih", 400, "VALIDATION");
+  }
+  const category = await prisma.product_categories.findUnique({
+    where: { id: category_id },
+  });
+  if (!category) {
+    throw new AppError("Kategori tidak ditemukan", 404, "NOT_FOUND");
+  }
+
+  const checkModel = await prisma.model.findFirst({
+    where: {
+      model: model,
+    },
+  });
+
+  if (checkModel !== null) {
+    throw new AppError("Double Model", 409, "DUPLICATE");
+  }
+
+  const result = await prisma.model.create({
+    data: {
+      brand,
+      model,
+      pk: Number(pk),
+      linkimage,
+      category_id,
+      product: product || null,
+    },
+    include: { category: { select: { slug: true, name: true } } },
+  });
+  res.status(200).json({ message: "Data berhasil ditambah", data: result });
+});
+
+router.put("/edit/:id", requirePermission("master-data:write"), async (req, res) => {
+  const { id } = req.params;
+  const { brand, model, linkimage, category_id, product } = req.body;
+
+  if (category_id) {
     const category = await prisma.product_categories.findUnique({
       where: { id: category_id },
     });
     if (!category) {
-      return res.status(404).json({ error: "Kategori tidak ditemukan" });
+      throw new AppError("Kategori tidak ditemukan", 404, "NOT_FOUND");
     }
-
-    const checkModel = await prisma.model.findFirst({
-      where: {
-        model: model,
-      },
-    });
-
-    if (checkModel !== null) {
-      res.status(409).json({ error: "Double Model" });
-      return;
-    }
-
-    const result = await prisma.model.create({
-      data: {
-        brand,
-        model,
-        pk: Number(pk),
-        linkimage,
-        category_id,
-      },
-      include: { category: { select: { slug: true, name: true } } },
-    });
-    res.status(200).json({ message: "Data berhasil ditambah", data: result });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Gagal menambahkan data" });
   }
+  const result = await prisma.model.update({
+    where: {
+      id: id,
+    },
+    data: {
+      brand,
+      model,
+      linkimage,
+      product,
+      ...(category_id ? { category_id } : {}),
+    },
+    include: { category: { select: { slug: true, name: true } } },
+  });
+  res.status(201).json(result);
 });
 
-router.put("/edit/:id", async (req, res) => {
+router.delete("/delete/:id", requirePermission("master-data:write"), async (req, res) => {
   const { id } = req.params;
-  const { brand, model, linkimage, category_id } = req.body;
-  try {
-    if (category_id) {
-      const category = await prisma.product_categories.findUnique({
-        where: { id: category_id },
-      });
-      if (!category) {
-        return res.status(404).json({ error: "Kategori tidak ditemukan" });
-      }
-    }
-    const result = await prisma.model.update({
-      where: {
-        id: id,
-      },
-      data: {
-        brand,
-        model,
-        linkimage,
-        ...(category_id ? { category_id } : {}),
-      },
-      include: { category: { select: { slug: true, name: true } } },
-    });
-    res.status(201).json(result);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
-router.delete("/delete/:id", async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const result = await prisma.model.delete({
-      where: {
-        id: id,
-      },
-    });
-    res.status(200).json({ result: result, message: "Deleted Succesfully" });
-  } catch (error) {
-    // console.error(error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
+  const result = await prisma.model.delete({
+    where: {
+      id: id,
+    },
+  });
+  res.status(200).json({ result: result, message: "Deleted Succesfully" });
 });
 
 module.exports = router;

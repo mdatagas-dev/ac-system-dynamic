@@ -8,6 +8,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useSearchParams } from "next/navigation";
 import { http } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { bomFields, bomFieldsForUnit, unitFromSubline } from "@/lib/bom";
 import { Card } from "@/components/vm3/Card";
 import { Dialog } from "@/components/vm3/Dialog";
 import { Button } from "@/components/vm3/Button";
@@ -25,12 +26,6 @@ interface Regist {
   total?: number;
 }
 
-interface BomRuleField {
-  key: string;
-  label: string;
-  required: boolean;
-}
-
 interface ScanResult {
   message?: string;
   brand?: string | null;
@@ -45,34 +40,6 @@ interface ScanSummary {
   total?: number;
   last?: { sn?: string; sn_odu?: string } | null;
   bomlist?: Array<Record<string, unknown>>;
-}
-
-const FIXED_LABELS: Record<string, string> = {
-  sn: "Serial Number",
-  sn_carton: "SN Carton",
-  pcb_idu: "SN PCB",
-  sn_box: "SN Electrical Box",
-  sn_motor: "SN Motor",
-  sn_accessories: "SN Accessories",
-  sn_odu: "Serial Number (ODU)",
-};
-
-/** Field dari BOM rule (bomlist row, sudah dibersihkan dari nilai kosong) */
-function fieldsFromBom(row: Record<string, unknown> | null | undefined): BomRuleField[] {
-  if (!row || typeof row !== "object") return [];
-  const fields: BomRuleField[] = [];
-  for (const [key, label] of Object.entries(FIXED_LABELS)) {
-    const v = row[key];
-    if (v !== undefined && v !== null && String(v).trim() !== "") {
-      fields.push({ key, label, required: true });
-    }
-  }
-  const comps = row.components && typeof row.components === "object" ? (row.components as Record<string, { label?: string; required?: boolean }>) : {};
-  for (const [key, def] of Object.entries(comps)) {
-    const d = def && typeof def === "object" ? def : {};
-    fields.push({ key, label: d.label || key, required: d.required !== false });
-  }
-  return fields;
 }
 
 export default function ScanPage() {
@@ -147,8 +114,10 @@ function ScanContent() {
   const selected = regists.find((r) => r.id === registId) ?? null;
 
   const orderedFields = useMemo(() => {
-    return fieldsFromBom(scanSummary?.bomlist?.[0]);
-  }, [scanSummary?.bomlist]);
+    const all = bomFields(scanSummary?.bomlist?.[0]);
+    const unit = unitFromSubline(scanSummary?.validation?.subline ?? null);
+    return bomFieldsForUnit(all, unit);
+  }, [scanSummary?.bomlist, scanSummary?.validation?.subline]);
 
   // Keep fieldValues keys in sync with orderedFields (generik reset saat BOM berubah)
   useEffect(() => {
@@ -331,6 +300,11 @@ function ScanContent() {
             <div className="text-sm font-semibold">{selected.subline}</div>
             <div className="text-xs opacity-80">Plan: {selected.plan ?? "-"} &nbsp; Count: {count}</div>
           </div>
+          {unitFromSubline(selected.subline) && (
+            <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide">
+              Unit: {unitFromSubline(selected.subline)}
+            </span>
+          )}
         </div>
       )}
 

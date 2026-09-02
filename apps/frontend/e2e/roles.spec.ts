@@ -27,10 +27,10 @@ test.describe("RBAC & fitur", () => {
 
   test("bomlist: Model pakai combobox (cari → pilih dari Model Master)", async ({ page, request }) => {
     // siapkan kategori + model master via API (model wajib kategori)
-    const token = await (await import("./helpers")).apiLogin(request);
+    const cookie = await (await import("./helpers")).apiLogin(request);
     const uniq = Date.now().toString(36);
     const modelName = `E2E-CB-${uniq}`;
-    const auth = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+    const auth = { Cookie: cookie, "Content-Type": "application/json" };
     const cat = await request.post("http://localhost:3010/product-categories/post", {
       headers: auth,
       data: { slug: `e2e-cb-cat-${uniq}`, name: `E2E CB Cat ${uniq}` },

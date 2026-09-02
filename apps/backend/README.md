@@ -23,7 +23,9 @@ apps/backend/
 │   └── routes/
 │       ├── login.js      # POST /login, /refresh_token
 │       ├── rgscan.js     # /registscan (CRUD registrasi batch)
-│       ├── rdps.js       # /rdps (scan, dashboard, history, export)
+│       ├── rdps.js       # /rdps (scan, history, CRUD scan)
+│       ├── dashboard.js  # /rdps/dashboard (UPH per shift, cache Redis)
+│       ├── exports.js    # /rdps (total-PO, export ODF/PO)
 │       ├── users.js      # /users (CRUD user)
 │       ├── model.js      # /model (CRUD)
 │       ├── line.js       # /line (CRUD)

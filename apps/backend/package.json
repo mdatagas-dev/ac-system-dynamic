@@ -2,7 +2,6 @@
   "dependencies": {
     "@prisma/client": "^6.7.0",
     "bcrypt": "^5.1.1",
-    "bottleneck": "^2.19.5",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
@@ -17,7 +16,7 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
-    "test": "node --test --test-force-exit test/api.test.js"
+    "test": "node --test --test-force-exit test/rules.test.js test/api.test.js"
   },
   "keywords": [],
   "author": "",

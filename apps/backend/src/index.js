@@ -12,6 +12,8 @@ const auth = require("../middlewares/auth");
 const cors = require("cors");
 
 const rdpsRoutes = require("./routes/rdps");
+const dashboardRoutes = require("./routes/dashboard");
+const exportsRoutes = require("./routes/exports");
 const loginRoutes = require("./routes/login");
 const registscanRoutes = require("./routes/rgscan");
 const usersRoutes = require("./routes/users");
@@ -24,6 +26,7 @@ const productCategoriesRoutes = require("./routes/product-categories");
 
 const redis = require("./config/redis");
 const requirePermission = require("../middlewares/requirePermission");
+const AppError = require("../lib/AppError");
 
 const port = process.env.PORT;
 
@@ -66,11 +69,11 @@ app.use(cors(optionsCors));
 app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ limit: "5mb", extended: true }));
 
-app.use("/login", loginRoutes);
+app.use("/auth", loginRoutes);
 app.use("/users", auth, requirePermission("users:manage"), usersRoutes);
-app.use("/bomlist", auth, requirePermission("master-data:write"), bomlistRoutes);
+app.use("/bomlist", auth, bomlistRoutes);
 app.use("/line", auth, requirePermission("master-data:write"), lineRoutes);
-app.use("/model", auth, requirePermission("master-data:write"), modelRoutes);
+app.use("/model", auth, modelRoutes);
 app.use("/pin", auth, requirePermission("pin:manage"), pinRoutes);
 app.use("/uph", auth, requirePermission("master-data:write"), uphRoutes);
 app.use("/product-categories", auth, requirePermission("master-data:write"), productCategoriesRoutes);
@@ -80,18 +83,20 @@ app.use(
   requirePermission(["registscan:read", "registscan:read-own", "registscan:write"]),
   registscanRoutes,
 );
-app.use("/rdps", auth, requirePermission("scan:read"), rdpsRoutes);
+app.use("/rdps", auth, requirePermission("scan:read"), rdpsRoutes, dashboardRoutes, exportsRoutes);
 
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: "Not Found" });
 });
 
-// global error handler
+// global error handler — Express 5 async errors forward here automatically
 app.use((err, req, res, next) => {
-  console.error("Unhandled error:", err);
-  res.status(err.status || 500).json({
-    error: err.message || "Internal Server Error",
+  const status = err.status || 500;
+  const expose = err instanceof AppError || status < 500;
+  if (!expose) console.error("Unhandled error:", err);
+  res.status(status).json({
+    error: expose ? err.message : "Internal Server Error",
     ...(err.code ? { code: err.code } : {}),
   });
 });

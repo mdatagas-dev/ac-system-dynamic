@@ -1,28 +1,36 @@
-const jwt = require("jsonwebtoken");
+// Session auth (Redis + cookie) — sinkron dengan backend-ac reference.
+// Baca session_id dari cookie HttpOnly, ambil user payload dari Redis,
+// set req.user. Tidak ada JWT.
+const redis = require("../src/config/redis");
 
-const auth = (req, res, next) => {
-  const authHeader = req.headers.authorization;
+const parseCookie = (header, name) => {
+  if (!header) return null;
+  const match = header
+    .split(";")
+    .map((c) => c.trim())
+    .find((c) => c.startsWith(`${name}=`));
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : null;
+};
 
-  if (!authHeader?.startsWith("Bearer ")) {
-    return res
-      .status(401)
-      .json({ message: "Unauthorized - No token provided" });
-  }
-
-  if (!process.env.JWT_SECRET) {
-    console.error("JWT_SECRET not set");
-    return res.status(500).json({ message: "Server misconfiguration" });
-  }
-
-  const token = authHeader.split(" ")[1];
-
+const auth = async (req, res, next) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
+    const sessionId = parseCookie(req.headers.cookie || "", "session_id");
+
+    if (!sessionId) {
+      return res.status(401).json({ message: "Unauthorized - No session" });
+    }
+
+    const data = await redis.get(`session:${sessionId}`);
+
+    if (!data) {
+      return res.status(401).json({ message: "Unauthorized - Session invalid" });
+    }
+
+    req.user = JSON.parse(data);
     next();
   } catch (error) {
-    console.error("JWT Verification Error:", error.message);
-    return res.status(401).json({ message: "Unauthorized - Token Invalid" });
+    console.error("Session verification error:", error.message);
+    return res.status(401).json({ message: "Unauthorized - Session invalid" });
   }
 };
 

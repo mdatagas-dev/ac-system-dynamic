@@ -1,6 +1,7 @@
-// Pure. The BOM rule (one bomlist row per model+order) declares the universe of scan fields.
-// Fixed columns are prefix templates for the standard SNs; `components` JsonB holds dynamic
-// field definitions: { [key]: { label, prefix, required } }.
+// Pure. Struktur field scan ditentukan TEMPLATE kategori (product_categories.fields:
+// [{key, label, required, unit}] atas 7 kolom material), sedangkan bomlist baris memegang
+// nilai prefix per order. ruleFields() menggabungkan keduanya; sistem `components`
+// (custom key di luar 7 material) tetap dideklarasikan per baris seperti sebelumnya.
 
 const FIXED_FIELDS = [
   { key: "sn", label: "SN Unit" },
@@ -12,38 +13,57 @@ const FIXED_FIELDS = [
   { key: "sn_odu", label: "SN ODU" },
 ];
 const FIXED_KEYS = new Set(FIXED_FIELDS.map((f) => f.key));
+const FIXED_LABELS = Object.fromEntries(FIXED_FIELDS.map((f) => [f.key, f.label]));
 
 const METADATA_KEYS = new Set([
   "id", "model", "order_number", "po_number", "subline", "userid", "shift",
-  "plan", "product_category", "productCategory", "components", "id_regist",
-  "timestamps",
+  "plan", "product_category", "productCategory", "components", "unit_map", "id_regist",
+  "timestamps", "fields", "fields_snapshot",
 ]);
 
 const isPresent = (v) => v !== undefined && v !== null && v !== "";
 
 /**
- * Declared fields of a BOM rule: non-empty fixed columns + components keys.
- * @param {{ [key: string]: any }} rule bomlist row
- * @returns {Array<{ key: string, label: string, prefix: string, required: boolean }>}
+ * Field efektif sebuah BOM rule: template kategori (wajib — resolver melempar error
+ * bila kosong) menentukan struktur; prefix dari kolom baris. Components custom tetap
+ * dari baris.
+ * @param {{ [key: string]: any }} rule bomlist row + fields (template)
+ * @returns {Array<{ key: string, label: string, prefix: string, required: boolean, unit: string | null }>}
  */
 function ruleFields(rule) {
   const fields = [];
-  for (const f of FIXED_FIELDS) {
-    if (isPresent(rule[f.key])) {
-      fields.push({ key: f.key, label: f.label, prefix: String(rule[f.key]), required: true });
-    }
+  const template = Array.isArray(rule.fields) ? rule.fields : [];
+  for (const t of template) {
+    const d = t && typeof t === "object" ? t : {};
+    fields.push({
+      key: d.key,
+      label: d.label || FIXED_LABELS[d.key] || d.key,
+      prefix: isPresent(rule[d.key]) ? String(rule[d.key]) : "",
+      required: d.required !== false,
+      unit: isPresent(d.unit) ? d.unit : null,
+    });
   }
   const comps = rule.components && typeof rule.components === "object" ? rule.components : {};
   for (const [key, def] of Object.entries(comps)) {
-    const d = def && typeof def === "object" ? def : {};
+    if (key === "_unit_map") continue;
+    const c = def && typeof def === "object" ? def : {};
     fields.push({
       key,
-      label: d.label || key,
-      prefix: isPresent(d.prefix) ? String(d.prefix) : "",
-      required: d.required !== false,
+      label: c.label || key,
+      prefix: isPresent(c.prefix) ? String(c.prefix) : "",
+      required: c.required !== false,
+      unit: isPresent(c.unit) ? c.unit : null,
     });
   }
   return fields;
+}
+
+/**
+ * Sama dengan ruleFields tetapi hanya untuk field yang cocok dengan unit tertentu
+ * (unit = null → field tanpa unit, cocok untuk semua subline).
+ */
+function ruleFieldsForUnit(rule, currentUnit) {
+  return ruleFields(rule).filter((f) => !f.unit || f.unit === currentUnit);
 }
 
 /** @returns {{ key: string, label: string } | null} first declared-but-missing required field */
@@ -77,4 +97,34 @@ function unknownKeys(rule, payload) {
   );
 }
 
-module.exports = { FIXED_FIELDS, METADATA_KEYS, ruleFields, missingRequired, findBomMismatch, unknownKeys };
+/**
+ * Validasi template kategori: ≥1 field, wajib memuat sn, key ⊆ 7 material,
+ * unit ∈ ODU|IDU|null. @returns {string | null} pesan error atau null bila valid.
+ */
+function validateTemplate(fields) {
+  if (!Array.isArray(fields) || fields.length === 0) return "minimal 1 field";
+  const keys = new Set();
+  for (const f of fields) {
+    if (!f || typeof f !== "object" || !FIXED_KEYS.has(f.key)) return `key tidak dikenal: ${f && f.key}`;
+    if (keys.has(f.key)) return `key duplikat: ${f.key}`;
+    keys.add(f.key);
+    if (isPresent(f.unit) && f.unit !== "ODU" && f.unit !== "IDU") return `unit tidak valid pada ${f.key}: ${f.unit}`;
+  }
+  if (!keys.has("sn")) return "template wajib memuat sn";
+  return null;
+}
+
+/** Normalisasi template: label default per key, required boolean, unit null. */
+function normalizeTemplate(fields) {
+  return fields.map((f) => ({
+    key: f.key,
+    label: isPresent(f.label) ? String(f.label).trim() : FIXED_LABELS[f.key],
+    required: f.required !== false,
+    unit: isPresent(f.unit) ? f.unit : null,
+  }));
+}
+
+module.exports = {
+  FIXED_FIELDS, METADATA_KEYS, ruleFields, ruleFieldsForUnit,
+  missingRequired, findBomMismatch, unknownKeys, validateTemplate, normalizeTemplate,
+};

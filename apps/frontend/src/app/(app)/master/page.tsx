@@ -51,6 +51,7 @@ const ENTITIES: Entity[] = [
       { key: "brand", label: "Brand", required: true },
       { key: "model", label: "Model", required: true },
       { key: "category_id", label: "Kategori", required: true },
+      { key: "product", label: "Produk (ODU/IDU)" },
       { key: "pk", label: "PK", type: "number" },
       { key: "linkimage", label: "Link Image" },
     ],
@@ -143,6 +144,20 @@ const EMPTY_FORM: Record<string, unknown> = {};
 
 type ProductCategoryRow = Record<string, unknown> & { id: string; slug: string; name: string; suffix_length?: number };
 
+// 7 kolom material yang bisa dideklarasikan template kategori
+const MATERIAL_FIELDS = [
+  { key: "sn", label: "Serial Number" },
+  { key: "sn_carton", label: "SN Carton" },
+  { key: "pcb_idu", label: "SN PCB" },
+  { key: "sn_box", label: "SN Electrical Box" },
+  { key: "sn_motor", label: "SN Motor" },
+  { key: "sn_accessories", label: "SN Accessories" },
+  { key: "sn_odu", label: "Serial Number (ODU)" },
+] as const;
+interface TemplateField { key: string; enabled: boolean; label: string; unit: string }
+type CatTemplate = { key: string; label?: string; unit?: string | null };
+type CatListResponse = { data: Array<{ slug: string; fields: CatTemplate[] | null }> };
+
 export default function MasterPage() {
   const { show } = useSnackbar();
   const [tab, setTab] = useState("model");
@@ -153,6 +168,10 @@ export default function MasterPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
   const [form, setForm] = useState<Record<string, unknown>>(EMPTY_FORM);
+  // BOM: field key → unit AC ("ODU"/"IDU"/"") — dipakai validasi scan per subline
+  const [unitMap, setUnitMap] = useState<Record<string, string>>({});
+  // Template kategori (struktur field material): key → { enabled, label, unit }
+  const [template, setTemplate] = useState<TemplateField[]>([]);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
@@ -164,6 +183,25 @@ export default function MasterPage() {
 
   // Model master — untuk Combobox di form BOM List
   const [models, setModels] = useState<string[]>([]);
+  // Template kategori yang berlaku untuk model terpilih di form BOM (template-is-law:
+  // hanya field yang dideklarasikan kategori yang bisa diisi prefix-nya).
+  const [bomTemplate, setBomTemplate] = useState<Array<{ key: string; label?: string; unit?: string | null }> | null>(null);
+  useEffect(() => {
+    const slug = tab === "bomlist" && entity.key === "bomlist" && editing ? String(editing.product_category ?? "") : "";
+    let cancelled = false;
+    const lookup = slug
+      ? http
+          .get<CatListResponse>("/product-categories")
+          .then((r) => (r.data ?? []).find((c) => c.slug === slug)?.fields ?? null)
+          .catch(() => null)
+      : Promise.resolve(null);
+    lookup.then((fields) => {
+      if (!cancelled) setBomTemplate(fields);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, editing, entity.key]);
   useEffect(() => {
     if (tab !== "bomlist") return;
     let cancelled = false;
@@ -269,25 +307,43 @@ export default function MasterPage() {
     setEditing(null);
     if (entity.key === "product_categories") {
       setForm({ slug: "", name: "" });
+      // default template: sn saja (identitas unit) — sn tidak boleh dimatikan
+      setTemplate([{ key: "sn", enabled: true, label: MATERIAL_FIELDS[0].label, unit: "" }]);
     } else if (entity.key === "model") {
       setForm({ category_id: "" });
     } else {
       setForm({});
     }
+    setUnitMap({});
     setDialogOpen(true);
   };
 
   const openEdit = (row: Record<string, unknown>) => {
     setEditing(row);
+    setUnitMap({});
     if (entity.key === "product_categories") {
       setForm({
         slug: String(row.slug ?? ""),
         name: String(row.name ?? ""),
       });
+      // pulihkan template tersimpan; field tak ada di template = nonaktif
+      const saved = Array.isArray(row.fields) ? (row.fields as Array<{ key: string; label?: string; unit?: string | null }>) : [];
+      setTemplate(
+        MATERIAL_FIELDS.map((mf) => {
+          const s = saved.find((t) => t.key === mf.key);
+          return { key: mf.key, enabled: Boolean(s), label: s?.label || mf.label, unit: s?.unit ?? "" };
+        }),
+      );
     } else if (entity.key === "bomlist") {
       const next: Record<string, unknown> = {};
       for (const f of entity.fields) next[f.key] = row[f.key] ?? "";
       setForm(next);
+      const um = row.unit_map && typeof row.unit_map === "object" ? (row.unit_map as Record<string, unknown>) : {};
+      setUnitMap(
+        Object.fromEntries(
+          Object.entries(um).map(([k, v]) => [k, String(v)]),
+        ),
+      );
     } else {
       const next: Record<string, unknown> = {};
       for (const f of entity.fields) next[f.key] = row[f.key] ?? "";
@@ -304,6 +360,18 @@ export default function MasterPage() {
       if (entity.key === "product_categories") {
         if (payload.slug) payload.slug = String(payload.slug).trim().toLowerCase();
         if (payload.name) payload.name = String(payload.name).trim();
+        // template: field aktif saja — server memvalidasi (≥1 field, wajib sn)
+        const fields = template
+          .filter((t) => t.enabled)
+          .map((t) => ({ key: t.key, label: t.label.trim() || undefined, unit: t.unit || null }));
+        payload.fields = fields;
+      }
+      if (entity.key === "bomlist") {
+        // hanya simpan unit yang terisi (ODU/IDU)
+        const um = Object.fromEntries(
+          Object.entries(unitMap).filter(([, v]) => v === "ODU" || v === "IDU"),
+        );
+        if (Object.keys(um).length) payload.unit_map = um;
       }
 
       if (editing) {
@@ -454,6 +522,11 @@ export default function MasterPage() {
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           {entity.fields
             .filter((f) => !(editing && f.editOnly))
+            // template-is-law: BOM hanya menampilkan field yang dideklarasikan kategori
+            .filter((f) => {
+              if (entity.key !== "bomlist" || f.key === "model" || f.key === "order_number") return true;
+              return Boolean(bomTemplate?.some((t) => t.key === f.key));
+            })
             .map((f) =>
               entity.key === "bomlist" && f.key === "model" ? (
                 <Combobox
@@ -464,6 +537,30 @@ export default function MasterPage() {
                   onChange={(v) => setForm({ ...form, [f.key]: v })}
                   placeholder="Ketik untuk mencari model"
                 />
+              ) : entity.key === "bomlist" && f.key !== "order_number" ? (
+                <div key={f.key} className="flex items-end gap-2">
+                  <div className="min-w-0 flex-1">
+                    <TextField
+                      label={f.label}
+                      value={String(form[f.key] ?? "")}
+                      onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                      placeholder="Prefix SN (opsional)"
+                    />
+                  </div>
+                  <div className="w-28 shrink-0">
+                    <label className="mb-1.5 block text-sm font-medium text-foreground">Unit AC</label>
+                    <Select
+                      options={[
+                        { value: "", label: "Semua" },
+                        { value: "IDU", label: "IDU" },
+                        { value: "ODU", label: "ODU" },
+                      ]}
+                      value={unitMap[f.key] ?? ""}
+                      onChange={(v) => setUnitMap({ ...unitMap, [f.key]: v ?? "" })}
+                      placeholder="Semua"
+                    />
+                  </div>
+                </div>
               ) : entity.key === "model" && f.key === "category_id" ? (
                 <div key={f.key}>
                   <label className="mb-1.5 block text-sm font-medium text-foreground">Kategori *</label>
@@ -510,6 +607,53 @@ export default function MasterPage() {
               ),
             )}
         </div>
+
+        {/* Editor template kategori: field material mana yang di-scan untuk kategori ini */}
+        {entity.key === "product_categories" && (
+          <div className="mt-5 border-t border-outline-variant pt-4">
+            <p className="text-sm font-medium text-foreground">Field Material</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Menentukan field yang di-scan untuk semua BOM kategori ini. Minimal 1 field, Serial Number wajib.
+            </p>
+            <div className="mt-3 flex flex-col gap-2">
+              {template.map((t, i) => (
+                <div key={t.key} className="flex flex-wrap items-center gap-2 rounded-lg bg-surface-container px-3 py-2">
+                  <label className="flex flex-1 min-w-0 items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={t.enabled}
+                      disabled={t.key === "sn"}
+                      onChange={(e) => setTemplate(template.map((x, j) => (j === i ? { ...x, enabled: e.target.checked } : x)))}
+                    />
+                    <span className="truncate">{MATERIAL_FIELDS.find((m) => m.key === t.key)?.label ?? t.key}</span>
+                  </label>
+                  <div className="w-36 min-w-0">
+                    <input
+                      aria-label={`Label ${t.key}`}
+                      value={t.label}
+                      onChange={(e) => setTemplate(template.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))}
+                      placeholder="Label"
+                      className="h-11 w-full rounded-[var(--vm3-shape-lg)] border border-[var(--vm3-color-outline-variant)] bg-[var(--vm3-color-surface-container-highest)] px-3 text-sm text-[var(--vm3-color-on-surface)] outline-none focus:border-[var(--vm3-color-primary)] focus:ring-2 focus:ring-[var(--vm3-color-primary)]/20"
+                    />
+                  </div>
+                  <div className="w-24 shrink-0">
+                    <Select
+                      aria-label={`Unit ${t.key}`}
+                      options={[
+                        { value: "", label: "Semua" },
+                        { value: "IDU", label: "IDU" },
+                        { value: "ODU", label: "ODU" },
+                      ]}
+                      value={t.unit}
+                      onChange={(v) => setTemplate(template.map((x, j) => (j === i ? { ...x, unit: v ?? "" } : x)))}
+                      placeholder="Semua"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </Dialog>
 
       <Dialog

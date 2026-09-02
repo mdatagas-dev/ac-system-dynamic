@@ -1,138 +1,85 @@
 const express = require("express");
 const router = express.Router();
 const prisma = require("../../lib/prisma");
-const {
-  missingRequired,
-  findBomMismatch,
-  unknownKeys,
-  ruleFields,
-} = require("../rules/bom-match");
-const { stripBrandSuffix } = require("../rules/model-code");
 const { hasPermission } = require("../services/permissions");
+const { resolveBomRule } = require("../services/registration");
 const requirePermission = require("../../middlewares/requirePermission");
 const { assertCanAccessRegistration } = require("../services/registration-access");
+const AppError = require("../../lib/AppError");
 
-const dotenv = require("dotenv");
-const path = require("path");
-
-dotenv.config({
-  path: path.resolve(__dirname, "../../.env"),
-});
+const trimOrNull = (v) => (v ? String(v).trim() : null);
 
 router.get("/", async (req, res) => {
   const { page = 1, limit = 10, keyword = "" } = req.query;
   const skip = (Number(page) - 1) * Number(limit);
-
-  let params = [];
-  let optionQuery = "";
-  let sql = "";
-  let sqlcount = "";
   const isSuperuser = hasPermission(req.user, "registscan:read");
 
-  if (isSuperuser) {
-    if (keyword) {
-      params.push(
-        `%${keyword}%`,
-        `%${keyword}%`,
-        `%${keyword}%`,
-        `%${keyword}%`,
-        `%${keyword}%`,
-      );
-      optionQuery = ` AND (
-      rgs.model ILIKE $1
-      OR rgs.id::text ILIKE $2
-      OR rgs.order_number ILIKE $3
-      OR rgs.po_number ILIKE $4
-      OR rgs.subline ILIKE $5
-    )`;
-    }
-    params.push(Number(limit), Number(skip));
-    sqlcount = `
-    SELECT COUNT(id)::INTEGER FROM registscan AS rgs WHERE 1=1 ${optionQuery}
-    `;
-    sql = `
-      SELECT 
-      rgs.*,
-      COUNT(rcd.id_regist)::INTEGER AS total
-    FROM registscan AS rgs
-    LEFT JOIN recordscan AS rcd
-      ON rgs.id = rcd.id_regist::uuid 
-    WHERE 1=1
-      ${optionQuery}
-    GROUP BY rgs.id
-    ORDER BY rgs.timestamps DESC
-    LIMIT $${params.length - 1} OFFSET $${params.length}
-    `;
-  } else {
+  const params = [];
+  let where = "WHERE 1=1";
+  if (!isSuperuser) {
     params.push(req.user.id);
-    if (keyword) {
-      params.push(
-        `%${keyword}%`,
-        `%${keyword}%`,
-        `%${keyword}%`,
-        `%${keyword}%`,
-        `%${keyword}%`,
-      );
-      optionQuery = ` AND (
-      rgs.model ILIKE $2
-      OR rgs.id::text ILIKE $3
-      OR rgs.order_number ILIKE $4
-      OR rgs.po_number ILIKE $5
-      OR rgs.subline ILIKE $6
+    where = "WHERE rgs.userid = $1";
+  }
+  if (keyword) {
+    const start = params.length; // indeks placeholder keyword dimulai setelah filter user
+    params.push(
+      `%${keyword}%`,
+      `%${keyword}%`,
+      `%${keyword}%`,
+      `%${keyword}%`,
+      `%${keyword}%`,
+    );
+    where += ` AND (
+      rgs.model ILIKE $${start + 1}
+      OR rgs.id::text ILIKE $${start + 2}
+      OR rgs.order_number ILIKE $${start + 3}
+      OR rgs.po_number ILIKE $${start + 4}
+      OR rgs.subline ILIKE $${start + 5}
     )`;
-    }
-    params.push(Number(limit), Number(skip));
+  }
+  params.push(Number(limit), Number(skip));
 
-    sql = `
+  const sql = `
     SELECT
       rgs.*,
       COUNT(rcd.id_regist)::INTEGER AS total
     FROM registscan AS rgs
     LEFT JOIN recordscan AS rcd
-      ON rgs.id = rcd.id_regist::uuid 
-    WHERE rgs.userid = $1
-      ${optionQuery}
-    GROUP BY rgs.id, rgs.model, rgs.order_number, rgs.subline,rgs.plan, rgs.po_number
+      ON rgs.id = rcd.id_regist::uuid
+    ${where}
+    GROUP BY rgs.id
     ORDER BY rgs.timestamps DESC
     LIMIT $${params.length - 1} OFFSET $${params.length}
-    `;
+  `;
+  const sqlcount = `
+    SELECT COUNT(id)::INTEGER FROM registscan AS rgs ${where}
+  `;
 
-    sqlcount = `
-    SELECT COUNT(id)::INTEGER FROM registscan AS rgs WHERE userid = $1 ${optionQuery}
-    `;
-  }
+  const result = await prisma.$queryRawUnsafe(sql, ...params);
 
-  try {
-    const result = await prisma.$queryRawUnsafe(sql, ...params);
+  // count query tidak pakai limit/skip -> kirim subset params
+  const total = await prisma.$queryRawUnsafe(
+    sqlcount,
+    ...params.slice(0, params.length - 2),
+  );
 
-    // count query tidak pakai limit/skip -> kirim subset params
-    const total = await prisma.$queryRawUnsafe(
-      sqlcount,
-      ...params.slice(0, params.length - 2),
-    );
+  const resultIndex = result.map((item, index) => ({
+    ...item,
+    index: skip + index + 1,
+  }));
 
-    const resultIndex = result.map((item, index) => ({
-      ...item,
-      index: skip + index + 1,
-    }));
-
-    res.status(200).json({
-      data: resultIndex,
-      total: total[0].count,
-      currentPage: Number(page),
-      totalPages: Math.ceil(total[0].count / limit),
-    });
-  } catch (error) {
-    // console.error(error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
+  res.status(200).json({
+    data: resultIndex,
+    total: total[0].count,
+    currentPage: Number(page),
+    totalPages: Math.ceil(total[0].count / limit),
+  });
 });
 
 router.get("/checkregist", async (req, res) => {
   const iduser = req.headers["iduser"];
-  try {
-    const result = await prisma.$queryRaw`
-      SELECT 
+  const result = await prisma.$queryRaw`
+    SELECT
       rgs.id AS id,
       rgs.model AS model,
       rgs.plan AS plan,
@@ -143,13 +90,9 @@ router.get("/checkregist", async (req, res) => {
     WHERE rgs.userid = ${iduser}
     GROUP BY rgs.id, rgs.model, rgs.plan
     HAVING rgs.plan > COUNT(rcd.id_regist);
-    `;
+  `;
 
-    res.status(200).json({ data: result });
-  } catch (error) {
-    // console.log("Handle error checkregist", error.message);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
+  res.status(200).json({ data: result });
 });
 
 router.post("/post", requirePermission("registscan:write"), async (req, res) => {
@@ -177,93 +120,39 @@ router.post("/post", requirePermission("registscan:write"), async (req, res) => 
     !shift ||
     plan === undefined
   ) {
-    return res
-      .status(400)
-      .json({ error: "model, order_number, po_number, userid, shift, plan wajib diisi" });
+    throw new AppError("model, order_number, po_number, userid, shift, plan wajib diisi", 400, "VALIDATION");
   }
 
   // subline otomatis dari section user (fallback ke body untuk kompatibilitas)
   const subline = (req.body.subline ?? req.user?.section ?? "").toString().trim();
   if (!subline) {
-    return res.status(400).json({ error: "subline wajib diisi (isi section pada user)" });
+    throw new AppError("subline wajib diisi (isi section pada user)", 400, "VALIDATION");
   }
 
-  // validasi mengikuti BOM rule (satu baris per model+order_number)
+  const { product_category, components, fields } = await resolveBomRule({ model, order_number, payload: req.body });
+  const result = await prisma.registscan.create({
+    data: {
+      model: model.trim(),
+      order_number: order_number.trim(),
+      po_number: po_number.trim(),
+      subline: subline.trim(),
+      userid,
+      shift,
+      plan: Number(plan),
+      sn: trimOrNull(sn),
+      sn_odu: trimOrNull(sn_odu),
+      sn_motor: trimOrNull(sn_motor),
+      sn_box: trimOrNull(sn_box),
+      sn_accessories: trimOrNull(sn_accessories),
+      sn_carton: trimOrNull(sn_carton),
+      pcb_idu: trimOrNull(pcb_idu),
+      product_category: product_category || null,
+      components: Object.keys(components).length ? components : null,
+      fields_snapshot: fields,
+    },
+  });
 
-  try {
-    const modelOnly = stripBrandSuffix(String(model).trim());
-
-    const od_eng = await prisma.bomlist.findFirst({
-      where: {
-        model: modelOnly,
-        order_number: order_number.trim(),
-        is_active: true,
-      },
-    });
-
-    if (!od_eng) {
-      return res.status(404).json({ error: "Batch tidak ada di bomlist" });
-    }
-
-    // product_category turunan dari kategori model (via BOM rule)
-    const product_category = od_eng.product_category ?? null;
-
-    const missing = missingRequired(od_eng, req.body);
-    if (missing) {
-      return res.status(400).json({ error: `Wajib diisi: ${missing.label}` });
-    }
-
-    const mismatch = findBomMismatch(od_eng, req.body);
-    if (mismatch) {
-      return res.status(400).json({
-        error: `${mismatch.key} tidak sesuai BOM (diharapkan mengandung: ${mismatch.expected})`,
-      });
-    }
-
-    const unknown = unknownKeys(od_eng, req.body);
-    if (unknown.length) {
-      return res.status(400).json({ error: `Field tidak dikenal BOM: ${unknown.join(", ")}` });
-    }
-
-    const planning = Number(plan);
-    // components JSONB = nilai field dinamis yang dideklarasikan BOM
-    const declared = ruleFields(od_eng);
-    const componentsData = {};
-    for (const f of declared) {
-      const val = req.body[f.key];
-      if (val !== undefined && val !== null && String(val).trim() !== "") {
-        componentsData[f.key] = String(val).trim();
-      }
-    }
-
-    const result = await prisma.registscan.create({
-      data: {
-        model: model.trim(),
-        order_number: order_number.trim(),
-        po_number: po_number.trim(),
-        subline: subline.trim(),
-        userid,
-        shift,
-        plan: planning,
-        sn: sn ? sn.trim() : null,
-        sn_odu: sn_odu ? sn_odu.trim() : null,
-        sn_motor: sn_motor ? sn_motor.trim() : null,
-        sn_box: sn_box ? sn_box.trim() : null,
-        sn_accessories: sn_accessories ? sn_accessories.trim() : null,
-        sn_carton: sn_carton ? sn_carton.trim() : null,
-        pcb_idu: pcb_idu ? pcb_idu.trim() : null,
-        product_category: product_category || null,
-        components: Object.keys(componentsData).length ? componentsData : null,
-      },
-    });
-
-    res
-      .status(201)
-      .json({ message: "Data Added Successfully", result: result });
-  } catch (error) {
-    // console.error(error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
+  res.status(201).json({ message: "Data Added Successfully", result });
 });
 
 router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) => {
@@ -290,106 +179,56 @@ router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) 
     !shift ||
     plan === undefined
   ) {
-    return res
-      .status(400)
-      .json({ error: "model, order_number, po_number, shift, plan wajib diisi" });
+    throw new AppError("model, order_number, po_number, shift, plan wajib diisi", 400, "VALIDATION");
   }
 
   // subline otomatis dari section user (fallback ke body untuk kompatibilitas)
   const subline = (req.body.subline ?? req.user?.section ?? "").toString().trim();
   if (!subline) {
-    return res.status(400).json({ error: "subline wajib diisi (isi section pada user)" });
+    throw new AppError("subline wajib diisi (isi section pada user)", 400, "VALIDATION");
   }
 
-  try {
-    // akses: pemilik registrasi (atau superuser)
-    const existingReg = await prisma.registscan.findUnique({ where: { id } });
-    assertCanAccessRegistration(req.user, existingReg);
+  // akses: pemilik registrasi (atau superuser)
+  const existingReg = await prisma.registscan.findUnique({ where: { id } });
+  assertCanAccessRegistration(req.user, existingReg);
 
-    const modelOnly = stripBrandSuffix(String(model).trim());
-    const odf = await prisma.bomlist.findFirst({
-      where: {
-        model: modelOnly,
-        order_number: order_number.trim(),
-        is_active: true,
-      },
-    });
-
-    if (!odf) {
-      return res.status(404).json({ error: "Batch tidak ada di bomlist" });
-    }
-
-    // product_category turunan dari kategori model (via BOM rule)
-    const product_category = odf.product_category ?? null;
-
-    const missing = missingRequired(odf, req.body);
-    if (missing) {
-      return res.status(400).json({ error: `Wajib diisi: ${missing.label}` });
-    }
-
-    const mismatch = findBomMismatch(odf, req.body);
-    if (mismatch) {
-      return res.status(400).json({
-        error: `${mismatch.key} tidak sesuai BOM (diharapkan mengandung: ${mismatch.expected})`,
-      });
-    }
-
-    const unknown = unknownKeys(odf, req.body);
-    if (unknown.length) {
-      return res.status(400).json({ error: `Field tidak dikenal BOM: ${unknown.join(", ")}` });
-    }
-
-    const planning = Number(plan);
-    const declared = ruleFields(odf);
-    const componentsData2 = {};
-    for (const f of declared) {
-      const val = req.body[f.key];
-      if (val !== undefined && val !== null && String(val).trim() !== "") {
-        componentsData2[f.key] = String(val).trim();
-      }
-    }
-    const result = await prisma.registscan.update({
-      where: { id: id },
-      data: {
-        model: model.trim(),
-        order_number: order_number.trim(),
-        po_number: po_number.trim(),
-        subline: subline.trim(),
-        shift,
-        plan: planning,
-        sn: sn ? sn.trim() : null,
-        sn_odu: sn_odu ? sn_odu.trim() : null,
-        sn_motor: sn_motor ? sn_motor.trim() : null,
-        sn_box: sn_box ? sn_box.trim() : null,
-        sn_accessories: sn_accessories ? sn_accessories.trim() : null,
-        sn_carton: sn_carton ? sn_carton.trim() : null,
-        pcb_idu: pcb_idu ? pcb_idu.trim() : null,
-        product_category: product_category ?? undefined,
-        components: Object.keys(componentsData2).length ? componentsData2 : undefined,
-      },
-    });
-    res
-      .status(200)
-      .json({ message: "data successfully changed", result: result });
-  } catch (error) {
-    res.status(error.status || 500).json({ error: error.message || "Internal Server Error" });
-  }
+  const { product_category, components, fields } = await resolveBomRule({ model, order_number, payload: req.body });
+  const result = await prisma.registscan.update({
+    where: { id },
+    data: {
+      model: model.trim(),
+      order_number: order_number.trim(),
+      po_number: po_number.trim(),
+      subline: subline.trim(),
+      shift,
+      plan: Number(plan),
+      sn: trimOrNull(sn),
+      sn_odu: trimOrNull(sn_odu),
+      sn_motor: trimOrNull(sn_motor),
+      sn_box: trimOrNull(sn_box),
+      sn_accessories: trimOrNull(sn_accessories),
+      sn_carton: trimOrNull(sn_carton),
+      pcb_idu: trimOrNull(pcb_idu),
+      product_category: product_category ?? undefined,
+      components: Object.keys(components).length ? components : undefined,
+      fields_snapshot: fields,
+    },
+  });
+  res
+    .status(200)
+    .json({ message: "data successfully changed", result });
 });
 
 router.delete("/delete/:id", requirePermission("registscan:write"), async (req, res) => {
   const { id } = req.params;
-  try {
-    // akses: pemilik registrasi (atau superuser)
-    const existingReg = await prisma.registscan.findUnique({ where: { id } });
-    assertCanAccessRegistration(req.user, existingReg);
-    const result = await prisma.$transaction([
-      prisma.recordscan.deleteMany({ where: { id_regist: id } }),
-      prisma.registscan.delete({ where: { id } }),
-    ]);
-    res.status(200).json({ message: "Deleted Successfully", result: result });
-  } catch (error) {
-    res.status(error.status || 500).json({ error: error.message || "Internal Server Error" });
-  }
+  // akses: pemilik registrasi (atau superuser)
+  const existingReg = await prisma.registscan.findUnique({ where: { id } });
+  assertCanAccessRegistration(req.user, existingReg);
+  const result = await prisma.$transaction([
+    prisma.recordscan.deleteMany({ where: { id_regist: id } }),
+    prisma.registscan.delete({ where: { id } }),
+  ]);
+  res.status(200).json({ message: "Deleted Successfully", result: result });
 });
 
 module.exports = router;

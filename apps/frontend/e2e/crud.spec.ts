@@ -10,8 +10,8 @@ test("master model: tambah, edit, hapus", async ({ page, request }) => {
   const modelName = `E2E-MOD-${uniq}`;
 
   // kategori via API
-  const token = await apiLogin(request);
-  const auth = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  const cookie = await apiLogin(request);
+  const auth = { Cookie: cookie, "Content-Type": "application/json" };
   const cat = await request.post("http://localhost:3010/product-categories/post", {
     headers: auth,
     data: { slug: `e2e-cat-${uniq}`, name: `E2E Cat ${uniq}` },

@@ -14,8 +14,10 @@ import { Card } from "@/components/vm3/Card";
 import { Dialog } from "@/components/vm3/Dialog";
 import { SearchField } from "@/components/vm3/SearchField";
 import { IconButton } from "@/components/vm3/IconButton";
+import { Combobox } from "@/components/vm3/Combobox";
 import { useSnackbar } from "@/components/vm3/Snackbar";
 import { useAuth } from "@/lib/auth";
+import { bomFields, type BomRule } from "@/lib/bom";
 
 interface Regist {
   id: string;
@@ -28,37 +30,6 @@ interface Regist {
   timestamps: string;
   index?: number;
 }
-
-interface BomRuleField {
-  key: string;
-  label: string;
-  prefix: string;
-  required: boolean;
-}
-
-interface BomRule {
-  id: string;
-  model: string;
-  order_number: string;
-  sn?: string | null;
-  sn_carton?: string | null;
-  pcb_idu?: string | null;
-  sn_box?: string | null;
-  sn_motor?: string | null;
-  sn_accessories?: string | null;
-  sn_odu?: string | null;
-  components?: Record<string, { label?: string; prefix?: string; required?: boolean }> | null;
-}
-
-const FIXED_LABELS: Record<string, string> = {
-  sn: "Serial Number Unit",
-  sn_carton: "SN Carton",
-  pcb_idu: "SN PCB",
-  sn_box: "SN Electrical Box",
-  sn_motor: "SN Motor",
-  sn_accessories: "SN Accessories",
-  sn_odu: "Serial Number (ODU)",
-};
 
 const EMPTY: Record<string, string> = {
   model: "",
@@ -74,29 +45,6 @@ const EMPTY: Record<string, string> = {
   sn_carton: "",
   sn_accessories: "",
 };
-
-/** Field yang dideklarasikan BOM rule: kolom tetap terisi + kunci components JsonB */
-function bomFields(rule: BomRule | null): BomRuleField[] {
-  if (!rule) return [];
-  const fields: BomRuleField[] = [];
-  for (const [key, label] of Object.entries(FIXED_LABELS)) {
-    const v = (rule as unknown as Record<string, unknown>)[key];
-    if (v !== undefined && v !== null && String(v).trim() !== "") {
-      fields.push({ key, label, prefix: String(v), required: true });
-    }
-  }
-  const comps = rule.components && typeof rule.components === "object" ? rule.components : {};
-  for (const [key, def] of Object.entries(comps)) {
-    const d = def && typeof def === "object" ? def : {};
-    fields.push({
-      key,
-      label: d.label || key,
-      prefix: d.prefix ?? "",
-      required: d.required !== false,
-    });
-  }
-  return fields;
-}
 
 interface PostResult {
   result?: { id: string };
@@ -437,23 +385,13 @@ export default function RegistPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             {/* Model — combobox: ketik untuk mencari, saran dari Model Master */}
             <div>
-              <label htmlFor="regist-model" className="mb-1.5 block text-sm font-medium text-foreground">
-                Model *
-              </label>
-              <input
-                id="regist-model"
-                list="regist-model-options"
+              <Combobox
+                label="Model *"
+                options={models}
                 value={form.model}
-                onChange={(e) => setForm({ ...form, model: e.target.value })}
-                className="h-11 w-full rounded-[var(--vm3-shape-lg)] border border-[var(--vm3-color-outline-variant)] bg-[var(--vm3-color-surface-container-highest)] px-3 text-sm text-[var(--vm3-color-on-surface)] outline-none focus:border-[var(--vm3-color-primary)] focus:ring-2 focus:ring-[var(--vm3-color-primary)]/20"
+                onChange={(v) => setForm({ ...form, model: v })}
                 placeholder="Ketik untuk mencari model"
-                autoComplete="off"
               />
-              <datalist id="regist-model-options">
-                {models.map((m) => (
-                  <option key={m} value={m} />
-                ))}
-              </datalist>
               {!modelKnown && form.model.trim() && (
                 <p className="mt-1 text-xs text-amber-700">Model tidak ada di Model Master</p>
               )}

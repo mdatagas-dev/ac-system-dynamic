@@ -5,19 +5,28 @@ import { login, apiLogin } from "./helpers";
  * Alur scan: setup data via API → scan via UI → hasil tampil → cleanup.
  */
 test("alur scan: regist via API, scan via UI, hasil muncul", async ({ page, request }) => {
-  const token = await apiLogin(request);
+  const cookie = await apiLogin(request);
   const uniq = Date.now().toString(36);
   const modelShort = `E2E-${uniq}`;
   const modelFull = `${modelShort}12345`;
   const order = `E2E-${uniq}`;
   const sn = `E2E-SN-${uniq}`;
-  const auth = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  const auth = { Cookie: cookie, "Content-Type": "application/json" };
   const base = "http://localhost:3010";
 
   // setup: model master + bomlist (BOM-driven) + registscan
+  // template kategori menentukan field material (template-is-law)
   const cat = await request.post(`${base}/product-categories/post`, {
     headers: auth,
-    data: { slug: `e2e-scan-cat-${uniq}`, name: `E2E Scan Cat ${uniq}` },
+    data: {
+      slug: `e2e-scan-cat-${uniq}`,
+      name: `E2E Scan Cat ${uniq}`,
+      fields: [
+        { key: "sn", label: "Serial Number" },
+        { key: "pcb_idu", label: "SN PCB" },
+        { key: "sn_accessories", label: "SN Accessories" },
+      ],
+    },
   });
   expect(cat.status()).toBe(201);
   const catId = (await cat.json()).data.id;

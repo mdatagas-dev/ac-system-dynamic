@@ -15,11 +15,13 @@ export async function login(page: Page, username = "e2e_test", password = "e2e_p
   }
 }
 
-/** Token via API (untuk setup data) */
+/** Login via API, kembalikan header Cookie session (untuk setup data) */
 export async function apiLogin(request: import("@playwright/test").APIRequestContext) {
-  const res = await request.post("http://localhost:3010/login", {
+  const res = await request.post("http://localhost:3010/auth/login", {
     data: { username: "e2e_test", password: "e2e_pass_2026" },
   });
-  const body = await res.json();
-  return body.accessToken as string;
+  const setCookie = res.headers()["set-cookie"] || "";
+  const sid = /session_id=([^;]+)/.exec(setCookie)?.[1];
+  if (!sid) throw new Error("apiLogin: tidak ada session_id di Set-Cookie");
+  return `session_id=${sid}`;
 }

@@ -40,6 +40,36 @@ const PPC_ONLY = new Set(["/regist", "/scan"]);
 
 const RAIL_KEY = "vm3-rail-expanded";
 
+interface NavLinkProps {
+  item: (typeof NAV)[number];
+  active: boolean;
+  onNavigate: (href: string) => void;
+  children: React.ReactNode;
+}
+
+/** Link sidebar dengan prefetch + penanganan klik (new-tab & halaman sama) — dipakai rail & navbar bawah. */
+function NavLink({ item, active, onNavigate, children }: NavLinkProps) {
+  return (
+    <Link
+      href={item.href}
+      prefetch
+      aria-current={active ? "page" : undefined}
+      onClick={(e) => {
+        // Hormati new-tab / modifier dan cegah navigasi ke halaman yang sama
+        if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return;
+        if (active) {
+          e.preventDefault();
+          return;
+        }
+        e.preventDefault();
+        onNavigate(item.href);
+      }}
+    >
+      {children}
+    </Link>
+  );
+}
+
 export default function AppShellLayout({ children }: { children: React.ReactNode }) {
   const { user, initializing, logout } = useAuth();
   const { mode, toggleMode } = useTheme();
@@ -194,28 +224,13 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
             </button>
 
             {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                prefetch
-                aria-current={isActive(item.href, item.exact) ? "page" : undefined}
-                onClick={(e) => {
-                  // Hormati new-tab / modifier dan cegah navigasi ke halaman yang sama
-                  if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return;
-                  if (isActive(item.href, item.exact)) {
-                    e.preventDefault();
-                    return;
-                  }
-                  e.preventDefault();
-                  navigate(item.href);
-                }}
-              >
+              <NavLink key={item.href} item={item} active={isActive(item.href, item.exact)} onNavigate={navigate}>
                 <RailItem
                   icon={item.icon}
                   label={item.label}
                   active={isActive(item.href, item.exact)}
                 />
-              </Link>
+              </NavLink>
             ))}
           </NavigationRail>
         </div>
@@ -252,27 +267,13 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
       <div className="lg:hidden">
         <NavigationBar>
           {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              prefetch
-              aria-current={isActive(item.href, item.exact) ? "page" : undefined}
-              onClick={(e) => {
-                if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return;
-                if (isActive(item.href, item.exact)) {
-                  e.preventDefault();
-                  return;
-                }
-                e.preventDefault();
-                navigate(item.href);
-              }}
-            >
+            <NavLink key={item.href} item={item} active={isActive(item.href, item.exact)} onNavigate={navigate}>
               <NavItem
                 icon={item.icon}
                 label={item.label}
                 active={isActive(item.href, item.exact)}
               />
-            </Link>
+            </NavLink>
           ))}
         </NavigationBar>
       </div>

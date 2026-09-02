@@ -2,90 +2,114 @@ const express = require("express");
 const router = express.Router();
 const prisma = require("../../lib/prisma");
 const redis = require("../config/redis");
-
 const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
-const dotenv = require("dotenv");
-const path = require("path");
-const { accessClaims, refreshedClaims } = require("../services/auth.claims");
+const crypto = require("crypto");
+const AppError = require("../../lib/AppError");
 
-dotenv.config({
-  path: path.resolve(__dirname, "../../.env"),
-});
-
+// Durasi session dalam detik (default 8 jam), bisa di-override lewat env SESSION_TTL
+const SESSION_TTL = Number(process.env.SESSION_TTL) || 8 * 60 * 60;
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_TTL = 10 * 60;
 
-router.post("/", async (req, res) => {
+// Baca satu cookie dari header "Cookie" (tanpa dependensi eksternal)
+const parseCookie = (header, name) => {
+  if (!header) return null;
+  const match = header
+    .split(";")
+    .map((c) => c.trim())
+    .find((c) => c.startsWith(`${name}=`));
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : null;
+};
+
+// POST /auth/login — alur:
+// 1. validasi body (username + password wajib)
+// 2. cek rate limit per IP di Redis (5x gagal -> lockout 10 menit)
+// 3. cari user di PostgreSQL + bcrypt.compare
+// 4. sukses: buat session_id random -> simpan user payload di Redis session:<id>
+// 5. Set-Cookie session_id (HttpOnly, SameSite=Lax, Secure di production)
+router.post("/login", async (req, res) => {
   const { username, password } = req.body || {};
 
   if (!username || !password) {
-    return res
-      .status(400)
-      .json({ error: "username dan password wajib diisi" });
+    throw new AppError("Username dan password wajib diisi", 400, "VALIDATION");
   }
 
-  // Rate limit: 5x gagal per akun -> lockout 10 menit (per IP + username)
-  const failKey = `login_fail:${req.ip}:${username}`;
+  // Key Redis untuk menghitung percobaan gagal per IP
+  const failKey = `login_fail:${req.ip}`;
   const fails = Number(await redis.get(failKey)) || 0;
   if (fails >= MAX_ATTEMPTS) {
-    return res.status(429).json({ error: "Terlalu banyak percobaan, coba lagi nanti" });
+    throw new AppError("Terlalu banyak percobaan, coba lagi nanti", 429, "RATE_LIMITED");
   }
 
-  try {
-    // mencari user di table users
-    const findUser = await prisma.users.findFirst({
-      where: { username: username.trim() },
-    });
+  // Cari user berdasarkan username di tabel users
+  const findUser = await prisma.users.findFirst({
+    where: { username: username.trim() },
+  });
 
-    // Pesan seragam untuk user-tidak-ada dan password-salah, biar tak bocorkan info
-    if (!findUser || !findUser.hash || !(await bcrypt.compare(password, findUser.hash))) {
-      await redis.incr(failKey);
-      await redis.expire(failKey, LOCKOUT_TTL);
-      return res.status(401).json({ error: "Username atau password salah" });
-    }
-
-    // membuat token key untuk permission request
-    const accessToken = jwt.sign(accessClaims(findUser), process.env.JWT_SECRET, {
-      expiresIn: "20m",
-    });
-
-    const refreshToken = jwt.sign(accessClaims(findUser), process.env.JWT_REFRESH, {
-      expiresIn: "7d",
-    });
-
-    // sukses -> reset counter kegagalan
-    await redis.del(failKey);
-
-    res
-      .status(200)
-      .json({ message: "login successful", accessToken, refreshToken });
-  } catch (error) {
-    res
-      .status(500)
-      .json({ error: "Internal Server Error", message_error: error.message });
+  // User tidak ada / hash kosong -> anggap gagal, naikkan counter, 401
+  // (pesan sama untuk user-tidak-ada dan password-salah, biar tak bocorkan info)
+  if (!findUser || !findUser.hash || !(await bcrypt.compare(password, findUser.hash))) {
+    await redis.incr(failKey);
+    await redis.expire(failKey, LOCKOUT_TTL);
+    throw new AppError("Username atau password salah", 401, "AUTH_FAILED");
   }
+
+  // Login berhasil -> reset counter gagal
+  await redis.del(failKey);
+
+  // Buat session id acak (32 byte hex) sebagai identitas session
+  const sessionId = crypto.randomBytes(32).toString("hex");
+  // Payload user yang disimpan di session (dipakai middleware auth sebagai req.user)
+  const user = {
+    id: findUser.id,
+    username: findUser.username,
+    roleuser: findUser.roleuser,
+    depart: findUser.departement,
+    section: findUser.section,
+  };
+
+  // Simpan session di Redis dengan TTL (SESSION_TTL detik)
+  await redis.set(`session:${sessionId}`, JSON.stringify(user), { EX: SESSION_TTL });
+
+  // Kirim session id via cookie HttpOnly -> JS browser tidak bisa baca
+  // Secure hanya di production (HTTPS), SameSite=Lax cegah CSRF lintas situs
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  res.setHeader(
+    "Set-Cookie",
+    `session_id=${sessionId}; HttpOnly; Path=/; Max-Age=${SESSION_TTL}; SameSite=Lax${secure}`,
+  );
+
+  res.status(200).json({ message: "login successful", user });
 });
 
-router.post("/refresh_token", (req, res) => {
-  const { refreshToken } = req.body;
-  if (!refreshToken) {
-    return res.status(401).json({ message: "No refresh token" });
+// POST /auth/logout — hapus session dari Redis + bersihkan cookie di browser
+router.post("/logout", async (req, res) => {
+  // Ambil session id dari cookie yang dikirim client
+  const sessionId = parseCookie(req.headers.cookie || "", "session_id");
+
+  // Hapus key session di Redis -> session langsung tidak valid
+  if (sessionId) {
+    await redis.del(`session:${sessionId}`);
   }
+  // Set cookie kadaluarsa (Max-Age=0) di sisi browser
+  res.setHeader(
+    "Set-Cookie",
+    "session_id=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax",
+  );
+  res.status(200).json({ message: "logout successful" });
+});
 
-  try {
-    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH);
-
-    const newAccessToken = jwt.sign(
-      refreshedClaims(decoded),
-      process.env.JWT_SECRET,
-      { expiresIn: "20m" },
-    );
-
-    res.json({ accessToken: newAccessToken });
-  } catch (err) {
-    return res.status(401).json({ message: "Refresh token invalid" });
+// GET /auth/me — cek session aktif, kembalikan user payload (untuk restore sesi frontend)
+router.get("/me", async (req, res) => {
+  const sessionId = parseCookie(req.headers.cookie || "", "session_id");
+  if (!sessionId) {
+    return res.status(401).json({ error: "Unauthorized" });
   }
+  const data = await redis.get(`session:${sessionId}`);
+  if (!data) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  res.status(200).json({ user: JSON.parse(data) });
 });
 
 module.exports = router;
