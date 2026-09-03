@@ -168,8 +168,6 @@ export default function MasterPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
   const [form, setForm] = useState<Record<string, unknown>>(EMPTY_FORM);
-  // BOM: field key → unit AC ("ODU"/"IDU"/"") — dipakai validasi scan per subline
-  const [unitMap, setUnitMap] = useState<Record<string, string>>({});
   // Template kategori (struktur field material): key → { enabled, label, unit }
   const [template, setTemplate] = useState<TemplateField[]>([]);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -314,13 +312,11 @@ export default function MasterPage() {
     } else {
       setForm({});
     }
-    setUnitMap({});
     setDialogOpen(true);
   };
 
   const openEdit = (row: Record<string, unknown>) => {
     setEditing(row);
-    setUnitMap({});
     if (entity.key === "product_categories") {
       setForm({
         slug: String(row.slug ?? ""),
@@ -338,12 +334,6 @@ export default function MasterPage() {
       const next: Record<string, unknown> = {};
       for (const f of entity.fields) next[f.key] = row[f.key] ?? "";
       setForm(next);
-      const um = row.unit_map && typeof row.unit_map === "object" ? (row.unit_map as Record<string, unknown>) : {};
-      setUnitMap(
-        Object.fromEntries(
-          Object.entries(um).map(([k, v]) => [k, String(v)]),
-        ),
-      );
     } else {
       const next: Record<string, unknown> = {};
       for (const f of entity.fields) next[f.key] = row[f.key] ?? "";
@@ -366,14 +356,6 @@ export default function MasterPage() {
           .map((t) => ({ key: t.key, label: t.label.trim() || undefined, unit: t.unit || null }));
         payload.fields = fields;
       }
-      if (entity.key === "bomlist") {
-        // hanya simpan unit yang terisi (ODU/IDU)
-        const um = Object.fromEntries(
-          Object.entries(unitMap).filter(([, v]) => v === "ODU" || v === "IDU"),
-        );
-        if (Object.keys(um).length) payload.unit_map = um;
-      }
-
       if (editing) {
         await entity.update(entity.rowKey(editing), payload);
         show(`${entity.label} diperbarui`);
@@ -547,29 +529,13 @@ export default function MasterPage() {
                   placeholder="Ketik untuk mencari model"
                 />
               ) : entity.key === "bomlist" && f.key !== "order_number" ? (
-                <div key={f.key} className="flex items-end gap-2">
-                  <div className="min-w-0 flex-1">
-                    <TextField
-                      label={f.label}
-                      value={String(form[f.key] ?? "")}
-                      onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
-                      placeholder="Prefix SN (opsional)"
-                    />
-                  </div>
-                  <div className="w-28 shrink-0">
-                    <label className="mb-1.5 block text-sm font-medium text-foreground">Unit AC</label>
-                    <Select
-                      options={[
-                        { value: "", label: "Semua" },
-                        { value: "IDU", label: "IDU" },
-                        { value: "ODU", label: "ODU" },
-                      ]}
-                      value={unitMap[f.key] ?? ""}
-                      onChange={(v) => setUnitMap({ ...unitMap, [f.key]: v ?? "" })}
-                      placeholder="Semua"
-                    />
-                  </div>
-                </div>
+                <TextField
+                  key={f.key}
+                  label={f.label}
+                  value={String(form[f.key] ?? "")}
+                  onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                  placeholder="Prefix SN (opsional)"
+                />
               ) : entity.key === "model" && f.key === "product" ? (
                 <div key={f.key}>
                   <label className="mb-1.5 block text-sm font-medium text-foreground">{f.label}</label>
