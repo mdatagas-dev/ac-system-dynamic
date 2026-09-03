@@ -39,6 +39,7 @@ const allowedOrigins = [
   "http://192.168.0.45:3000",
   "http://192.168.0.45:3001",
   "http://192.168.0.45:3002",
+  "http://192.128.69.69:3040",
 ];
 
 const optionsCors = {
