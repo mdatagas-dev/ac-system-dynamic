@@ -3,6 +3,8 @@
 /**
  * VM3 Combobox — shadcn/ui Combobox (Base UI) dengan trigger chevron yang terlihat:
  * klik → daftar penuh, ketik → menyaring. Field label + placeholder.
+ * Free-text: nilai yang diketik tetap tersimpan saat blur walau bukan opsi
+ * (dipakai regist — operator mengetik nama model lengkap dgn suffix).
  */
 import { useId, useState } from "react";
 import {
@@ -42,7 +44,11 @@ export function Combobox({ options, value, onChange, label, placeholder, classNa
       <BaseCombobox
         value={value}
         onValueChange={(v) => onChange(v ?? "")}
-        onInputValueChange={(v) => setQuery(v ?? "")}
+        onInputValueChange={(v) => {
+          setQuery(v ?? "");
+          // free-text: input ketikan langsung jadi nilai — combobox tak memaksa opsi
+          if ((v ?? "") !== value) onChange(v ?? "");
+        }}
       >
         <ComboboxInput
           id={autoId}

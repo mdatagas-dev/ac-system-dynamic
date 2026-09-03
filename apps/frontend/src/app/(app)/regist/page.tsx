@@ -135,7 +135,7 @@ export default function RegistPage() {
         .then((res) => {
           if (cancelled) return;
           const hit = (res.data ?? []).find(
-            (b) => b.order_number === order && model.endsWith(b.model),
+            (b) => b.order_number === order && model.startsWith(b.model),
           );
           if (hit) {
             setBomRule(hit);
