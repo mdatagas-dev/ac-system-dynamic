@@ -67,8 +67,8 @@ async function assertNoDoubleScan(tx, id_regist, payload) {
   }
 }
 
-// Akurasi karakter-per-karakter vs nilai registrasi (bukan 50% seperti pesannya —
-// ambang nyata adalah MIN_ACCURACY_PERCENT, lihat rules/accuracy.js).
+// Akurasi karakter-per-karakter vs nilai registrasi; ambang nyata adalah
+// MIN_ACCURACY_PERCENT (lihat rules/accuracy.js).
 function assertAccuracy(valueRegist, payload, relevantKeys) {
   for (const key of relevantKeys) {
     const value = payload[key];
@@ -77,7 +77,7 @@ function assertAccuracy(valueRegist, payload, relevantKeys) {
     if (regist === undefined || regist === null || regist === "") continue;
     if (accuracyPercent(regist, value) <= MIN_ACCURACY_PERCENT) {
       throw new AppError(
-        `Akurasi scan tidak sama butuh lebih 50%, akurasi ${key}:  ${accuracyPercent(regist, value).toFixed(2)}%`,
+        `Akurasi scan tidak sama butuh lebih ${MIN_ACCURACY_PERCENT}%, akurasi ${key}:  ${accuracyPercent(regist, value).toFixed(2)}%`,
         400,
         "LOW_ACCURACY",
       );
