@@ -412,6 +412,15 @@ export default function MasterPage() {
     [categories],
   );
 
+  // Produk ODU/IDU: opsi dari unit field di template kategori yang dipilih
+  const productOptions = useMemo(() => {
+    const cat = categories.find((c) => c.id === form.category_id);
+    const fields = Array.isArray(cat?.fields) ? (cat.fields as Array<{ unit?: string }>) : [];
+    const units = [...new Set(fields.map((f) => f.unit).filter(Boolean))] as string[];
+    // ponytail: fallback ke IDU/ODU bila kategori tak punya template field dengan unit
+    return units.length ? units.map((u) => ({ value: u, label: u })) : [{ value: "IDU", label: "IDU" }, { value: "ODU", label: "ODU" }];
+  }, [form.category_id, categories]);
+
   // filter dropdown pakai slug sebagai value: baris model & bomlist membawa
   // product_category sebagai slug (lihat header komentar di atas).
   const categoryFilterOptions = useMemo(
@@ -560,6 +569,16 @@ export default function MasterPage() {
                       placeholder="Semua"
                     />
                   </div>
+                </div>
+              ) : entity.key === "model" && f.key === "product" ? (
+                <div key={f.key}>
+                  <label className="mb-1.5 block text-sm font-medium text-foreground">{f.label}</label>
+                  <Select
+                    options={productOptions}
+                    value={String(form.product ?? "")}
+                    onChange={(v) => setForm({ ...form, product: v ?? "" })}
+                    placeholder="Pilih produk"
+                  />
                 </div>
               ) : entity.key === "model" && f.key === "category_id" ? (
                 <div key={f.key}>
