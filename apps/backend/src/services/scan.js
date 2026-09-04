@@ -3,12 +3,11 @@
 // akurasi vs registrasi) dievaluasi di sini supaya route /rdps tetap tipis.
 
 const { ruleFieldsForUnit } = require("../rules/bom-match");
-const { stripBrandSuffix } = require("../rules/model-code");
 const { unitFromSubline } = require("../rules/unit");
 const { accuracyPercent, MIN_ACCURACY_PERCENT } = require("../rules/accuracy");
 const { buildScanRecord, productCategory } = require("./recordscan");
 const { assertCanAccessRegistration } = require("./registration-access");
-const { withTemplate } = require("./registration");
+const { withTemplate, findBomlist } = require("./registration");
 const AppError = require("../../lib/AppError");
 
 const isPresent = (v) => v !== undefined && v !== null && v !== "";
@@ -99,13 +98,7 @@ async function createScan(tx, { user, id_regist, payload }) {
   assertCanAccessRegistration(user, valueRegist);
 
   // BOM check: nilai yang di-scan harus mengikuti BOM rule batch ini
-  const bomRule = await tx.bomlist.findFirst({
-    where: {
-      model: stripBrandSuffix(String(valueRegist.model).trim()),
-      order_number: valueRegist.order_number.trim(),
-      is_active: true,
-    },
-  });
+  const bomRule = await findBomlist(tx, valueRegist.model, valueRegist.order_number);
   if (!bomRule) throw new AppError("Batch tidak ada di bomlist", 404, "BOMLIST_NOT_FOUND");
   const rule = await withTemplate(tx, bomRule);
 

@@ -8,7 +8,7 @@ const { buildScanRecord, dynamicComponents, productCategory, scanFields } = requ
 const { createScan } = require("../services/scan");
 const requirePermission = require("../../middlewares/requirePermission");
 const { assertCanAccessRegistration } = require("../services/registration-access");
-const { withTemplate } = require("../services/registration");
+const { withTemplate, findBomlist } = require("../services/registration");
 const AppError = require("../../lib/AppError");
 
 router.get("/scan", async (req, res) => {
@@ -37,15 +37,23 @@ router.get("/scan", async (req, res) => {
     orderBy: { timestamps: "desc" },
   });
 
-  const modelOnly = stripBrandSuffix(resRegistScan.model).trim();
-
-  const resBomlist = await prisma.bomlist.findMany({
+  // lookup toleran: exact dulu, fallback strip suffix (lihat findBomlist di registration.js)
+  let resBomlist = await prisma.bomlist.findMany({
     where: {
-      model: modelOnly,
+      model: resRegistScan.model.trim(),
       order_number: resRegistScan.order_number.trim(),
       is_active: true,
     },
   });
+  if (resBomlist.length === 0) {
+    resBomlist = await prisma.bomlist.findMany({
+      where: {
+        model: stripBrandSuffix(resRegistScan.model).trim(),
+        order_number: resRegistScan.order_number.trim(),
+        is_active: true,
+      },
+    });
+  }
 
   const cleanBomlist = resBomlist.map((item) => {
     const filterd = {};
@@ -175,13 +183,7 @@ router.post("/import", requirePermission("registscan:import-sn"), async (req, re
     const valueRegist = await tx.registscan.findUnique({ where: { id: id_regist } });
     assertCanAccessRegistration(req.user, valueRegist);
 
-    const bomRule = await tx.bomlist.findFirst({
-      where: {
-        model: stripBrandSuffix(String(valueRegist.model).trim()),
-        order_number: valueRegist.order_number.trim(),
-        is_active: true,
-      },
-    });
+    const bomRule = await findBomlist(tx, valueRegist.model, valueRegist.order_number);
     if (!bomRule) throw new AppError("Batch tidak ada di bomlist", 404, "BOMLIST_NOT_FOUND");
     const rule = await withTemplate(tx, bomRule);
 

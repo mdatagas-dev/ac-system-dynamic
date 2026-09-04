@@ -27,11 +27,25 @@ async function withTemplate(db, bomRow) {
   return { ...bomRow, fields: cat.fields };
 }
 
-async function resolveBomRule({ model, order_number, payload, subline }) {
-  const modelOnly = stripBrandSuffix(String(model).trim());
-  const bomRow = await prisma.bomlist.findFirst({
-    where: { model: modelOnly, order_number: order_number.trim(), is_active: true },
+// Lookup BOM rule per model+order. Model di-lookup exact dulu, lalu fallback
+// strip 5-char brand suffix — data bisa menyimpan nama pendek ATAU nama lengkap
+// (kombinasi dua konvensi; lihat ponytail di rules/model-code.js).
+async function findBomlist(db, model, order_number) {
+  const m = String(model).trim();
+  const o = String(order_number).trim();
+  const hit = await db.bomlist.findFirst({
+    where: { model: m, order_number: o, is_active: true },
   });
+  if (hit) return hit;
+  const short = stripBrandSuffix(m);
+  if (short === m) return null;
+  return db.bomlist.findFirst({
+    where: { model: short, order_number: o, is_active: true },
+  });
+}
+
+async function resolveBomRule({ model, order_number, payload, subline }) {
+  const bomRow = await findBomlist(prisma, model, order_number);
   if (!bomRow) throw new AppError("Batch tidak ada di bomlist", 404, "BOMLIST_NOT_FOUND");
   const rule = await withTemplate(prisma, bomRow);
 
@@ -57,4 +71,4 @@ async function resolveBomRule({ model, order_number, payload, subline }) {
   return { product_category: rule.product_category ?? null, components, fields: rule.fields };
 }
 
-module.exports = { resolveBomRule, withTemplate, NO_TEMPLATE_MSG };
+module.exports = { resolveBomRule, withTemplate, findBomlist, NO_TEMPLATE_MSG };

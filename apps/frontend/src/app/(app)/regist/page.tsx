@@ -188,6 +188,8 @@ export default function RegistPage() {
     ["model", "order_number", "po_number"].every(
       (k) => String((form as Record<string, unknown>)[k] ?? "").trim() !== "",
     ) &&
+    // BOM rule wajib ada — tanpa rule, backend menolak ("Batch tidak ada di bomlist")
+    bomRule !== null &&
     requiredKeys.every((k) => String((form as Record<string, unknown>)[k] ?? "").trim() !== "");
 
   const load = useCallback(async (kw = keyword, pg = page) => {
