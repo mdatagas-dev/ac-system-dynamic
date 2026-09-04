@@ -135,7 +135,6 @@ function ScanContent() {
       .get<{ data: Regist[] }>("/registscan?limit=100")
       .then((res) => {
         setRegists(res.data ?? []);
-        if (res.data?.length) setRegistId((prev) => prev ?? res.data![0]!.id);
       })
       .catch((err) => show(`Gagal muat registrasi: ${(err as Error).message}`));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -308,29 +307,7 @@ function ScanContent() {
         </div>
       )}
 
-      {!idRegistParam && (
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="max-w-xs">
-            <div className="mb-2 text-sm font-medium text-on-surface-variant">Registrasi Aktif</div>
-            <Select
-              options={regists.map((r) => ({
-                value: r.id,
-                label: `${r.model} · ${r.order_number} · ${r.subline}`,
-              }))}
-              value={registId}
-              onChange={setRegistId}
-              placeholder="Pilih registrasi"
-            />
-          </div>
-          {isSuperuser && (
-            <Button icon="upload" variant="outlined" onClick={() => setImportOpen(true)}>
-              Import Scan
-            </Button>
-          )}
-        </div>
-      )}
-
-      {isSuperuser && idRegistParam && (
+      {isSuperuser && (
         <div className="flex justify-end">
           <Button icon="upload" variant="outlined" onClick={() => setImportOpen(true)}>
             Import Scan
