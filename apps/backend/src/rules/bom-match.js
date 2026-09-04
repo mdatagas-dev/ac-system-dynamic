@@ -35,11 +35,14 @@ function ruleFields(rule) {
   const template = Array.isArray(rule.fields) ? rule.fields : [];
   for (const t of template) {
     const d = t && typeof t === "object" ? t : {};
+    const prefix = isPresent(rule[d.key]) ? String(rule[d.key]) : "";
     fields.push({
       key: d.key,
       label: d.label || FIXED_LABELS[d.key] || d.key,
-      prefix: isPresent(rule[d.key]) ? String(rule[d.key]) : "",
-      required: d.required !== false,
+      prefix,
+      // ponytail: wajib hanya bila baris BOM punya prefix — tanpa prefix tak ada
+      // yang divalidasi, jadi field tak boleh memblokir simpan regist/scan
+      required: d.required !== false && isPresent(prefix),
       unit: isPresent(d.unit) ? d.unit : null,
     });
   }

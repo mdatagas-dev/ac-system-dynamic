@@ -50,11 +50,14 @@ export function bomFields(row: BomRule | Record<string, unknown> | null | undefi
   const template = Array.isArray(r.fields) ? (r.fields as Array<{ key: string; label?: string; required?: boolean; unit?: string | null }>) : [];
   for (const t of template) {
     const v = r[t.key];
+    const prefix = v !== undefined && v !== null && String(v).trim() !== "" ? String(v) : "";
     fields.push({
       key: t.key,
       label: t.label || FIXED_LABELS[t.key] || t.key,
-      prefix: v !== undefined && v !== null && String(v).trim() !== "" ? String(v) : "",
-      required: t.required !== false,
+      prefix,
+      // ponytail: wajib hanya bila baris BOM punya prefix — tanpa prefix tak ada
+      // yang divalidasi, jadi field tak boleh memblokir simpan regist/scan
+      required: t.required !== false && prefix !== "",
       unit: t.unit ?? null,
     });
   }
