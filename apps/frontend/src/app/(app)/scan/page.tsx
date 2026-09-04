@@ -116,8 +116,16 @@ function ScanContent() {
   const orderedFields = useMemo(() => {
     const all = bomFields(scanSummary?.bomlist?.[0]);
     const unit = unitFromSubline(scanSummary?.validation?.subline ?? null);
-    return bomFieldsForUnit(all, unit);
-  }, [scanSummary?.bomlist, scanSummary?.validation?.subline]);
+    const forUnit = bomFieldsForUnit(all, unit);
+    // operator hanya scan field yang diisi saat registrasi batch ini —
+    // field kosong di registrasi berarti bukan bagian dari alur line mereka
+    const regist = scanSummary?.validation as unknown as
+      | (Record<string, unknown> & { components?: Record<string, unknown> | null })
+      | null
+      | undefined;
+    const comps = regist?.components && typeof regist.components === "object" ? regist.components : {};
+    return forUnit.filter((f) => String(regist?.[f.key] ?? comps[f.key] ?? "").trim() !== "");
+  }, [scanSummary?.bomlist, scanSummary?.validation]);
 
   // Keep fieldValues keys in sync with orderedFields (generik reset saat BOM berubah)
   useEffect(() => {
