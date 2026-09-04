@@ -48,10 +48,10 @@ const scanToast = {
   success: (msg: string) => {
     const id = toast.success(msg, {
       classNames: {
-        toast: "!bg-green-600 !border-green-700 !text-white",
-        title: "!text-white",
+        toast: "!bg-green-600 !border-green-700 !text-white !w-[420px] !min-h-24 !text-lg",
+        title: "!text-white !text-lg",
         description: "!text-white/90",
-        actionButton: "!bg-white !text-green-700",
+        actionButton: "!bg-white !text-green-700 !text-base !px-4 !py-2",
       },
       action: { label: "OK", onClick: () => toast.dismiss(id) },
     });
@@ -60,10 +60,10 @@ const scanToast = {
     const id = toast.error(msg, {
       duration: Infinity,
       classNames: {
-        toast: "!bg-red-600 !border-red-700 !text-white",
-        title: "!text-white",
+        toast: "!bg-red-600 !border-red-700 !text-white !w-[420px] !min-h-24 !text-lg",
+        title: "!text-white !text-lg",
         description: "!text-white/90",
-        actionButton: "!bg-white !text-red-700",
+        actionButton: "!bg-white !text-red-700 !text-base !px-4 !py-2",
       },
       action: { label: "OK", onClick: () => toast.dismiss(id) },
     });
@@ -93,6 +93,8 @@ function ScanContent() {
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const [importing, setImporting] = useState(false);
+  // counter kedip merah saat scan gagal — kunci overlay agar animasi jalan ulang
+  const [blink, setBlink] = useState(0);
 
   const isSuperuser = user?.roleuser?.toLowerCase() === "superuser";
 
@@ -256,6 +258,8 @@ function ScanContent() {
       });
     } catch (err) {
       scanToast.error((err as Error).message || "Scan gagal");
+      // kedip merah: overlay muncul lalu auto-hilang (animasi blink ~0.8s)
+      setBlink((n) => n + 1);
       // catat nilai yang gagal — auto-submit dilarang mengulang scan yang sama persis
       failedValuesRef.current = JSON.stringify(fieldValues);
     } finally {
@@ -396,6 +400,15 @@ function ScanContent() {
           </div>
         </div>
       </Card>
+
+      {/* Kedip merah layar saat scan gagal — overlay non-interaktif, animasi 0.8s */}
+      {blink > 0 && (
+        <div
+          key={blink}
+          aria-hidden
+          className="pointer-events-none fixed inset-0 z-[100] animate-[scan-blink_0.8s_ease-out_forwards]"
+        />
+      )}
 
       {/* Import scan massal (superuser) */}
       <Dialog

@@ -116,3 +116,12 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 }
+
+/* Kedip merah layar saat scan gagal — overlay full-screen, 2 kedip lalu hilang */
+@keyframes scan-blink {
+  0% { background-color: rgb(220 38 38 / 0.55); opacity: 1; }
+  25% { opacity: 0; }
+  50% { background-color: rgb(220 38 38 / 0.55); opacity: 1; }
+  75% { opacity: 0; }
+  100% { background-color: rgb(220 38 38 / 0.55); opacity: 0; visibility: hidden; }
+}
