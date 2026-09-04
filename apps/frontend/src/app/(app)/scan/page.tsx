@@ -15,6 +15,7 @@ import { Button } from "@/components/vm3/Button";
 import { Select } from "@/components/vm3/Select";
 import { TextArea } from "@/components/vm3/TextArea";
 import { useSnackbar } from "@/components/vm3/Snackbar";
+import { toast } from "sonner";
 
 interface Regist {
   id: string;
@@ -61,9 +62,6 @@ function ScanContent() {
   const [loading, setLoading] = useState(false);
   const [lastScan, setLastScan] = useState<string>("");
   const [count, setCount] = useState<number>(0);
-  const [popupOpen, setPopupOpen] = useState(false);
-  const [popupType, setPopupType] = useState<"success" | "error">("success");
-  const [popupMsg, setPopupMsg] = useState("");
   const [scanSummary, setScanSummary] = useState<ScanSummary | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
@@ -182,13 +180,11 @@ function ScanContent() {
     return () => clearTimeout(t);
   }, [registId, orderedFields.map((f) => f.key).join("|")]);
 
-  // tutup popup -> auto fokus balik ke SN untuk unit berikutnya
+  // toast scan selesai (sukses/gagal) -> auto fokus balik ke SN untuk unit berikutnya
   useEffect(() => {
-    if (!popupOpen) {
-      const t = setTimeout(() => inputRefs.current[0]?.focus(), 150);
-      return () => clearTimeout(t);
-    }
-  }, [popupOpen]);
+    const t = setTimeout(() => inputRefs.current[0]?.focus(), 150);
+    return () => clearTimeout(t);
+  }, [lastScan, count]);
 
   const scan = useCallback(async () => {
     if (!registId) {
@@ -197,9 +193,7 @@ function ScanContent() {
     }
     const missing = orderedFields.filter((f) => f.required && !(fieldValues[f.key] ?? "").trim());
     if (missing.length) {
-      setPopupType("error");
-      setPopupMsg(`Wajib isi: ${missing.map((m) => m.label).join(", ")}`);
-      setPopupOpen(true);
+      show(`Wajib isi: ${missing.map((m) => m.label).join(", ")}`);
       const idx = orderedFields.findIndex((f) => f.required && !(fieldValues[f.key] ?? "").trim());
       if (idx >= 0) inputRefs.current[idx]?.focus();
       return;
@@ -225,9 +219,7 @@ function ScanContent() {
       const newSn = (res as unknown as { data?: { sn?: string } })?.data?.sn ?? (fieldValues.sn ?? "").trim();
       setLastScan(newSn);
       setCount((c) => c + 1);
-      setPopupType("success");
-      setPopupMsg((res as unknown as { message?: string })?.message ?? "Scan berhasil");
-      setPopupOpen(true);
+      toast.success((res as unknown as { message?: string })?.message ?? "Scan berhasil");
       failedValuesRef.current = null;
       // reset semua field sesuai orderedFields
       setFieldValues(() => {
@@ -235,11 +227,8 @@ function ScanContent() {
         for (const f of orderedFields) next[f.key] = "";
         return next;
       });
-      setTimeout(() => setPopupOpen(false), 1200);
     } catch (err) {
-      setPopupType("error");
-      setPopupMsg((err as Error).message || "Scan gagal");
-      setPopupOpen(true);
+      toast.error((err as Error).message || "Scan gagal", { duration: Infinity });
       // catat nilai yang gagal — auto-submit dilarang mengulang scan yang sama persis
       failedValuesRef.current = JSON.stringify(fieldValues);
     } finally {
@@ -249,7 +238,7 @@ function ScanContent() {
 
   // Auto pindah generik: field ke-i terisi (len >=6 untuk i=0, >=4 lainnya) → focus i+1
   useEffect(() => {
-    if (loading || popupOpen) return;
+    if (loading) return;
     if (!orderedFields.length) return;
     for (let i = 0; i < orderedFields.length - 1; i++) {
       const curKey = orderedFields[i]!.key;
@@ -270,11 +259,11 @@ function ScanContent() {
         return () => clearTimeout(t);
       }
     }
-  }, [fieldValues, orderedFields, loading, popupOpen]);
+  }, [fieldValues, orderedFields, loading]);
 
   // Auto submit generik: semua required terisi + field terakhir >=4 (atau >=6 bila hanya 1 field) → scan()
   useEffect(() => {
-    if (loading || popupOpen) return;
+    if (loading) return;
     if (!orderedFields.length) return;
     // jangan kirim ulang nilai yang barusan gagal — tunggu operator mengubah input
     if (failedValuesRef.current && JSON.stringify(fieldValues) === failedValuesRef.current) return;
@@ -297,7 +286,7 @@ function ScanContent() {
     }, 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fieldValues, orderedFields, loading, popupOpen]);
+  }, [fieldValues, orderedFields, loading]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -380,26 +369,6 @@ function ScanContent() {
           </div>
         </div>
       </Card>
-
-      {/* Popup hijau/merah auto — tanpa tombol submit */}
-      <Dialog
-        open={popupOpen}
-        onOpenChange={setPopupOpen}
-        title={popupType === "success" ? "Scan Berhasil" : "Scan Gagal"}
-        description={popupMsg}
-        actions={
-          popupType === "error" ? (
-            <Button onClick={() => setPopupOpen(false)} className={popupType === "error" ? "!bg-red-600 hover:!bg-red-700 !text-white" : ""}>
-              OK
-            </Button>
-          ) : null
-        }
-        className={
-          popupType === "success"
-            ? "[&_[data-slot=dialog-overlay]]:bg-black/50 [&_[data-slot=dialog-content]]:bg-green-600 [&_[data-slot=dialog-content]]:text-white [&_[data-slot=dialog-title]]:text-white [&_[data-slot=dialog-description]]:text-white/90"
-            : "[&_[data-slot=dialog-overlay]]:bg-black/50 [&_[data-slot=dialog-content]]:bg-red-600 [&_[data-slot=dialog-content]]:text-white [&_[data-slot=dialog-title]]:text-white [&_[data-slot=dialog-description]]:text-white/90"
-        }
-      />
 
       {/* Import scan massal (superuser) */}
       <Dialog
