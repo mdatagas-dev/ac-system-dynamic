@@ -43,6 +43,33 @@ interface ScanSummary {
   bomlist?: Array<Record<string, unknown>>;
 }
 
+// Toast notifikasi scan: hijau sukses / merah gagal, keduanya ada tombol OK utk tutup.
+const scanToast = {
+  success: (msg: string) => {
+    const id = toast.success(msg, {
+      classNames: {
+        toast: "!bg-green-600 !border-green-700 !text-white",
+        title: "!text-white",
+        description: "!text-white/90",
+        actionButton: "!bg-white !text-green-700",
+      },
+      action: { label: "OK", onClick: () => toast.dismiss(id) },
+    });
+  },
+  error: (msg: string) => {
+    const id = toast.error(msg, {
+      duration: Infinity,
+      classNames: {
+        toast: "!bg-red-600 !border-red-700 !text-white",
+        title: "!text-white",
+        description: "!text-white/90",
+        actionButton: "!bg-white !text-red-700",
+      },
+      action: { label: "OK", onClick: () => toast.dismiss(id) },
+    });
+  },
+};
+
 export default function ScanPage() {
   return (
     <Suspense fallback={null}>
@@ -193,7 +220,7 @@ function ScanContent() {
     }
     const missing = orderedFields.filter((f) => f.required && !(fieldValues[f.key] ?? "").trim());
     if (missing.length) {
-      show(`Wajib isi: ${missing.map((m) => m.label).join(", ")}`);
+      scanToast.error(`Wajib isi: ${missing.map((m) => m.label).join(", ")}`);
       const idx = orderedFields.findIndex((f) => f.required && !(fieldValues[f.key] ?? "").trim());
       if (idx >= 0) inputRefs.current[idx]?.focus();
       return;
@@ -219,7 +246,7 @@ function ScanContent() {
       const newSn = (res as unknown as { data?: { sn?: string } })?.data?.sn ?? (fieldValues.sn ?? "").trim();
       setLastScan(newSn);
       setCount((c) => c + 1);
-      toast.success((res as unknown as { message?: string })?.message ?? "Scan berhasil");
+      scanToast.success((res as unknown as { message?: string })?.message ?? "Scan berhasil");
       failedValuesRef.current = null;
       // reset semua field sesuai orderedFields
       setFieldValues(() => {
@@ -228,7 +255,7 @@ function ScanContent() {
         return next;
       });
     } catch (err) {
-      toast.error((err as Error).message || "Scan gagal", { duration: Infinity });
+      scanToast.error((err as Error).message || "Scan gagal");
       // catat nilai yang gagal — auto-submit dilarang mengulang scan yang sama persis
       failedValuesRef.current = JSON.stringify(fieldValues);
     } finally {
