@@ -30,17 +30,21 @@ const AppError = require("../lib/AppError");
 
 const port = process.env.PORT;
 
-const allowedOrigins = [
-  "http://localhost:3002",
-  "http://localhost:3001",
-  "http://localhost:3000",
-  "http://36.93.58.122:3010",
-  "http://127.0.0.1:3000",
-  "http://192.168.0.45:3000",
-  "http://192.168.0.45:3001",
-  "http://192.168.0.45:3002",
-  "http://192.128.69.69:3040",
-];
+// Origin boleh diakses — daftar dari env ALLOWED_ORIGINS (pisah koma),
+// fallback ke daftar dev lokal bila env tidak diset.
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)
+  : [
+      "http://localhost:3002",
+      "http://localhost:3001",
+      "http://localhost:3000",
+      "http://36.93.58.122:3010",
+      "http://127.0.0.1:3000",
+      "http://192.168.0.45:3000",
+      "http://192.168.0.45:3001",
+      "http://192.168.0.45:3002",
+      "http://192.128.69.69:3040",
+    ];
 
 const optionsCors = {
   origin: function (origin, callback) {
