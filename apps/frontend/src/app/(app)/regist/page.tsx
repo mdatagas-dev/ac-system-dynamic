@@ -394,7 +394,7 @@ export default function RegistPage() {
                         onClick={() => router.push(`/scan?idregist=${r.id}`)}
                         className="flex h-7 w-8 items-center justify-center rounded-md bg-gray-200 hover:bg-gray-300 transition-colors"
                       >
-                        <span className="material-symbols-rounded text-[18px] text-gray-700" aria-hidden>precision_manufacturing</span>
+                        <span className="material-symbols-rounded text-[18px] text-gray-700" aria-hidden>barcode_scanner</span>
                       </button>
                       <button
                         type="button"
