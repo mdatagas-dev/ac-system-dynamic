@@ -26,6 +26,14 @@ interface Regist {
   po_number: string;
   subline: string;
   plan: number | null;
+  shift?: string | null;
+  sn?: string | null;
+  sn_odu?: string | null;
+  sn_motor?: string | null;
+  sn_box?: string | null;
+  pcb_idu?: string | null;
+  sn_carton?: string | null;
+  sn_accessories?: string | null;
   total?: number;
   timestamps: string;
   index?: number;
@@ -67,6 +75,10 @@ export default function RegistPage() {
   const [rows, setRows] = useState<Regist[]>([]);
   const [form, setForm] = useState<Record<string, string>>(EMPTY);
   const [dialogOpen, setDialogOpen] = useState(false);
+  // batch yang sedang diedit (null = mode create)
+  const [editing, setEditing] = useState<Regist | null>(null);
+  // batch yang sedang dilihat detailnya (dialog read-only)
+  const [detail, setDetail] = useState<Regist | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState("");
@@ -218,8 +230,41 @@ export default function RegistPage() {
     setPage(1);
   };
 
+  // Edit memakai dialog create: prefill form, BOM probe jalan otomatis dari model+order
+  const openEdit = (r: Regist) => {
+    setEditing(r);
+    setForm({
+      model: r.model ?? "",
+      order_number: r.order_number ?? "",
+      po_number: r.po_number ?? "",
+      shift: r.shift ?? "1",
+      plan: String(r.plan ?? ""),
+      sn: r.sn ?? "",
+      sn_odu: r.sn_odu ?? "",
+      sn_motor: r.sn_motor ?? "",
+      sn_box: r.sn_box ?? "",
+      pcb_idu: r.pcb_idu ?? "",
+      sn_carton: r.sn_carton ?? "",
+      sn_accessories: r.sn_accessories ?? "",
+    });
+    setDialogOpen(true);
+  };
+
   const submit = async () => {
     try {
+      if (editing) {
+        await http.put(`/registscan/edit/${editing.id}`, {
+          ...form,
+          plan: Number(form.plan),
+        });
+        show("Registrasi diperbarui");
+        setDialogOpen(false);
+        setEditing(null);
+        setForm(EMPTY);
+        load(keyword, page);
+        void loadPending();
+        return;
+      }
       const res = await http.post<PostResult>("/registscan/post", {
         ...form,
         plan: Number(form.plan),
@@ -331,14 +376,14 @@ export default function RegistPage() {
                     <div className="flex items-center justify-center gap-1.5">
                       <button
                         type="button"
-                        onClick={() => show("Detail: " + r.model)}
+                        onClick={() => setDetail(r)}
                         className="rounded-md bg-[#0d7ea7] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0b6a97] transition-colors"
                       >
                         Detail
                       </button>
                       <button
                         type="button"
-                        onClick={() => show("Edit belum tersedia")}
+                        onClick={() => openEdit(r)}
                         className="rounded-md bg-[#facc15] px-3 py-1.5 text-xs font-semibold text-black hover:bg-[#eab308] transition-colors"
                       >
                         Edit
@@ -392,13 +437,16 @@ export default function RegistPage() {
 
       <Dialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        title="Registrasi Baru"
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) setEditing(null);
+        }}
+        title={editing ? "Edit Registrasi" : "Registrasi Baru"}
         description="Field SN mengikuti BOM rule untuk model + order number."
         actions={
           <>
             <Button variant="text" onClick={() => setDialogOpen(false)}>Batal</Button>
-            <Button onClick={submit} disabled={!isFormValid}>Simpan</Button>
+            <Button onClick={submit} disabled={!isFormValid}>{editing ? "Simpan Perubahan" : "Simpan"}</Button>
           </>
         }
       >
@@ -463,6 +511,43 @@ export default function RegistPage() {
             </div>
           )}
         </div>
+      </Dialog>
+
+      <Dialog
+        open={detail != null}
+        onOpenChange={(open) => !open && setDetail(null)}
+        title="Detail Registrasi"
+      >
+        {detail && (
+          <dl className="mt-2 grid grid-cols-[140px_1fr] gap-x-4 gap-y-2 text-sm">
+            {(
+              [
+                ["Model", detail.model],
+                ["Order Number", detail.order_number],
+                ["PO Number", detail.po_number],
+                ["Line", detail.subline],
+                ["Shift", detail.shift],
+                ["Plan", detail.plan != null ? String(detail.plan) : null],
+                ["Scan", detail.total != null ? String(detail.total) : null],
+                ["Waktu", detail.timestamps ? new Date(detail.timestamps).toLocaleString("id-ID") : null],
+                ["SN Unit", detail.sn],
+                ["SN ODU", detail.sn_odu],
+                ["SN Motor", detail.sn_motor],
+                ["SN Box", detail.sn_box],
+                ["PCB IDU", detail.pcb_idu],
+                ["SN Carton", detail.sn_carton],
+                ["SN Accessories", detail.sn_accessories],
+              ] as const
+            )
+              .filter(([, v]) => v != null && v !== "")
+              .map(([k, v]) => (
+                <div key={k} className="contents">
+                  <dt className="text-on-surface-variant">{k}</dt>
+                  <dd className="break-all font-medium">{v}</dd>
+                </div>
+              ))}
+          </dl>
+        )}
       </Dialog>
 
       <Dialog
