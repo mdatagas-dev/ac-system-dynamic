@@ -110,6 +110,8 @@ function ScanContent() {
   };
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  // nilai form yang terakhir gagal scan — mencegah auto-submit mengulang scan yang sama
+  const failedValuesRef = useRef<string | null>(null);
 
   const selected = regists.find((r) => r.id === registId) ?? null;
 
@@ -226,6 +228,7 @@ function ScanContent() {
       setPopupType("success");
       setPopupMsg((res as unknown as { message?: string })?.message ?? "Scan berhasil");
       setPopupOpen(true);
+      failedValuesRef.current = null;
       // reset semua field sesuai orderedFields
       setFieldValues(() => {
         const next: Record<string, string> = {};
@@ -237,6 +240,8 @@ function ScanContent() {
       setPopupType("error");
       setPopupMsg((err as Error).message || "Scan gagal");
       setPopupOpen(true);
+      // catat nilai yang gagal — auto-submit dilarang mengulang scan yang sama persis
+      failedValuesRef.current = JSON.stringify(fieldValues);
     } finally {
       setLoading(false);
     }
@@ -271,6 +276,8 @@ function ScanContent() {
   useEffect(() => {
     if (loading || popupOpen) return;
     if (!orderedFields.length) return;
+    // jangan kirim ulang nilai yang barusan gagal — tunggu operator mengubah input
+    if (failedValuesRef.current && JSON.stringify(fieldValues) === failedValuesRef.current) return;
     const allRequiredFilled = orderedFields.every((f) => !f.required || (fieldValues[f.key] ?? "").trim().length > 0);
     if (!allRequiredFilled) return;
     const lastIdx = orderedFields.length - 1;
