@@ -35,8 +35,8 @@ const NAV = [
   { href: "/master", label: "Master Data", icon: "database" },
 ];
 
-// ppc (operator) hanya melihat alur kerjanya: registrasi + scan
-const PPC_ONLY = new Set(["/regist", "/scan"]);
+// ppc (operator) hanya melihat registrasi di nav — scan dibuka via tombol aksi di tabel regist
+const PPC_ONLY = new Set(["/regist"]);
 
 const RAIL_KEY = "vm3-rail-expanded";
 
@@ -105,7 +105,7 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
       return next;
     });
 
-  // ppc (operator) hanya melihat alur kerjanya: registrasi + scan
+  // ppc (operator) hanya melihat registrasi di nav — scan dibuka via tombol aksi regist
   const navItems =
     user?.roleuser?.toLowerCase() === "ppc"
       ? NAV.filter((n) => PPC_ONLY.has(n.href))
