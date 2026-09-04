@@ -392,19 +392,19 @@ export default function RegistPage() {
                         type="button"
                         aria-label="Scan"
                         onClick={() => router.push(`/scan?idregist=${r.id}`)}
-                        className="flex h-7 w-8 items-center justify-center rounded-md bg-gray-200 hover:bg-gray-300 transition-colors"
+                        className="flex h-9 w-12 items-center justify-center rounded-md bg-gray-200 hover:bg-gray-300 transition-colors"
                       >
-                        <span className="material-symbols-rounded text-[18px] text-gray-700" aria-hidden>barcode_scanner</span>
+                        <span className="material-symbols-rounded text-[24px] text-gray-700" aria-hidden>barcode_scanner</span>
                       </button>
                       <button
                         type="button"
                         aria-label="Riwayat"
                         onClick={() => router.push(`/history?idregist=${r.id}`)}
-                        className="flex h-7 w-8 items-center justify-center rounded-md bg-gray-200 hover:bg-gray-300 transition-colors"
+                        className="flex h-9 w-12 items-center justify-center rounded-md bg-gray-200 hover:bg-gray-300 transition-colors"
                       >
-                        <span className="material-symbols-rounded text-[18px] text-gray-700" aria-hidden>history</span>
+                        <span className="material-symbols-rounded text-[24px] text-gray-700" aria-hidden>history</span>
                       </button>
-                      <IconButton icon="delete" label="Hapus" onClick={() => setDeleteId(r.id)} className="!h-7 !w-7" />
+                      <IconButton icon="delete" label="Hapus" onClick={() => setDeleteId(r.id)} className="!h-9 !w-9" />
                     </div>
                   </td>
                 </tr>
