@@ -303,11 +303,11 @@ export default function RegistPage() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-outline-variant text-xs uppercase text-on-surface-variant">
-                <th className="p-3 font-medium">No</th>
+                <th className="p-3 text-center font-medium">No</th>
                 <th className="p-3 font-medium">Timestamps</th>
                 <th className="p-3 font-medium">Model</th>
-                <th className="p-3 font-medium">Order Number</th>
-                <th className="p-3 font-medium">PO Number</th>
+                <th className="p-3 text-center font-medium">Order Number</th>
+                <th className="p-3 text-center font-medium">PO Number</th>
                 <th className="p-3 font-medium">Line</th>
                 <th className="p-3 font-medium text-center">Plan</th>
                 <th className="p-3 font-medium text-center">Scan</th>
