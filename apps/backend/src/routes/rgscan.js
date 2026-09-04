@@ -129,7 +129,7 @@ router.post("/post", requirePermission("registscan:write"), async (req, res) => 
     throw new AppError("subline wajib diisi (isi section pada user)", 400, "VALIDATION");
   }
 
-  const { product_category, components, fields } = await resolveBomRule({ model, order_number, payload: req.body });
+  const { product_category, components, fields } = await resolveBomRule({ model, order_number, payload: req.body, subline });
   const result = await prisma.registscan.create({
     data: {
       model: model.trim(),
@@ -192,7 +192,7 @@ router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) 
   const existingReg = await prisma.registscan.findUnique({ where: { id } });
   assertCanAccessRegistration(req.user, existingReg);
 
-  const { product_category, components, fields } = await resolveBomRule({ model, order_number, payload: req.body });
+  const { product_category, components, fields } = await resolveBomRule({ model, order_number, payload: req.body, subline });
   const result = await prisma.registscan.update({
     where: { id },
     data: {

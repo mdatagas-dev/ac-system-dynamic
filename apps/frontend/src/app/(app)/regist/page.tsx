@@ -17,7 +17,7 @@ import { IconButton } from "@/components/vm3/IconButton";
 import { Combobox } from "@/components/vm3/Combobox";
 import { useSnackbar } from "@/components/vm3/Snackbar";
 import { useAuth } from "@/lib/auth";
-import { bomFields, unitFromSubline, type BomRule } from "@/lib/bom";
+import { bomFields, bomFieldsForUnit, unitFromSubline, type BomRule } from "@/lib/bom";
 
 interface Regist {
   id: string;
@@ -175,7 +175,11 @@ export default function RegistPage() {
     };
   }, [form.model, form.order_number, user?.section]);
 
-  const fields = useMemo(() => bomFields(bomRule), [bomRule]);
+  // field form = template BOM difilter per unit line operator (IDU/ODU)
+  const fields = useMemo(
+    () => bomFieldsForUnit(bomFields(bomRule), unitFromSubline(user?.section ?? null)),
+    [bomRule, user?.section],
+  );
   const requiredKeys = useMemo(
     () => fields.filter((f) => f.required).map((f) => f.key),
     [fields],

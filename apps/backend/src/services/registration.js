@@ -3,8 +3,9 @@
 // memegang nilai prefix. Lempar AppError bila tidak cocok.
 
 const prisma = require("../../lib/prisma");
-const { missingRequired, findBomMismatch, unknownKeys, ruleFields } = require("../rules/bom-match");
+const { missingRequired, findBomMismatch, unknownKeys, ruleFields, ruleFieldsForUnit } = require("../rules/bom-match");
 const { stripBrandSuffix } = require("../rules/model-code");
+const { unitFromSubline } = require("../rules/unit");
 const AppError = require("../../lib/AppError");
 
 const NO_TEMPLATE_MSG = "Batch has no field template — set the category template in Master Data";
@@ -26,7 +27,7 @@ async function withTemplate(db, bomRow) {
   return { ...bomRow, fields: cat.fields };
 }
 
-async function resolveBomRule({ model, order_number, payload }) {
+async function resolveBomRule({ model, order_number, payload, subline }) {
   const modelOnly = stripBrandSuffix(String(model).trim());
   const bomRow = await prisma.bomlist.findFirst({
     where: { model: modelOnly, order_number: order_number.trim(), is_active: true },
@@ -34,9 +35,13 @@ async function resolveBomRule({ model, order_number, payload }) {
   if (!bomRow) throw new AppError("Batch tidak ada di bomlist", 404, "BOMLIST_NOT_FOUND");
   const rule = await withTemplate(prisma, bomRow);
 
-  const missing = missingRequired(rule, payload);
+  // validasi hanya field yang relevan untuk unit subline ini (IDU/ODU); field
+  // ber-unit lain tak wajib dan tak di-prefix-check untuk line ini
+  const unitFields = ruleFieldsForUnit(rule, unitFromSubline(subline));
+
+  const missing = missingRequired(rule, payload, unitFields);
   if (missing) throw new AppError(`Wajib diisi: ${missing.label}`, 400, "MISSING_REQUIRED");
-  const mismatch = findBomMismatch(rule, payload);
+  const mismatch = findBomMismatch(rule, payload, unitFields);
   if (mismatch) {
     throw new AppError(`${mismatch.key} tidak sesuai BOM (diharapkan mengandung: ${mismatch.expected})`, 400, "BOM_MISMATCH");
   }
@@ -45,7 +50,7 @@ async function resolveBomRule({ model, order_number, payload }) {
 
   // components JSONB = nilai field dinamis yang dideklarasikan BOM
   const components = {};
-  for (const f of ruleFields(rule)) {
+  for (const f of unitFields) {
     const val = payload[f.key];
     if (val !== undefined && val !== null && String(val).trim() !== "") components[f.key] = String(val).trim();
   }

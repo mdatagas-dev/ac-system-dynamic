@@ -67,16 +67,16 @@ function ruleFieldsForUnit(rule, currentUnit) {
 }
 
 /** @returns {{ key: string, label: string } | null} first declared-but-missing required field */
-function missingRequired(rule, payload) {
-  for (const f of ruleFields(rule)) {
+function missingRequired(rule, payload, fields = ruleFields(rule)) {
+  for (const f of fields) {
     if (f.required && !isPresent(payload[f.key])) return { key: f.key, label: f.label };
   }
   return null;
 }
 
 /** @returns {{ key: string, expected: string } | null} first shared field whose value misses the BOM prefix */
-function findBomMismatch(rule, payload) {
-  for (const f of ruleFields(rule)) {
+function findBomMismatch(rule, payload, fields = ruleFields(rule)) {
+  for (const f of fields) {
     const scanned = payload[f.key];
     if (isPresent(f.prefix) && isPresent(scanned) && !String(scanned).includes(f.prefix)) {
       return { key: f.key, expected: f.prefix };
