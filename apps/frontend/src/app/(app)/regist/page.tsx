@@ -87,10 +87,10 @@ export default function RegistPage() {
   const [totalPages, setTotalPages] = useState(1);
 
   // Batch belum tuntas (plan > scan) — "Harap lengkapi record berikut!"
-  const [pending, setPending] = useState<{ id: string; model: string; plan: number; total: number }[]>([]);
+  const [pending, setPending] = useState<{ id: string; model: string; order_number: string; plan: number; total: number }[]>([]);
   const loadPending = async () => {
     try {
-      const res = await http.get<{ data: { id: string; model: string; plan: number; total: number }[] }>(
+      const res = await http.get<{ data: { id: string; model: string; order_number: string; plan: number; total: number }[] }>(
         "/registscan/checkregist",
         { extraHeaders: { iduser: user?.id ?? "" } },
       );
@@ -102,7 +102,7 @@ export default function RegistPage() {
 
   useEffect(() => {
     http
-      .get<{ data: { id: string; model: string; plan: number; total: number }[] }>(
+      .get<{ data: { id: string; model: string; order_number: string; plan: number; total: number }[] }>(
         "/registscan/checkregist",
         { extraHeaders: { iduser: user?.id ?? "" } },
       )
@@ -324,7 +324,7 @@ export default function RegistPage() {
             <div className="min-w-0 text-sm">
               <div className="font-semibold text-amber-900">{pending.length} batch belum tuntas — harap lengkapi scan</div>
               <div className="truncate text-amber-800">
-                {pending.map((p) => `${p.model} (${p.total}/${p.plan})`).join(" • ")}
+                {pending.map((p) => `${p.order_number} (${p.total}/${p.plan})`).join(" • ")}
               </div>
             </div>
             <div className="ml-auto flex flex-wrap gap-2">
@@ -335,7 +335,7 @@ export default function RegistPage() {
                   className="!bg-[#0d7ea7] !text-white"
                   onClick={() => router.push(`/scan?idregist=${p.id}`)}
                 >
-                  Scan {p.model}
+                  Scan {p.order_number}
                 </Button>
               ))}
             </div>

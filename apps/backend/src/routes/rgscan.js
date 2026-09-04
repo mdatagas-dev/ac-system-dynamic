@@ -82,13 +82,14 @@ router.get("/checkregist", async (req, res) => {
     SELECT
       rgs.id AS id,
       rgs.model AS model,
+      rgs.order_number AS order_number,
       rgs.plan AS plan,
       COUNT(rcd.id_regist)::INT AS total
       FROM registscan AS rgs
         LEFT JOIN recordscan AS rcd
         ON rgs.id = rcd.id_regist::uuid
     WHERE rgs.userid = ${iduser}
-    GROUP BY rgs.id, rgs.model, rgs.plan
+    GROUP BY rgs.id
     HAVING rgs.plan > COUNT(rcd.id_regist);
   `;
 
