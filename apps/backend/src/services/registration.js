@@ -1,74 +1,55 @@
-// Validasi payload registrasi terhadap BOM rule batch (satu baris per model+order_number).
-// Struktur field datang dari TEMPLATE kategori (product_categories.fields); baris bomlist
-// memegang nilai prefix. Lempar AppError bila tidak cocok.
-
 const prisma = require("../../lib/prisma");
-const { missingRequired, findBomMismatch, unknownKeys, ruleFields, ruleFieldsForUnit } = require("../rules/bom-match");
 const { stripBrandSuffix } = require("../rules/model-code");
+const { categoryKey, definition, fieldsForCategory, validatePayload, typedData } = require("./category-specs");
 const { unitFromSubline } = require("../rules/unit");
 const AppError = require("../../lib/AppError");
 
-const NO_TEMPLATE_MSG = "Batch has no field template — set the category template in Master Data";
-
-/**
- * Ambil template kategori untuk baris bomlist dan tempelkan sebagai rule.fields.
- * Hard error bila slug kosong atau template belum dibuat (cutover template-is-law).
- */
-async function withTemplate(db, bomRow) {
-  const slug = bomRow && bomRow.product_category;
-  if (!slug) throw new AppError(NO_TEMPLATE_MSG, 400, "NO_TEMPLATE");
-  const cat = await db.product_categories.findUnique({
-    where: { slug },
-    select: { fields: true },
-  });
-  if (!cat || !Array.isArray(cat.fields) || cat.fields.length === 0) {
-    throw new AppError(NO_TEMPLATE_MSG, 400, "NO_TEMPLATE");
-  }
-  return { ...bomRow, fields: cat.fields };
-}
-
-// Lookup BOM rule per model+order. Model di-lookup exact dulu, lalu fallback
-// strip 5-char brand suffix — data bisa menyimpan nama pendek ATAU nama lengkap
-// (kombinasi dua konvensi; lihat ponytail di rules/model-code.js).
-async function findBomlist(db, model, order_number) {
-  const m = String(model).trim();
-  const o = String(order_number).trim();
-  const hit = await db.bomlist.findFirst({
-    where: { model: m, order_number: o, is_active: true },
-  });
+async function findBomlist(db, model, orderNumber) {
+  const exact = String(model).trim();
+  const order = String(orderNumber).trim();
+  const hit = await db.bomlist.findFirst({ where: { model: exact, order_number: order, is_active: true } });
   if (hit) return hit;
-  const short = stripBrandSuffix(m);
-  if (short === m) return null;
-  return db.bomlist.findFirst({
-    where: { model: short, order_number: o, is_active: true },
+  const short = stripBrandSuffix(exact);
+  return short === exact ? null : db.bomlist.findFirst({ where: { model: short, order_number: order, is_active: true } });
+}
+
+async function loadTypedBom(db, bom) {
+  if (!bom) throw new AppError("Batch tidak ada di bomlist", 404, "BOMLIST_NOT_FOUND");
+  const category = categoryKey(bom.product_category);
+  const spec = await db[definition(category).bomDelegate].findUnique({ where: { bom_id: bom.id } });
+  if (!spec) throw new AppError("Spesifikasi kategori BOM belum dibuat", 400, "MISSING_CATEGORY_SPEC");
+  return { bom, category, spec };
+}
+
+async function resolveBomRule({ model, order_number, payload, subline, db = prisma }) {
+  const typed = await loadTypedBom(db, await findBomlist(db, model, order_number));
+  const fields = validatePayload(typed.category, typed.spec, payload, unitFromSubline(subline));
+  return { ...typed, fields };
+}
+
+async function createRegistrationSpec(db, category, idRegist, payload) {
+  return db[definition(category).registrationDelegate].create({ data: { id_regist: idRegist, ...typedData(category, payload) } });
+}
+
+async function updateRegistrationSpec(db, category, idRegist, payload) {
+  return db[definition(category).registrationDelegate].upsert({
+    where: { id_regist: idRegist },
+    create: { id_regist: idRegist, ...typedData(category, payload) },
+    update: typedData(category, payload, { partial: true }),
   });
 }
 
-async function resolveBomRule({ model, order_number, payload, subline }) {
-  const bomRow = await findBomlist(prisma, model, order_number);
-  if (!bomRow) throw new AppError("Batch tidak ada di bomlist", 404, "BOMLIST_NOT_FOUND");
-  const rule = await withTemplate(prisma, bomRow);
-
-  // validasi hanya field yang relevan untuk unit subline ini (IDU/ODU); field
-  // ber-unit lain tak wajib dan tak di-prefix-check untuk line ini
-  const unitFields = ruleFieldsForUnit(rule, unitFromSubline(subline));
-
-  const missing = missingRequired(rule, payload, unitFields);
-  if (missing) throw new AppError(`Wajib diisi: ${missing.label}`, 400, "MISSING_REQUIRED");
-  const mismatch = findBomMismatch(rule, payload, unitFields);
-  if (mismatch) {
-    throw new AppError(`${mismatch.key} tidak sesuai BOM (diharapkan mengandung: ${mismatch.expected})`, 400, "BOM_MISMATCH");
-  }
-  const unknown = unknownKeys(rule, payload);
-  if (unknown.length) throw new AppError(`Field tidak dikenal BOM: ${unknown.join(", ")}`, 400, "UNKNOWN_FIELD");
-
-  // components JSONB = nilai field dinamis yang dideklarasikan BOM
-  const components = {};
-  for (const f of unitFields) {
-    const val = payload[f.key];
-    if (val !== undefined && val !== null && String(val).trim() !== "") components[f.key] = String(val).trim();
-  }
-  return { product_category: rule.product_category ?? null, components, fields: rule.fields };
+async function registrationSpec(db, category, idRegist) {
+  return db[definition(category).registrationDelegate].findUnique({ where: { id_regist: idRegist } });
 }
 
-module.exports = { resolveBomRule, withTemplate, findBomlist, NO_TEMPLATE_MSG };
+// Transitional aliases retained only for callers being migrated in this change.
+async function withTemplate(db, bom) {
+  const typed = await loadTypedBom(db, bom);
+  return { ...bom, product_category: typed.category, typed_spec: typed.spec, fields: fieldsForCategory(typed.category, typed.spec) };
+}
+
+module.exports = {
+  findBomlist, loadTypedBom, resolveBomRule, createRegistrationSpec,
+  updateRegistrationSpec, registrationSpec, withTemplate,
+};

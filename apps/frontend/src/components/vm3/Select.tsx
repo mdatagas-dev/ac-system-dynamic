@@ -25,11 +25,12 @@ export interface SelectProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  "aria-label"?: string;
 }
 
 const NONE_KEY = "__none__";
 
-export function Select({ options, value, onChange, placeholder, className, disabled }: SelectProps) {
+export function Select({ options, value, onChange, placeholder, className, disabled, "aria-label": ariaLabel }: SelectProps) {
   const hasNone = options.some((o) => o.value === "");
 
   return (
@@ -38,7 +39,7 @@ export function Select({ options, value, onChange, placeholder, className, disab
       onValueChange={(v) => onChange(v === NONE_KEY ? null : v)}
       disabled={disabled}
     >
-      <SelectTrigger className={cn("w-full", className)}>
+      <SelectTrigger className={cn("w-full", className)} aria-label={ariaLabel}>
         <SelectValue placeholder={placeholder ?? "Pilih"} />
       </SelectTrigger>
       <SelectContent>

@@ -34,6 +34,8 @@ interface Regist {
   pcb_idu?: string | null;
   sn_carton?: string | null;
   sn_accessories?: string | null;
+  sn_drum?: string | null;
+  sn_pump?: string | null;
   total?: number;
   timestamps: string;
   index?: number;
@@ -52,6 +54,8 @@ const EMPTY: Record<string, string> = {
   pcb_idu: "",
   sn_carton: "",
   sn_accessories: "",
+  sn_drum: "",
+  sn_pump: "",
 };
 
 interface PostResult {
@@ -246,6 +250,8 @@ export default function RegistPage() {
       pcb_idu: r.pcb_idu ?? "",
       sn_carton: r.sn_carton ?? "",
       sn_accessories: r.sn_accessories ?? "",
+      sn_drum: r.sn_drum ?? "",
+      sn_pump: r.sn_pump ?? "",
     });
     setDialogOpen(true);
   };
@@ -322,7 +328,7 @@ export default function RegistPage() {
           <div className="flex flex-wrap items-center gap-3">
             <span className="material-symbols-rounded text-amber-600" aria-hidden>warning</span>
             <div className="min-w-0 text-sm">
-              <div className="font-semibold text-amber-900">{pending.length} batch belum tuntas — harap lengkapi scan</div>
+              <div className="font-semibold text-amber-900">{pending.length} batch belum tuntas — lanjutkan scan. Batch yang selesai harus dibuatkan registrasi baru.</div>
               <div className="truncate text-amber-800">
                 {pending.map((p) => `${p.order_number} (${p.total}/${p.plan})`).join(" • ")}
               </div>
@@ -537,6 +543,8 @@ export default function RegistPage() {
                 ["PCB IDU", detail.pcb_idu],
                 ["SN Carton", detail.sn_carton],
                 ["SN Accessories", detail.sn_accessories],
+                ["SN Drum", detail.sn_drum],
+                ["SN Pump", detail.sn_pump],
               ] as const
             )
               .filter(([, v]) => v != null && v !== "")

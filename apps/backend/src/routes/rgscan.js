@@ -2,234 +2,97 @@ const express = require("express");
 const router = express.Router();
 const prisma = require("../../lib/prisma");
 const { hasPermission } = require("../services/permissions");
-const { resolveBomRule } = require("../services/registration");
+const { resolveBomRule, createRegistrationSpec, updateRegistrationSpec, registrationSpec } = require("../services/registration");
+const { definition, scanDelegate } = require("../services/category-specs");
 const requirePermission = require("../../middlewares/requirePermission");
 const { assertCanAccessRegistration } = require("../services/registration-access");
 const AppError = require("../../lib/AppError");
 
-const trimOrNull = (v) => (v ? String(v).trim() : null);
+const baseSelect = { id: true, model: true, order_number: true, po_number: true, subline: true, userid: true, shift: true, plan: true, timestamps: true, product_category: true };
+
+async function scanCount(db, registration) {
+  return scanDelegate(registration.product_category, db).count({ where: { id_regist: registration.id } });
+}
 
 router.get("/", async (req, res) => {
-  const { page = 1, limit = 10, keyword = "" } = req.query;
-  const skip = (Number(page) - 1) * Number(limit);
-  const isSuperuser = hasPermission(req.user, "registscan:read");
-
-  const params = [];
-  let where = "WHERE 1=1";
-  if (!isSuperuser) {
-    params.push(req.user.id);
-    where = "WHERE rgs.userid = $1";
-  }
-  if (keyword) {
-    const start = params.length; // indeks placeholder keyword dimulai setelah filter user
-    params.push(
-      `%${keyword}%`,
-      `%${keyword}%`,
-      `%${keyword}%`,
-      `%${keyword}%`,
-      `%${keyword}%`,
-    );
-    where += ` AND (
-      rgs.model ILIKE $${start + 1}
-      OR rgs.id::text ILIKE $${start + 2}
-      OR rgs.order_number ILIKE $${start + 3}
-      OR rgs.po_number ILIKE $${start + 4}
-      OR rgs.subline ILIKE $${start + 5}
-    )`;
-  }
-  params.push(Number(limit), Number(skip));
-
-  const sql = `
-    SELECT
-      rgs.*,
-      COUNT(rcd.id_regist)::INTEGER AS total
-    FROM registscan AS rgs
-    LEFT JOIN recordscan AS rcd
-      ON rgs.id = rcd.id_regist::uuid
-    ${where}
-    GROUP BY rgs.id
-    ORDER BY rgs.timestamps DESC
-    LIMIT $${params.length - 1} OFFSET $${params.length}
-  `;
-  const sqlcount = `
-    SELECT COUNT(id)::INTEGER FROM registscan AS rgs ${where}
-  `;
-
-  const result = await prisma.$queryRawUnsafe(sql, ...params);
-
-  // count query tidak pakai limit/skip -> kirim subset params
-  const total = await prisma.$queryRawUnsafe(
-    sqlcount,
-    ...params.slice(0, params.length - 2),
-  );
-
-  const resultIndex = result.map((item, index) => ({
-    ...item,
-    index: skip + index + 1,
-  }));
-
-  res.status(200).json({
-    data: resultIndex,
-    total: total[0].count,
-    currentPage: Number(page),
-    totalPages: Math.ceil(total[0].count / limit),
-  });
+  const page = Math.max(Number(req.query.page) || 1, 1);
+  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
+  const keyword = String(req.query.keyword || "");
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(keyword);
+  const search = ["model", "order_number", "po_number", "subline"].map((field) => ({ [field]: { contains: keyword, mode: "insensitive" } }));
+  if (isUuid) search.unshift({ id: keyword });
+  const where = {
+    ...(hasPermission(req.user, "registscan:read") ? {} : { userid: req.user.id }),
+    ...(keyword ? { OR: search } : {}),
+  };
+  const [total, rows] = await Promise.all([
+    prisma.registscan.count({ where }),
+    prisma.registscan.findMany({ where, select: baseSelect, skip: (page - 1) * limit, take: limit, orderBy: { timestamps: "desc" } }),
+  ]);
+  const data = await Promise.all(rows.map(async (row, index) => ({
+    ...row,
+    ...(await registrationSpec(prisma, row.product_category, row.id) || {}),
+    total: await scanCount(prisma, row),
+    index: (page - 1) * limit + index + 1,
+  })));
+  res.status(200).json({ data, total, currentPage: page, totalPages: Math.ceil(total / limit) });
 });
 
 router.get("/checkregist", async (req, res) => {
-  const iduser = req.headers["iduser"];
-  const result = await prisma.$queryRaw`
-    SELECT
-      rgs.id AS id,
-      rgs.model AS model,
-      rgs.order_number AS order_number,
-      rgs.plan AS plan,
-      COUNT(rcd.id_regist)::INT AS total
-      FROM registscan AS rgs
-        LEFT JOIN recordscan AS rcd
-        ON rgs.id = rcd.id_regist::uuid
-    WHERE rgs.userid = ${iduser}
-    GROUP BY rgs.id
-    HAVING rgs.plan > COUNT(rcd.id_regist);
-  `;
-
-  res.status(200).json({ data: result });
+  const userId = hasPermission(req.user, "registscan:read") && req.query.userid ? String(req.query.userid) : req.user.id;
+  const rows = await prisma.registscan.findMany({ where: { userid: userId }, select: baseSelect });
+  const data = (await Promise.all(
+    rows.map(async (row) => ({ ...row, total: await scanCount(prisma, row) })),
+  )).filter((row) => row.plan > row.total);
+  res.status(200).json({ data });
 });
 
+function registrationInput(req, requireUserId) {
+  const payload = req.body || {};
+  const subline = String(payload.subline ?? req.user?.section ?? "").trim();
+  const required = ["model", "order_number", "po_number", "shift", "plan"];
+  if (requireUserId) required.push("userid");
+  if (required.some((key) => payload[key] === undefined || payload[key] === null || String(payload[key]).trim() === "") || !subline) {
+    throw new AppError("model, order_number, po_number, shift, plan, dan subline wajib diisi", 400, "VALIDATION");
+  }
+  const plan = Number(payload.plan);
+  if (!Number.isInteger(plan) || plan <= 0) throw new AppError("plan harus bilangan bulat positif", 400, "VALIDATION");
+  return { payload, subline, plan };
+}
+
 router.post("/post", requirePermission("registscan:write"), async (req, res) => {
-  const {
-    model,
-    order_number,
-    po_number,
-    userid,
-    shift,
-    plan,
-    sn,
-    sn_odu,
-    sn_motor,
-    sn_box,
-    pcb_idu,
-    sn_carton,
-    sn_accessories,
-  } = req.body || {};
-
-  if (
-    !model ||
-    !order_number ||
-    !po_number ||
-    !userid ||
-    !shift ||
-    plan === undefined
-  ) {
-    throw new AppError("model, order_number, po_number, userid, shift, plan wajib diisi", 400, "VALIDATION");
-  }
-
-  // subline otomatis dari section user (fallback ke body untuk kompatibilitas)
-  const subline = (req.body.subline ?? req.user?.section ?? "").toString().trim();
-  if (!subline) {
-    throw new AppError("subline wajib diisi (isi section pada user)", 400, "VALIDATION");
-  }
-
-  const { product_category, components, fields } = await resolveBomRule({ model, order_number, payload: req.body, subline });
-  const result = await prisma.registscan.create({
-    data: {
-      model: model.trim(),
-      order_number: order_number.trim(),
-      po_number: po_number.trim(),
-      subline: subline.trim(),
-      userid,
-      shift,
-      plan: Number(plan),
-      sn: trimOrNull(sn),
-      sn_odu: trimOrNull(sn_odu),
-      sn_motor: trimOrNull(sn_motor),
-      sn_box: trimOrNull(sn_box),
-      sn_accessories: trimOrNull(sn_accessories),
-      sn_carton: trimOrNull(sn_carton),
-      pcb_idu: trimOrNull(pcb_idu),
-      product_category: product_category || null,
-      components: Object.keys(components).length ? components : null,
-      fields_snapshot: fields,
-    },
+  const { payload, subline, plan } = registrationInput(req, false);
+  const userid = hasPermission(req.user, "registscan:read") && payload.userid ? String(payload.userid) : req.user.id;
+  const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload, subline });
+  const result = await prisma.$transaction(async (tx) => {
+    const registration = await tx.registscan.create({
+      data: { model: String(payload.model).trim(), order_number: String(payload.order_number).trim(), po_number: String(payload.po_number).trim(), subline, userid, shift: String(payload.shift), plan, product_category: resolved.category },
+    });
+    await createRegistrationSpec(tx, resolved.category, registration.id, payload);
+    return registration;
   });
-
   res.status(201).json({ message: "Data Added Successfully", result });
 });
 
 router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) => {
-  const { id } = req.params;
-  const {
-    model,
-    order_number,
-    po_number,
-    shift,
-    plan,
-    sn,
-    sn_odu,
-    sn_motor,
-    sn_box,
-    pcb_idu,
-    sn_carton,
-    sn_accessories,
-  } = req.body || {};
-
-  if (
-    !model ||
-    !order_number ||
-    !po_number ||
-    !shift ||
-    plan === undefined
-  ) {
-    throw new AppError("model, order_number, po_number, shift, plan wajib diisi", 400, "VALIDATION");
-  }
-
-  // subline otomatis dari section user (fallback ke body untuk kompatibilitas)
-  const subline = (req.body.subline ?? req.user?.section ?? "").toString().trim();
-  if (!subline) {
-    throw new AppError("subline wajib diisi (isi section pada user)", 400, "VALIDATION");
-  }
-
-  // akses: pemilik registrasi (atau superuser)
-  const existingReg = await prisma.registscan.findUnique({ where: { id } });
-  assertCanAccessRegistration(req.user, existingReg);
-
-  const { product_category, components, fields } = await resolveBomRule({ model, order_number, payload: req.body, subline });
-  const result = await prisma.registscan.update({
-    where: { id },
-    data: {
-      model: model.trim(),
-      order_number: order_number.trim(),
-      po_number: po_number.trim(),
-      subline: subline.trim(),
-      shift,
-      plan: Number(plan),
-      sn: trimOrNull(sn),
-      sn_odu: trimOrNull(sn_odu),
-      sn_motor: trimOrNull(sn_motor),
-      sn_box: trimOrNull(sn_box),
-      sn_accessories: trimOrNull(sn_accessories),
-      sn_carton: trimOrNull(sn_carton),
-      pcb_idu: trimOrNull(pcb_idu),
-      product_category: product_category ?? undefined,
-      components: Object.keys(components).length ? components : undefined,
-      fields_snapshot: fields,
-    },
+  const existing = await prisma.registscan.findUnique({ where: { id: req.params.id }, select: baseSelect });
+  assertCanAccessRegistration(req.user, existing);
+  const { payload, subline, plan } = registrationInput(req, false);
+  const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload, subline });
+  if (resolved.category !== existing.product_category) throw new AppError("Kategori registrasi tidak dapat diubah", 400, "CATEGORY_CHANGE_FORBIDDEN");
+  const result = await prisma.$transaction(async (tx) => {
+    const registration = await tx.registscan.update({ where: { id: existing.id }, data: { model: String(payload.model).trim(), order_number: String(payload.order_number).trim(), po_number: String(payload.po_number).trim(), subline, shift: String(payload.shift), plan } });
+    await updateRegistrationSpec(tx, resolved.category, existing.id, payload);
+    return registration;
   });
-  res
-    .status(200)
-    .json({ message: "data successfully changed", result });
+  res.status(200).json({ message: "data successfully changed", result });
 });
 
 router.delete("/delete/:id", requirePermission("registscan:write"), async (req, res) => {
-  const { id } = req.params;
-  // akses: pemilik registrasi (atau superuser)
-  const existingReg = await prisma.registscan.findUnique({ where: { id } });
-  assertCanAccessRegistration(req.user, existingReg);
-  const result = await prisma.$transaction([
-    prisma.recordscan.deleteMany({ where: { id_regist: id } }),
-    prisma.registscan.delete({ where: { id } }),
-  ]);
-  res.status(200).json({ message: "Deleted Successfully", result: result });
+  const existing = await prisma.registscan.findUnique({ where: { id: req.params.id }, select: baseSelect });
+  assertCanAccessRegistration(req.user, existing);
+  await prisma.registscan.delete({ where: { id: existing.id } });
+  res.status(200).json({ message: "Deleted Successfully" });
 });
 
 module.exports = router;

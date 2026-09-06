@@ -20,9 +20,13 @@ model bomlist {
   timestamps       DateTime? @default(now()) @db.Timestamp(6)
   model            String?   @db.VarChar(255)
   product_category String?   @db.VarChar(50)
+  // Legacy JSONB columns are retained only during the data-migration window.
+  // New category-aware writes use ac_bom_spec or wm_bom_spec instead.
   components       Json?     @db.JsonB
   unit_map         Json?     @db.JsonB
   is_active        Boolean   @default(true)
+  ac_spec          ac_bom_spec?
+  wm_spec          wm_bom_spec?
 }
 
 model recordscan {
@@ -67,8 +71,13 @@ model registscan {
   plan             Int?
   po_number        String?   @db.VarChar(255)
   product_category String?   @db.VarChar(50)
+  // Legacy columns retained for backwards-compatible reads during cutover.
   components       Json?     @db.JsonB
   fields_snapshot  Json?     @db.JsonB
+  ac_spec          ac_registration_spec?
+  wm_spec          wm_registration_spec?
+  ac_scans         recordscan_ac[]
+  wm_scans         recordscan_wm[]
 }
 
 model line {
@@ -126,6 +135,125 @@ model product_categories {
 
 // Audit trail perubahan template kategori: siapa mengubah apa kapan.
 // slug tanpa FK — baris bertahan walau kategori dihapus.
+// AC BOM values and field settings. Each BOM has at most one AC specification.
+model ac_bom_spec {
+  bom_id                  String  @id @db.Uuid
+  sn_prefix               String?
+  sn_required             Boolean @default(true)
+  sn_unit                 String? @db.VarChar(3)
+  sn_odu_prefix           String?
+  sn_odu_required         Boolean @default(false)
+  sn_odu_unit             String? @db.VarChar(3)
+  sn_carton_prefix        String?
+  sn_carton_required      Boolean @default(false)
+  sn_carton_unit          String? @db.VarChar(3)
+  pcb_idu_prefix          String?
+  pcb_idu_required        Boolean @default(false)
+  pcb_idu_unit            String? @db.VarChar(3)
+  sn_box_prefix           String?
+  sn_box_required         Boolean @default(false)
+  sn_box_unit             String? @db.VarChar(3)
+  sn_motor_prefix         String?
+  sn_motor_required       Boolean @default(false)
+  sn_motor_unit           String? @db.VarChar(3)
+  sn_accessories_prefix   String?
+  sn_accessories_required Boolean @default(false)
+  sn_accessories_unit     String? @db.VarChar(3)
+
+  bom bomlist @relation(fields: [bom_id], references: [id], onDelete: Cascade)
+}
+
+// WM is intentionally provisional. Add typed columns through a migration as WM
+// engineering confirms additional components.
+model wm_bom_spec {
+  bom_id           String  @id @db.Uuid
+  sn_prefix        String?
+  sn_required      Boolean @default(true)
+  sn_drum_prefix   String?
+  sn_drum_required Boolean @default(true)
+  sn_pump_prefix   String?
+  sn_pump_required Boolean @default(false)
+
+  bom bomlist @relation(fields: [bom_id], references: [id], onDelete: Cascade)
+}
+
+model ac_registration_spec {
+  id_regist      String  @id @db.Uuid
+  sn             String?
+  sn_odu         String?
+  sn_carton      String?
+  pcb_idu        String?
+  sn_box         String?
+  sn_motor       String?
+  sn_accessories String?
+
+  registration registscan @relation(fields: [id_regist], references: [id], onDelete: Cascade)
+}
+
+model wm_registration_spec {
+  id_regist String  @id @db.Uuid
+  sn        String?
+  sn_drum   String?
+  sn_pump   String?
+
+  registration registscan @relation(fields: [id_regist], references: [id], onDelete: Cascade)
+}
+
+model recordscan_ac {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_regist      String   @db.Uuid
+  sn             String?
+  sn_odu         String?
+  sn_carton      String?
+  pcb_idu        String?
+  sn_box         String?
+  sn_motor       String?
+  sn_accessories String?
+  timestamps     DateTime @default(now()) @db.Timestamptz(6)
+
+  registration registscan @relation(fields: [id_regist], references: [id], onDelete: Cascade)
+
+  @@index([id_regist])
+  @@index([sn])
+  @@index([sn_odu])
+  @@index([sn_carton])
+  @@index([pcb_idu])
+  @@index([sn_box])
+  @@index([sn_motor])
+  @@index([sn_accessories])
+  @@index([timestamps])
+}
+
+model recordscan_wm {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_regist  String   @db.Uuid
+  sn         String?
+  sn_drum    String?
+  sn_pump    String?
+  timestamps DateTime @default(now()) @db.Timestamptz(6)
+
+  registration registscan @relation(fields: [id_regist], references: [id], onDelete: Cascade)
+
+  @@index([id_regist])
+  @@index([sn])
+  @@index([sn_drum])
+  @@index([sn_pump])
+  @@index([timestamps])
+}
+
+model legacy_component_quarantine {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  source_table String   @db.VarChar(64)
+  source_id    String   @db.VarChar(255)
+  category     String?  @db.VarChar(50)
+  components   Json     @db.JsonB
+  reason       String   @db.VarChar(255)
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([source_table, source_id])
+  @@index([source_table, source_id])
+}
+
 model product_categories_audit {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   slug       String   @db.VarChar(50)

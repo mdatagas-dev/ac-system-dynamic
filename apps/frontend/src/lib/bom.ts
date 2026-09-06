@@ -22,9 +22,10 @@ export interface BomRule {
   sn_motor?: string | null;
   sn_accessories?: string | null;
   sn_odu?: string | null;
-  components?: Record<string, { label?: string; prefix?: string; required?: boolean; unit?: string }> | null;
-  /** Template kategori (struktur field material) — server meng-enrich baris bomlist. */
-  fields?: Array<{ key: string; label?: string; required?: boolean; unit?: string | null }> | null;
+  sn_drum?: string | null;
+  sn_pump?: string | null;
+  /** Typed category metadata returned by the backend. */
+  fields?: Array<{ key: string; label?: string; prefix?: string; required?: boolean; unit?: string | null }> | null;
 }
 
 const FIXED_LABELS: Record<string, string> = {
@@ -47,30 +48,18 @@ export function bomFields(row: BomRule | Record<string, unknown> | null | undefi
   const r = row as Record<string, unknown>;
   const fields: BomRuleField[] = [];
 
-  const template = Array.isArray(r.fields) ? (r.fields as Array<{ key: string; label?: string; required?: boolean; unit?: string | null }>) : [];
+  const template = Array.isArray(r.fields) ? (r.fields as Array<{ key: string; label?: string; prefix?: string; required?: boolean; unit?: string | null }>) : [];
   for (const t of template) {
-    const v = r[t.key];
-    const prefix = v !== undefined && v !== null && String(v).trim() !== "" ? String(v) : "";
+    // Typed endpoints include prefix in field metadata. The fallback keeps the
+    // reader compatible with legacy BOM responses during cutover.
+    const raw = t.prefix ?? r[t.key];
+    const prefix = raw !== undefined && raw !== null && String(raw).trim() !== "" ? String(raw) : "";
     fields.push({
       key: t.key,
       label: t.label || FIXED_LABELS[t.key] || t.key,
       prefix,
-      // ponytail: wajib hanya bila baris BOM punya prefix — tanpa prefix tak ada
-      // yang divalidasi, jadi field tak boleh memblokir simpan regist/scan
-      required: t.required !== false && prefix !== "",
+      required: t.required === true && prefix !== "",
       unit: t.unit ?? null,
-    });
-  }
-
-  const comps = r.components && typeof r.components === "object" ? (r.components as Record<string, { label?: string; prefix?: string; required?: boolean; unit?: string }>) : {};
-  for (const [key, def] of Object.entries(comps)) {
-    const d = def && typeof def === "object" ? def : {};
-    fields.push({
-      key,
-      label: d.label || key,
-      prefix: d.prefix ?? "",
-      required: d.required !== false,
-      unit: d.unit ?? null,
     });
   }
   return fields;

@@ -5,7 +5,7 @@
  * Auto-scan saat field terakhir terisi / Enter. Popup hijau/merah.
  */
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { http } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { bomFields, bomFieldsForUnit, unitFromSubline } from "@/lib/bom";
@@ -82,6 +82,7 @@ function ScanContent() {
   const { show } = useSnackbar();
   const { user } = useAuth();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const idRegistParam = searchParams.get("idregist");
   const [regists, setRegists] = useState<Regist[]>([]);
   const [registId, setRegistId] = useState<string | null>(idRegistParam);
@@ -107,7 +108,7 @@ function ScanContent() {
     try {
       rows = JSON.parse(importText);
       if (!Array.isArray(rows) || rows.length === 0) throw new Error("rows kosong");
-    } catch (err) {
+    } catch {
       show("Format tidak valid — isi array JSON baris scan: [{sn:\"...\"}, ...]");
       return;
     }
@@ -141,6 +142,7 @@ function ScanContent() {
   const failedValuesRef = useRef<string | null>(null);
 
   const selected = regists.find((r) => r.id === registId) ?? null;
+  const isComplete = selected?.plan != null && count >= selected.plan;
 
   const orderedFields = useMemo(() => {
     const all = bomFields(scanSummary?.bomlist?.[0]);
@@ -148,24 +150,24 @@ function ScanContent() {
     const forUnit = bomFieldsForUnit(all, unit);
     // operator hanya scan field yang diisi saat registrasi batch ini —
     // field kosong di registrasi berarti bukan bagian dari alur line mereka
-    const regist = scanSummary?.validation as unknown as
-      | (Record<string, unknown> & { components?: Record<string, unknown> | null })
-      | null
-      | undefined;
-    const comps = regist?.components && typeof regist.components === "object" ? regist.components : {};
-    return forUnit.filter((f) => String(regist?.[f.key] ?? comps[f.key] ?? "").trim() !== "");
+    const registration = scanSummary?.validation as unknown as Record<string, unknown> | null | undefined;
+    return forUnit.filter((field) => String(registration?.[field.key] ?? "").trim() !== "");
   }, [scanSummary?.bomlist, scanSummary?.validation]);
 
-  // Keep fieldValues keys in sync with orderedFields (generik reset saat BOM berubah)
+  const fieldKeys = orderedFields.map((field) => field.key).join("|");
+
+  // Keep field values in sync after the server has resolved a different BOM.
   useEffect(() => {
-    setFieldValues((prev) => {
-      const next: Record<string, string> = {};
-      for (const f of orderedFields) next[f.key] = prev[f.key] ?? "";
-      return next;
-    });
-    inputRefs.current = [];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderedFields.map((f) => f.key).join("|")]);
+    const timer = setTimeout(() => {
+      setFieldValues((prev) => {
+        const next: Record<string, string> = {};
+        for (const field of orderedFields) next[field.key] = prev[field.key] ?? "";
+        return next;
+      });
+      inputRefs.current = [];
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [fieldKeys, orderedFields]);
 
   useEffect(() => {
     http
@@ -179,10 +181,12 @@ function ScanContent() {
 
   useEffect(() => {
     if (!registId) {
-      setLastScan("");
-      setCount(0);
-      setScanSummary(null);
-      return;
+      const timer = setTimeout(() => {
+        setLastScan("");
+        setCount(0);
+        setScanSummary(null);
+      }, 0);
+      return () => clearTimeout(timer);
     }
     http
       .get<ScanSummary>("/rdps/scan", { extraHeaders: { idregist: registId } })
@@ -201,13 +205,15 @@ function ScanContent() {
   }, [registId]);
 
   useEffect(() => {
-    if (selected?.total != null) setCount(selected.total);
+    if (selected?.total == null) return;
+    const timer = setTimeout(() => setCount(selected.total!), 0);
+    return () => clearTimeout(timer);
   }, [selected?.total]);
 
   useEffect(() => {
     const t = setTimeout(() => inputRefs.current[0]?.focus(), 300);
     return () => clearTimeout(t);
-  }, [registId, orderedFields.map((f) => f.key).join("|")]);
+  }, [registId, fieldKeys]);
 
   // toast scan selesai (sukses/gagal) -> auto fokus balik ke SN untuk unit berikutnya
   useEffect(() => {
@@ -218,6 +224,10 @@ function ScanContent() {
   const scan = useCallback(async () => {
     if (!registId) {
       show("Pilih registrasi dulu");
+      return;
+    }
+    if (isComplete) {
+      scanToast.error("Batch sudah selesai. Buat registrasi baru untuk melanjutkan produksi.");
       return;
     }
     const missing = orderedFields.filter((f) => f.required && !(fieldValues[f.key] ?? "").trim());
@@ -233,16 +243,9 @@ function ScanContent() {
       const payload: Record<string, unknown> = {
         id_regist: registId,
       };
-      const components: Record<string, string> = {};
       for (const f of orderedFields) {
         const v = (fieldValues[f.key] ?? "").trim();
-        if (v) {
-          payload[f.key] = v;
-          components[f.key] = v.toUpperCase();
-        }
-      }
-      if (Object.keys(components).length) {
-        payload.components = components;
+        if (v) payload[f.key] = v;
       }
       const res = await http.post<ScanResult>("/rdps/post", payload, { extraHeaders: { idregist: registId } });
       const newSn = (res as unknown as { data?: { sn?: string } })?.data?.sn ?? (fieldValues.sn ?? "").trim();
@@ -265,7 +268,7 @@ function ScanContent() {
     } finally {
       setLoading(false);
     }
-  }, [registId, fieldValues, orderedFields, show]);
+  }, [registId, fieldValues, isComplete, orderedFields, show]);
 
   // Auto pindah generik: field ke-i terisi (len >=6 untuk i=0, >=4 lainnya) → focus i+1
   useEffect(() => {
@@ -321,6 +324,17 @@ function ScanContent() {
 
   return (
     <div className="flex flex-col gap-6">
+      <div className="w-full max-w-xl">
+        <div className="mb-1.5 text-sm font-medium text-on-surface">Pilih registrasi</div>
+        <Select
+          aria-label="Pilih registrasi"
+          className="w-full"
+          options={regists.map((regist) => ({ value: regist.id, label: `${regist.model} · ${regist.order_number} · ${regist.subline}` }))}
+          value={registId}
+          onChange={(value) => setRegistId(value ?? null)}
+          placeholder="Pilih batch untuk scan"
+        />
+      </div>
       {selected && (
         <div className="rounded-xl bg-[#0f1445] p-4 text-white flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -350,6 +364,13 @@ function ScanContent() {
         </div>
       )}
 
+      {isComplete ? (
+        <Card variant="outlined" className="mx-auto w-full max-w-[560px] border-green-600 bg-green-50 p-8 text-center">
+          <div className="text-lg font-bold text-green-900">Batch selesai</div>
+          <p className="mt-2 text-sm text-green-800">{count} / {selected?.plan} unit telah discan. Buat registrasi baru bila produksi berikutnya dimulai.</p>
+          <Button className="mt-5" onClick={() => router.push("/regist")}>Kembali ke registrasi</Button>
+        </Card>
+      ) : (
       <Card variant="outlined" className="mx-auto w-full max-w-[560px] !bg-white p-8">
         <div className="flex flex-col gap-6">
           <div className="flex items-center gap-4">
@@ -387,8 +408,9 @@ function ScanContent() {
                     }}
                     className="h-11 w-full rounded-md border border-gray-300 bg-white px-3 text-sm outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20"
                     placeholder=""
+                    name={f.key}
                     autoComplete="off"
-                    disabled={loading}
+                    disabled={loading || isComplete}
                   />
                 </div>
               </div>
@@ -400,6 +422,7 @@ function ScanContent() {
           </div>
         </div>
       </Card>
+      )}
 
       {/* Kedip merah layar saat scan gagal — overlay non-interaktif, animasi 0.8s */}
       {blink > 0 && (

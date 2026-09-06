@@ -110,7 +110,7 @@ router.get("/dashboard", async (req, res) => {
     SELECT 
       rgs.subline
       FROM registscan AS rgs
-      JOIN recordscan AS rcs 
+      JOIN recordscan_all AS rcs
       ON rgs.id = rcs.id_regist::uuid
     WHERE 
       rgs.shift = '1'
@@ -124,7 +124,7 @@ router.get("/dashboard", async (req, res) => {
     SELECT 
       rgs.subline
       FROM registscan AS rgs
-      JOIN recordscan AS rcs 
+      JOIN recordscan_all AS rcs
       ON rgs.id = rcs.id_regist::uuid
     WHERE 
     (
@@ -140,7 +140,7 @@ router.get("/dashboard", async (req, res) => {
     SELECT 
       rgs.subline
       FROM registscan AS rgs
-      JOIN recordscan AS rcs 
+      JOIN recordscan_all AS rcs
       ON rgs.id = rcs.id_regist::uuid
     WHERE 
     ( 
@@ -168,7 +168,7 @@ router.get("/dashboard", async (req, res) => {
           DATE_TRUNC('hour', rcs.timestamps) AS jam,
           COUNT(*)::INT AS total
       FROM registscan AS rgs
-      JOIN recordscan AS rcs 
+      JOIN recordscan_all AS rcs
           ON rgs.id = rcs.id_regist::uuid
       JOIN model AS mdl
         ON rgs.model ILIKE mdl.model || '%'

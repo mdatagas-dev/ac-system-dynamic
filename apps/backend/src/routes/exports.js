@@ -23,7 +23,7 @@ router.get("/total-po-scan", async (req, res) => {
         rgs.po_number,
         rgs.subline,
         COUNT(rgs.subline)::int AS countsubline
-      FROM recordscan AS rcd
+      FROM recordscan_all AS rcd
       JOIN registscan AS rgs
         ON rcd.id_regist::uuid = rgs.id
       ${whereClause}
@@ -40,7 +40,7 @@ router.get("/total-po-scan", async (req, res) => {
       SELECT COUNT(*)::int AS total
       FROM (
         SELECT 1
-        FROM recordscan AS rcd
+        FROM recordscan_all AS rcd
         JOIN registscan AS rgs
           ON rcd.id_regist::uuid = rgs.id
         ${countWhereClause}
@@ -87,7 +87,7 @@ router.get("/export-odf-po-all", async (req, res) => {
 	rcd.sn_box,
 	rcd.sn_accessories,
 	rcd.sn_carton
-  FROM recordscan AS rcd
+  FROM recordscan_all AS rcd
   JOIN registscan AS rgs
     ON rcd.id_regist::uuid = rgs.id
   WHERE rgs.model = ${model}
@@ -110,7 +110,7 @@ router.get("/export-odf-po-detail/", async (req, res) => {
           rgs.po_number,
           rgs.subline,
           COUNT(rgs.subline)::int AS countsubline
-        FROM recordscan AS rcd
+        FROM recordscan_all AS rcd
         JOIN registscan AS rgs
         ON rcd.id_regist::uuid = rgs.id
         WHERE rgs.model = ${model} 

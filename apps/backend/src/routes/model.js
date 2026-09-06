@@ -3,6 +3,7 @@ const router = express.Router();
 const prisma = require("../../lib/prisma");
 const AppError = require("../../lib/AppError");
 const requirePermission = require("../../middlewares/requirePermission");
+const { categoryKey } = require("../services/category-specs");
 
 router.get("/", async (req, res) => {
   const { page = 1, limit = 10, keyword = "" } = req.query;
@@ -51,6 +52,7 @@ router.post("/post", requirePermission("master-data:write"), async (req, res) =>
   if (!category) {
     throw new AppError("Kategori tidak ditemukan", 404, "NOT_FOUND");
   }
+  categoryKey(category.slug);
 
   const checkModel = await prisma.model.findFirst({
     where: {
@@ -87,6 +89,7 @@ router.put("/edit/:id", requirePermission("master-data:write"), async (req, res)
     if (!category) {
       throw new AppError("Kategori tidak ditemukan", 404, "NOT_FOUND");
     }
+    categoryKey(category.slug);
   }
   const result = await prisma.model.update({
     where: {

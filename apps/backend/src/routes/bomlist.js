@@ -3,177 +3,78 @@ const router = express.Router();
 const prisma = require("../../lib/prisma");
 const AppError = require("../../lib/AppError");
 const requirePermission = require("../../middlewares/requirePermission");
+const { categoryKey, definition, bomSpecData, fieldsForCategory } = require("../services/category-specs");
+
+async function enrichBom(row, db = prisma) {
+  const category = categoryKey(row.product_category);
+  const spec = await db[definition(category).bomDelegate].findUnique({ where: { bom_id: row.id } });
+  return { ...row, product_category: category, fields: spec ? fieldsForCategory(category, spec) : [] };
+}
 
 router.get("/", async (req, res) => {
   const { page = 1, limit = 10, keyword = "", archived = "false" } = req.query;
-  const showArchived = String(archived) === "true";
-  const skip = (Number(page) - 1) * Number(limit);
-  const isUUID =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      keyword,
-    );
-
+  const take = Math.min(Math.max(Number(limit) || 10, 1), 100);
+  const skip = Math.max(Number(page) - 1, 0) * take;
   const where = {
-    ...(showArchived ? {} : { is_active: true }),
-    ...(keyword
-      ? {
-          OR: [
-            isUUID ? { id: { equals: keyword } } : undefined,
-            { sn_carton: { contains: keyword, mode: "insensitive" } },
-            { model: { contains: keyword, mode: "insensitive" } },
-            { pcb_idu: { contains: keyword, mode: "insensitive" } },
-            { sn_box: { contains: keyword, mode: "insensitive" } },
-            { sn_motor: { contains: keyword, mode: "insensitive" } },
-            { sn_accessories: { contains: keyword, mode: "insensitive" } },
-            { order_number: { contains: keyword, mode: "insensitive" } },
-            { sn: { contains: keyword, mode: "insensitive" } },
-          ].filter(Boolean),
-        }
-      : {}),
+    ...(String(archived) === "true" ? {} : { is_active: true }),
+    ...(keyword ? { OR: [
+      { model: { contains: keyword, mode: "insensitive" } },
+      { order_number: { contains: keyword, mode: "insensitive" } },
+    ] } : {}),
   };
-  const total = await prisma.bomlist.count({ where });
-  const result = await prisma.bomlist.findMany({
-    where,
-    skip,
-    take: Number(limit),
-    orderBy: {
-      timestamps: "desc",
-    },
-  });
-
-  // enrich: template kategori per baris (struktur field) — satu query untuk semua slug
-  const slugs = [...new Set(result.map((r) => r.product_category).filter(Boolean))];
-  const cats = slugs.length
-    ? await prisma.product_categories.findMany({
-        where: { slug: { in: slugs } },
-        select: { slug: true, fields: true },
-      })
-    : [];
-  const fieldsBySlug = Object.fromEntries(cats.map((c) => [c.slug, c.fields]));
-  const enriched = result.map((r) => ({
-    ...r,
-    fields: fieldsBySlug[r.product_category] ?? null,
+  const [total, rows] = await Promise.all([
+    prisma.bomlist.count({ where }),
+    prisma.bomlist.findMany({ where, skip, take, orderBy: { timestamps: "desc" } }),
+  ]);
+  const data = await Promise.all(rows.map(async (row) => {
+    try { return await enrichBom(row); } catch { return { ...row, fields: [] }; }
   }));
-
-  res.status(200).json({
-    data: enriched,
-    total,
-    currentPages: Number(page),
-    totalPages: Math.ceil(total / limit),
-  });
+  res.status(200).json({ data, total, currentPages: Number(page), totalPages: Math.ceil(total / take) });
 });
 
+async function masterAndCategory(model) {
+  const master = await prisma.model.findFirst({ where: { model }, include: { category: { select: { slug: true } } } });
+  if (!master) throw new AppError("Create the model first in Model Master", 400, "VALIDATION");
+  return { master, category: categoryKey(master.category?.slug) };
+}
+
 router.post("/post", requirePermission("master-data:write"), async (req, res) => {
-  const handleData = req.body;
-  const model = String(handleData.model || "").trim();
-  const orderNumber = String(handleData.order_number || "").trim();
-
-  if (!model || !orderNumber) {
-    throw new AppError("model dan order_number wajib diisi", 400, "VALIDATION");
-  }
-
-  const master = await prisma.model.findFirst({
-    where: { model },
-    include: { category: { select: { slug: true } } },
+  const payload = req.body || {};
+  const model = String(payload.model || "").trim();
+  const orderNumber = String(payload.order_number || "").trim();
+  if (!model || !orderNumber) throw new AppError("model dan order_number wajib diisi", 400, "VALIDATION");
+  const { category } = await masterAndCategory(model);
+  const existing = await prisma.bomlist.findFirst({ where: { model, order_number: orderNumber, is_active: true } });
+  if (existing) throw new AppError("BOM rule already exists for this model and order", 409, "DUPLICATE");
+  const data = await prisma.$transaction(async (tx) => {
+    const bom = await tx.bomlist.create({ data: { model, order_number: orderNumber, product_category: category } });
+    await tx[definition(category).bomDelegate].create({ data: { bom_id: bom.id, ...bomSpecData(category, payload) } });
+    return enrichBom(bom, tx);
   });
-  if (!master) {
-    throw new AppError("Create the model first in Model Master", 400, "VALIDATION");
-  }
-
-  const existing = await prisma.bomlist.findFirst({
-    where: { model, order_number: orderNumber, is_active: true },
-  });
-  if (existing) {
-    throw new AppError("BOM rule already exists for this model and order", 400, "DUPLICATE");
-  }
-
-  const components =
-    handleData.components && typeof handleData.components === "object"
-      ? handleData.components
-      : undefined;
-  const unitMap =
-    handleData.unit_map && typeof handleData.unit_map === "object"
-      ? handleData.unit_map
-      : undefined;
-
-  const result = await prisma.bomlist.create({
-    data: {
-      sn_carton: handleData.sn_carton,
-      model,
-      pcb_idu: handleData.pcb_idu,
-      sn_box: handleData.sn_box,
-      sn_motor: handleData.sn_motor,
-      sn_accessories: handleData.sn_accessories,
-      order_number: orderNumber,
-      sn: handleData.sn,
-      components,
-      unit_map: unitMap,
-      product_category: master.category?.slug ?? null,
-    },
-  });
-  res.status(200).json({ message: "success", data: result });
+  res.status(200).json({ message: "success", data });
 });
 
 router.put("/edit/:id", requirePermission("master-data:write"), async (req, res) => {
   const { id } = req.params;
-  const handleData = req.body;
-  const model = String(handleData.model || "").trim();
-  const orderNumber = String(handleData.order_number || "").trim();
-
-  if (!model || !orderNumber) {
-    throw new AppError("model dan order_number wajib diisi", 400, "VALIDATION");
-  }
-
-  const master = await prisma.model.findFirst({
-    where: { model },
-    include: { category: { select: { slug: true } } },
+  const payload = req.body || {};
+  const model = String(payload.model || "").trim();
+  const orderNumber = String(payload.order_number || "").trim();
+  if (!model || !orderNumber) throw new AppError("model dan order_number wajib diisi", 400, "VALIDATION");
+  const { category } = await masterAndCategory(model);
+  const existing = await prisma.bomlist.findFirst({ where: { model, order_number: orderNumber, is_active: true, NOT: { id } } });
+  if (existing) throw new AppError("BOM rule already exists for this model and order", 409, "DUPLICATE");
+  const data = await prisma.$transaction(async (tx) => {
+    const bom = await tx.bomlist.update({ where: { id }, data: { model, order_number: orderNumber, product_category: category } });
+    await tx[definition(category).bomDelegate].upsert({
+      where: { bom_id: id }, create: { bom_id: id, ...bomSpecData(category, payload) }, update: bomSpecData(category, payload),
+    });
+    return enrichBom(bom, tx);
   });
-  if (!master) {
-    throw new AppError("Create the model first in Model Master", 400, "VALIDATION");
-  }
-
-  const existing = await prisma.bomlist.findFirst({
-    where: { model, order_number: orderNumber, is_active: true, NOT: { id } },
-  });
-  if (existing) {
-    throw new AppError("BOM rule already exists for this model and order", 400, "DUPLICATE");
-  }
-
-  const components =
-    handleData.components !== undefined && typeof handleData.components === "object"
-      ? handleData.components
-      : undefined;
-  const unitMap =
-    handleData.unit_map && typeof handleData.unit_map === "object"
-      ? handleData.unit_map
-      : undefined;
-
-  const result = await prisma.bomlist.update({
-    where: { id },
-    data: {
-      sn_carton: handleData.sn_carton,
-      model,
-      pcb_idu: handleData.pcb_idu,
-      sn_box: handleData.sn_box,
-      sn_motor: handleData.sn_motor,
-      sn_accessories: handleData.sn_accessories,
-      order_number: orderNumber,
-      sn: handleData.sn,
-      product_category: master.category?.slug ?? null,
-      ...(components ? { components } : {}),
-      ...(unitMap ? { unit_map: unitMap } : {}),
-    },
-  });
-  res.status(200).json({ message: "success", data: result });
+  res.status(200).json({ message: "success", data });
 });
 
 router.delete("/delete/:id", requirePermission("master-data:write"), async (req, res) => {
-  const { id } = req.params;
-  // soft-delete: arsip, aturan lama tetap jadi sejarah tapi tak dipakai batch baru
-  await prisma.bomlist.update({
-    where: { id },
-    data: { is_active: false },
-  });
+  await prisma.bomlist.update({ where: { id: req.params.id }, data: { is_active: false } });
   res.status(200).json({ message: "success" });
 });
 

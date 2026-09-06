@@ -1,10 +1,7 @@
 import { defineConfig } from "@playwright/test";
+import { E2E_DATABASE_URL } from "./playwright/db";
 
-/**
- * VM3 E2E — Playwright.
- * webServer: backend (3010) + frontend (3000) dijalankan otomatis.
- * globalSetup/globalTeardown: seed + hapus user E2E di DB ac_production.
- */
+/** E2E only runs against an explicitly configured database whose URL contains `test`. */
 export default defineConfig({
   testDir: "./e2e",
   timeout: 60_000,
@@ -21,6 +18,7 @@ export default defineConfig({
   webServer: [
     {
       command: "node ../backend/src/index.js",
+      env: { ...process.env, DATABASE_URL: E2E_DATABASE_URL },
       port: 3010,
       reuseExistingServer: true,
       timeout: 30_000,

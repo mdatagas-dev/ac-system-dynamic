@@ -19,6 +19,7 @@ interface Regist {
   model: string;
   order_number: string;
   subline: string;
+  product_category?: string | null;
 }
 interface ScanRecord {
   id: string;
@@ -28,7 +29,8 @@ interface ScanRecord {
   pcb_idu: string | null;
   sn_carton: string | null;
   sn_accessories: string | null;
-  components?: Record<string, unknown> | null;
+  sn_drum?: string | null;
+  sn_pump?: string | null;
   timestamps: string;
 }
 
@@ -99,6 +101,8 @@ function HistoryContent() {
   };
 
   const totalPages = Math.max(1, Math.ceil(total / 20));
+  const selected = regists.find((regist) => regist.id === registId);
+  const isWm = selected?.product_category === "wm";
 
   return (
     <div className="flex flex-col gap-6">
@@ -115,7 +119,7 @@ function HistoryContent() {
       </div>
 
       <div className="max-w-sm">
-        <SearchField value={keyword} onChange={setKeyword} placeholder="Cari SN, box, motor…" />
+        <SearchField value={keyword} onChange={setKeyword} placeholder={isWm ? "Cari SN, drum, pump…" : "Cari SN, box, motor…"} />
       </div>
 
       <Card variant="outlined" className="overflow-hidden">
@@ -124,10 +128,18 @@ function HistoryContent() {
             <thead>
               <tr className="border-b border-outline-variant text-xs uppercase text-on-surface-variant">
                 <th className="p-3">SN</th>
-                <th className="p-3">Motor</th>
-                <th className="p-3">Box</th>
-                <th className="p-3">PCB</th>
-                <th className="p-3">Komponen Dinamis</th>
+                {isWm ? (
+                  <>
+                    <th className="p-3">Drum</th>
+                    <th className="p-3">Pump</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="p-3">Motor</th>
+                    <th className="p-3">Box</th>
+                    <th className="p-3">PCB</th>
+                  </>
+                )}
                 <th className="p-3">Waktu</th>
                 <th className="p-3"></th>
               </tr>
@@ -136,23 +148,18 @@ function HistoryContent() {
               {rows.map((r) => (
                 <tr key={r.id} className="border-b border-outline-variant last:border-0">
                   <td className="p-3 font-mono font-medium">{r.sn}</td>
-                  <td className="p-3">{r.sn_motor ?? "-"}</td>
-                  <td className="p-3">{r.sn_box ?? "-"}</td>
-                  <td className="p-3">{r.pcb_idu ?? "-"}</td>
-                  <td className="p-3">
-                    {r.components && Object.keys(r.components).length ? (
-                      <div className="flex flex-wrap gap-1">
-                        {Object.entries(r.components).map(([k, v]) => (
-                          <span key={k} className="inline-flex whitespace-nowrap rounded-full bg-surface-container px-2 py-0.5 text-xs font-mono">
-                            <span className="text-on-surface-variant">{k}:</span>
-                            <span className="ml-1 font-medium">{String(v ?? "")}</span>
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      "-"
-                    )}
-                  </td>
+                  {isWm ? (
+                    <>
+                      <td className="p-3">{r.sn_drum ?? "-"}</td>
+                      <td className="p-3">{r.sn_pump ?? "-"}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="p-3">{r.sn_motor ?? "-"}</td>
+                      <td className="p-3">{r.sn_box ?? "-"}</td>
+                      <td className="p-3">{r.pcb_idu ?? "-"}</td>
+                    </>
+                  )}
                   <td className="p-3 text-on-surface-variant">
                     {r.timestamps ? new Date(r.timestamps).toLocaleString("id-ID") : "-"}
                   </td>
