@@ -77,7 +77,7 @@ async function api(method, route, body, t, headers = {}) {
   } catch {
     /* non-JSON */
   }
-  return { status: res.status, data };
+  return { status: res.status, data, headers: Object.fromEntries(res.headers) };
 }
 
 const deleteRoute = {

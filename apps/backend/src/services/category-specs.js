@@ -66,7 +66,7 @@ function parseBoolean(value, fallback) {
   return Boolean(value);
 }
 
-function validatePayload(category, bomSpec, payload, currentUnit) {
+function validatePayload(category, bomSpec, payload, currentUnit, { skipPrefix = false } = {}) {
   const allFields = fieldsForCategory(category, bomSpec);
   const fields = fieldsForUnit(allFields, currentUnit);
   // A registration can carry references for the other AC unit, even though the
@@ -75,7 +75,10 @@ function validatePayload(category, bomSpec, payload, currentUnit) {
   for (const field of fields) {
     const value = payload[field.key];
     if (field.required && !present(value)) throw new AppError(`Wajib diisi: ${field.label}`, 400, "MISSING_REQUIRED");
-    if (present(field.prefix) && present(value) && !String(value).toUpperCase().includes(String(field.prefix).toUpperCase())) {
+    // Prefix check is deferred (skipPrefix) so length/duplicate validation can
+    // surface first — an edited or rescanned SN often no longer contains the
+    // BOM prefix, and the operator needs the more specific error.
+    if (!skipPrefix && present(field.prefix) && present(value) && !String(value).toUpperCase().includes(String(field.prefix).toUpperCase())) {
       throw new AppError(`${field.key} tidak sesuai BOM (diharapkan mengandung: ${field.prefix})`, 400, "BOM_MISMATCH");
     }
   }
@@ -85,6 +88,15 @@ function validatePayload(category, bomSpec, payload, currentUnit) {
   return fields;
 }
 
+// Standalone prefix check (dipanggil terakhir setelah length/duplicate).
+function assertPrefixes(fields, payload) {
+  for (const field of fields) {
+    const value = payload[field.key];
+    if (present(field.prefix) && present(value) && !String(value).toUpperCase().includes(String(field.prefix).toUpperCase())) {
+      throw new AppError(`${field.key} tidak sesuai BOM (diharapkan mengandung: ${field.prefix})`, 400, "BOM_MISMATCH");
+    }
+  }
+}
 function typedData(category, payload, { partial = false } = {}) {
   return Object.fromEntries(
     definition(category).fields
@@ -108,6 +120,6 @@ function scanDelegate(category, db) {
 }
 
 module.exports = {
-  categoryKey, isSupportedCategory, definition, fieldsForCategory, fieldsForUnit, validatePayload,
+  categoryKey, isSupportedCategory, definition, fieldsForCategory, fieldsForUnit, validatePayload, assertPrefixes,
   typedData, bomSpecData, scanDelegate, normalize, present,
 };

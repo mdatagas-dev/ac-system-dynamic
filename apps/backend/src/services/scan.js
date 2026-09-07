@@ -2,7 +2,7 @@ const { unitFromSubline } = require("../rules/unit");
 const { accuracyPercent, MIN_ACCURACY_PERCENT } = require("../rules/accuracy");
 const { assertCanAccessRegistration } = require("./registration-access");
 const { findBomlist, loadTypedBom, registrationSpec } = require("./registration");
-const { validatePayload, typedData, scanDelegate } = require("./category-specs");
+const { assertPrefixes, validatePayload, typedData, scanDelegate } = require("./category-specs");
 const AppError = require("../../lib/AppError");
 
 const REQUIRED_AC_STAGES = [
@@ -26,6 +26,18 @@ function assertAccuracy(spec, payload, fields) {
   }
 }
 
+// Port aturan panjang dari form scan lama (minLength/maxLength = panjang nilai
+// referensi yang tercatat saat registrasi). Field tanpa referensi tidak divalidasi.
+function assertLengths(reference, payload, fields) {
+  for (const field of fields) {
+    const expected = reference?.[field.key];
+    const actual = payload[field.key];
+    if (!expected || !actual) continue;
+    if (String(actual).trim().length !== String(expected).length) {
+      throw new AppError(`Panjang ${field.label} harus ${String(expected).length} karakter (sesuai registrasi)`, 400, "LENGTH_MISMATCH");
+    }
+  }
+}
 async function assertNoDuplicate(tx, category, idRegist, payload, fields) {
   const delegate = scanDelegate(category, tx);
   for (const field of fields) {
@@ -65,15 +77,17 @@ async function createScan(tx, { user, id_regist, payload }) {
   assertCanAccessRegistration(user, registration);
   const { category, spec: bomSpec } = await loadTypedBom(tx, await findBomlist(tx, registration.model, registration.order_number));
   if (category !== registration.product_category) throw new AppError("Kategori BOM tidak cocok dengan registrasi", 400, "CATEGORY_MISMATCH");
-  const fields = validatePayload(category, bomSpec, payload, unitFromSubline(registration.subline));
+  const fields = validatePayload(category, bomSpec, payload, unitFromSubline(registration.subline), { skipPrefix: true });
   const reference = await registrationSpec(tx, category, registration.id);
+  assertLengths(reference, payload, fields);
   assertAccuracy(reference, payload, fields);
   await assertAcStageOrder(tx, registration, payload);
   await assertNoDuplicate(tx, category, registration.id, payload, fields);
+  assertPrefixes(fields, payload);
   const count = await scanDelegate(category, tx).count({ where: { id_regist: registration.id } });
   if (registration.plan && count >= registration.plan) throw new AppError("Target plan registrasi sudah tercapai", 400, "PLAN_REACHED");
   const created = await scanDelegate(category, tx).create({ data: { id_regist: registration.id, ...typedData(category, payload) } });
   return { created, brand: null, po: registration.po_number, odf: registration.order_number, model: registration.model, unit: {} };
 }
 
-module.exports = { createScan, REQUIRED_AC_STAGES };
+module.exports = { createScan, assertLengths, REQUIRED_AC_STAGES };

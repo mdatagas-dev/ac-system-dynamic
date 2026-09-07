@@ -316,6 +316,15 @@ test("RDPS: post 201, edit 200, export 200, delete 200 (alur scan)", async () =>
 
   r = await api("GET", "/rdps/export-odf-po-all?model=" + MODEL_FULL + "&order_number=" + ORDER);
   assert.strictEqual(r.status, 200);
+  assert.ok(Array.isArray(r.data.data));
+  // xlsx variant — paritas dengan ekspor lama (datascan Export -> allHistory.xlsx)
+  r = await api("GET", "/rdps/export-odf-po-all.xlsx?model=" + MODEL_FULL + "&order_number=" + ORDER);
+  assert.strictEqual(r.status, 200);
+  assert.ok((r.headers["content-type"] || "").includes("spreadsheetml"));
+  // xlsx riwayat per registrasi — paritas dengan ekspor lama (history.xlsx)
+  r = await api("GET", "/rdps/history.xlsx", undefined, undefined, { idregist: registId });
+  assert.strictEqual(r.status, 200);
+  assert.ok((r.headers["content-type"] || "").includes("spreadsheetml"));
 
   r = await api("GET", "/rdps/total-po-scan?limit=5");
   assert.strictEqual(r.status, 200);
@@ -334,7 +343,7 @@ test("DATA EXPORT: riwayat scan global dapat dicari dan dipaginasi", async () =>
   track("bomlist", bom.data?.data?.id);
   const registration = await api("POST", "/registscan/post", {
     model: MODEL_FULL, order_number: ord, po_number: "PO-" + uniq, subline: "LINE IDU ASSY INPUT",
-    shift: "1", plan: 1, sn: prefix,
+    shift: "1", plan: 1, sn: prefix + "000",
   });
   assert.strictEqual(registration.status, 201);
   track("registscan", registration.data.result.id);
@@ -344,8 +353,46 @@ test("DATA EXPORT: riwayat scan global dapat dicari dan dipaginasi", async () =>
   const result = await api("GET", `/rdps/data-export?keyword=${encodeURIComponent(ord)}&page=1&limit=20`);
   assert.strictEqual(result.status, 200);
   assert.ok(result.data.data.some((row) => row.order_number === ord));
+  const xlsx = await api("GET", `/rdps/data-export.xlsx?keyword=${encodeURIComponent(ord)}`);
+  assert.strictEqual(xlsx.status, 200);
 });
 
+// ---------- TDD SLICE 1b: LENGTH RULE (port form lama) ----------
+test("TDD/LENGTH: panjang scan harus sama dengan referensi registrasi", async () => {
+  const ord = "ORDLEN-" + uniq;
+  const regSn = "LEN2026-CCCCCC"; // referensi 14 karakter
+  const rb = await api("POST", "/bomlist/post", { model: MODEL_SHORT, order_number: ord, sn: "LEN2026" }); // prefix lebih pendek dari referensi
+  track("bomlist", rb.data?.data?.id);
+  const rReg = await api("POST", "/registscan/post", {
+    model: MODEL_FULL, order_number: ord, po_number: "POLEN-" + uniq, subline: "LINE IDU ASSY INPUT",
+    userid: "ul_" + uniq, shift: "1", plan: 10, sn: regSn, pcb_idu: "PCBLEN-7777", sn_accessories: "ACCCLEN-01",
+  });
+  assert.strictEqual(rReg.status, 201);
+  const rid = rReg.data.result?.id;
+  track("registscan", rid);
+  // kependekan -> ditolak (padahal prefix cocok, akurasi tinggi)
+  const expectedLen = regSn.length;
+  const snLabel = "Serial Number";
+  let r = await api("POST", "/rdps/post", { id_regist: rid, sn: "LEN2026-CC" });
+  assert.strictEqual(r.status, 400, "scan lebih pendek dari referensi harus ditolak");
+  assert.match(JSON.stringify(r.data), new RegExp(`Panjang ${snLabel} harus ${expectedLen}`));
+  // kepanjangan -> ditolak
+  r = await api("POST", "/rdps/post", { id_regist: rid, sn: regSn + "99" });
+  assert.strictEqual(r.status, 400, "scan lebih panjang dari referensi harus ditolak");
+  assert.match(JSON.stringify(r.data), new RegExp(`Panjang ${snLabel} harus ${expectedLen}`));
+  // panjang pas -> sukses
+  r = await api("POST", "/rdps/post", { id_regist: rid, sn: regSn });
+  assert.strictEqual(r.status, 201, "scan dengan panjang sama harus sukses");
+  track("recordscan", r.data.data?.id);
+  // field tanpa referensi (sn_motor kosong di registrasi) tidak divalidasi panjangnya
+  r = await api("POST", "/rdps/post", { id_regist: rid, sn: "LEN2026-DDDDDD", sn_motor: "MTR-01" });
+  assert.strictEqual(r.status, 201, "field tanpa referensi bebas panjang");
+  track("recordscan", r.data.data?.id);
+  // edit yang melanggar panjang -> ditolak
+  r = await api("PUT", "/rdps/edit/" + r.data.data.id, { id_regist: rid, sn: regSn.slice(0, 5) });
+  assert.strictEqual(r.status, 400, "edit ke panjang salah harus ditolak");
+  assert.match(JSON.stringify(r.data), new RegExp(`Panjang ${snLabel} harus ${expectedLen}`));
+});
 test("TDD/DOUBLE-SN: scan SN sama di regist sama -> 400", async () => {
   const ord = "ORD2-" + uniq;
   const sub = "LINE IDU ASSY INPUT";
@@ -378,18 +425,19 @@ test("TDD/DOUBLE-SN: SN beda tapi material sama -> 400", async () => {
   track("bomlist", rb.data?.data?.id);
   const rReg = await api("POST", "/registscan/post", {
     model: MODEL_FULL, order_number: ord, po_number: "PO3-" + uniq, subline: sub,
-    userid: "u3_" + uniq, shift: "1", plan: 10, sn: regSn, pcb_idu: "PCB-B", sn_accessories: "ACC-B",
+    userid: "u3_" + uniq, shift: "1", plan: 10, sn: regSn, pcb_idu: "PCB-SHARED-" + uniq, sn_accessories: "ACC-B",
   });
   assert.strictEqual(rReg.status, 201);
   const rid = rReg.data.result?.id;
   track("registscan", rid);
 
   const pcbShared = "PCB-SHARED-" + uniq;
+  const snAlt = regSn.slice(0, -1) + "C"; // beda SN, sama panjang referensi
   let r = await api("POST", "/rdps/post", { id_regist: rid, sn: regSn, pcb_idu: pcbShared });
   assert.strictEqual(r.status, 201, "scan pertama harus sukses");
   track("recordscan", r.data.data?.id);
 
-  r = await api("POST", "/rdps/post", { id_regist: rid, sn: regSn + "2", pcb_idu: pcbShared });
+  r = await api("POST", "/rdps/post", { id_regist: rid, sn: snAlt, pcb_idu: pcbShared });
   assert.strictEqual(r.status, 400, "material yang sama di regist sama harus ditolak");
   assert.match(JSON.stringify(r.data), /Double scan/i);
 });
@@ -458,12 +506,12 @@ test("PLAN: batch ditutup saat plan tercapai, registrasi baru dapat melanjutkan"
   assert.strictEqual(bom.status, 200);
   track("bomlist", bom.data.data.id);
 
-  const makeRegistration = async (po) => api("POST", "/registscan/post", {
+  const makeRegistration = async (po, sn) => api("POST", "/registscan/post", {
     model: MODEL_FULL, order_number: ord, po_number: po, subline: "LINE IDU ASSY INPUT",
-    shift: "1", plan: 1, sn: prefix,
+    shift: "1", plan: 1, sn,
   });
 
-  let registration = await makeRegistration("PO-PLAN-1-" + uniq);
+  let registration = await makeRegistration("PO-PLAN-1-" + uniq, prefix + "001");
   assert.strictEqual(registration.status, 201);
   const firstId = registration.data.result.id;
   track("registscan", firstId);
@@ -473,7 +521,7 @@ test("PLAN: batch ditutup saat plan tercapai, registrasi baru dapat melanjutkan"
   assert.strictEqual(scan.status, 400);
   assert.match(JSON.stringify(scan.data), /Target plan registrasi sudah tercapai/);
 
-  registration = await makeRegistration("PO-PLAN-2-" + uniq);
+  registration = await makeRegistration("PO-PLAN-2-" + uniq, prefix + "002");
   assert.strictEqual(registration.status, 201);
   const secondId = registration.data.result.id;
   track("registscan", secondId);
@@ -614,9 +662,10 @@ test("TDD/IMPORT: import scan divalidasi BOM + hanya superuser", async () => {
   }, token("ppc"));
   assert.strictEqual(denied.status, 403, "ppc tanpa import-sn harus 403");
 
-  // baris tidak sesuai BOM -> 400, transaction rollback
+  // baris tidak sesuai BOM (panjang dibuat sama dgn referensi agar yang diuji murni prefix BOM) -> 400, transaction rollback
+  const refLen = (pre + "0001").length;
   const bad = await api("POST", "/rdps/import", {
-    id_regist: rid, rows: [{ sn: "ZZZ-NOT-MATCH" }],
+    id_regist: rid, rows: [{ sn: "IMP" + "X".repeat(refLen - 3) }],
   });
   assert.strictEqual(bad.status, 400);
   assert.match(JSON.stringify(bad.data), /tidak sesuai BOM/);
