@@ -192,5 +192,7 @@ test("typed category specs: reject unknown fields and unsupported categories", (
     () => validatePayload("wm", { sn_prefix: "WM-", sn_required: true }, { sn: "WM-1", sn_drum: "DRM-1", unknown: "x" }),
     /Field tidak dikenal kategori/,
   );
-  assert.throws(() => categoryKey("washing"), /Kategori produk tidak didukung/);
+  assert.strictEqual(categoryKey("washing"), "wm");
+  assert.strictEqual(categoryKey("an"), "ac");
+  assert.throws(() => categoryKey("tv"), /Kategori produk tidak didukung/);
 });

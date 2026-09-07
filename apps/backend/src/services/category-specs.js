@@ -21,13 +21,19 @@ const definitions = {
 };
 
 function categoryKey(category) {
-  const key = String(category || "").trim().toLowerCase();
+  const raw = String(category || "").trim().toLowerCase();
+  const key = { ai: "ac", an: "ac", washing: "wm" }[raw] ?? raw;
   if (!definitions[key]) throw new AppError("Kategori produk tidak didukung", 400, "UNSUPPORTED_CATEGORY");
   return key;
 }
 
 function isSupportedCategory(category) {
-  return Object.hasOwn(definitions, String(category || "").trim().toLowerCase());
+  try {
+    categoryKey(category);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function definition(category) {
