@@ -1,6 +1,6 @@
 const prisma = require("../../lib/prisma");
 const { stripBrandSuffix } = require("../rules/model-code");
-const { categoryKey, definition, fieldsForCategory, validatePayload, typedData } = require("./category-specs");
+const { categoryKey, definition, isSupportedCategory, fieldsForCategory, validatePayload, typedData } = require("./category-specs");
 const { unitFromSubline } = require("../rules/unit");
 const AppError = require("../../lib/AppError");
 
@@ -40,6 +40,7 @@ async function updateRegistrationSpec(db, category, idRegist, payload) {
 }
 
 async function registrationSpec(db, category, idRegist) {
+  if (!isSupportedCategory(category)) return null;
   return db[definition(category).registrationDelegate].findUnique({ where: { id_regist: idRegist } });
 }
 

@@ -26,6 +26,10 @@ function categoryKey(category) {
   return key;
 }
 
+function isSupportedCategory(category) {
+  return Object.hasOwn(definitions, String(category || "").trim().toLowerCase());
+}
+
 function definition(category) {
   return definitions[categoryKey(category)];
 }
@@ -99,6 +103,6 @@ function scanDelegate(category, db) {
 }
 
 module.exports = {
-  categoryKey, definition, fieldsForCategory, fieldsForUnit, validatePayload,
+  categoryKey, isSupportedCategory, definition, fieldsForCategory, fieldsForUnit, validatePayload,
   typedData, bomSpecData, scanDelegate, normalize, present,
 };
