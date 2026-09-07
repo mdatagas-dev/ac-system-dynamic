@@ -18,6 +18,7 @@ export interface BomRule {
   sn?: string | null;
   sn_carton?: string | null;
   pcb_idu?: string | null;
+  pcb_odu?: string | null;
   sn_box?: string | null;
   sn_motor?: string | null;
   sn_accessories?: string | null;
@@ -31,7 +32,8 @@ export interface BomRule {
 const FIXED_LABELS: Record<string, string> = {
   sn: "Serial Number",
   sn_carton: "SN Carton",
-  pcb_idu: "SN PCB",
+  pcb_idu: "PCB IDU",
+  pcb_odu: "PCB ODU",
   sn_box: "SN Electrical Box",
   sn_motor: "SN Motor",
   sn_accessories: "SN Accessories",

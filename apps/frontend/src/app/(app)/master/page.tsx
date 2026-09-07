@@ -78,15 +78,7 @@ const ENTITIES: Entity[] = [
     fields: [
       { key: "model", label: "Model", required: true },
       { key: "order_number", label: "Order Number", required: true },
-      { key: "sn", label: "SN" },
-      { key: "sn_carton", label: "SN Carton" },
-      { key: "sn_box", label: "SN Box" },
-      { key: "sn_motor", label: "SN Motor" },
-      { key: "pcb_idu", label: "PCB IDU" },
-      { key: "sn_accessories", label: "SN Accessories" },
-      { key: "sn_odu", label: "SN ODU" },
-      { key: "sn_drum", label: "SN Drum (WM)" },
-      { key: "sn_pump", label: "SN Pump (WM)" },
+      { key: "product_category", label: "Kategori" },
     ],
     rowKey: (r) => String(r.id),
     getList: () => http.get<{ data: Record<string, unknown>[] }>("/bomlist?limit=100").then((r) => (r.data ?? []) as Record<string, unknown>[]),
@@ -144,6 +136,22 @@ const ENTITIES: Entity[] = [
 
 const EMPTY_FORM: Record<string, unknown> = {};
 
+const BOM_FIELDS = {
+  ac: [
+    { key: "sn", label: "Serial Number", scope: "IDU & ODU" },
+    { key: "sn_carton", label: "SN Carton", scope: "IDU & ODU" },
+    { key: "sn_accessories", label: "SN Accessories", scope: "IDU & ODU" },
+    { key: "pcb_idu", label: "PCB IDU", scope: "IDU" },
+    { key: "pcb_odu", label: "PCB ODU", scope: "ODU" },
+    { key: "sn_motor", label: "SN Motor", scope: "ODU" },
+  ],
+  wm: [
+    { key: "sn", label: "Serial Number", scope: "Washing Machine" },
+    { key: "sn_drum", label: "SN Drum", scope: "Washing Machine" },
+    { key: "sn_pump", label: "SN Pump", scope: "Washing Machine" },
+  ],
+} as const;
+
 type ProductCategoryRow = Record<string, unknown> & { id: string; slug: string; name: string; suffix_length?: number };
 
 
@@ -179,7 +187,10 @@ export default function MasterPage() {
         if (cancelled) return;
         const rows = (r.data ?? []) as Record<string, unknown>[];
         setModels(rows.map((m) => String(m.model ?? "")).filter(Boolean));
-        setModelCategories(Object.fromEntries(rows.map((m) => [String(m.model ?? ""), String(m.product_category ?? "").toLowerCase()])));
+        setModelCategories(Object.fromEntries(rows.map((m) => {
+          const category = String(m.product_category ?? "").toLowerCase();
+          return [String(m.model ?? ""), category === "ai" || category === "an" ? "ac" : category === "washing" ? "wm" : category];
+        })));
       })
       .catch(() => {
         if (!cancelled) setModels([]);
@@ -286,8 +297,17 @@ export default function MasterPage() {
     if (entity.key === "product_categories") {
       setForm({ slug: String(row.slug ?? ""), name: String(row.name ?? "") });
     } else if (entity.key === "bomlist") {
-      const next: Record<string, unknown> = {};
-      for (const f of entity.fields) next[f.key] = row[f.key] ?? "";
+      const next: Record<string, unknown> = {
+        model: row.model ?? "",
+        order_number: row.order_number ?? "",
+      };
+      const fieldMetadata = Array.isArray(row.fields) ? row.fields as Array<Record<string, unknown>> : [];
+      for (const field of fieldMetadata) {
+        const key = String(field.key ?? "");
+        if (!key) continue;
+        next[key] = field.prefix ?? "";
+        next[`${key}_required`] = field.required === true;
+      }
       setForm(next);
     } else {
       const next: Record<string, unknown> = {};
@@ -305,6 +325,21 @@ export default function MasterPage() {
       if (entity.key === "product_categories") {
         if (payload.slug) payload.slug = String(payload.slug).trim().toLowerCase();
         if (payload.name) payload.name = String(payload.name).trim();
+      }
+      if (entity.key === "bomlist") {
+        const category = selectedBomCategory;
+        if (!category || !(category in BOM_FIELDS)) throw new Error("Pilih model dengan kategori AC atau Washing Machine");
+        const allowed = new Set<string>(BOM_FIELDS[category as keyof typeof BOM_FIELDS].map((field) => field.key));
+        for (const key of Object.keys(payload)) {
+          if (key !== "model" && key !== "order_number" && key !== "product_category" && !allowed.has(key.replace(/_required$/, ""))) {
+            delete payload[key];
+          }
+        }
+        for (const key of allowed) {
+          const prefix = String(payload[key] ?? "").trim();
+          payload[key] = prefix;
+          payload[`${key}_required`] = prefix !== "" && payload[`${key}_required`] === true;
+        }
       }
       if (editing) {
         await entity.update(entity.rowKey(editing), payload);
@@ -353,13 +388,9 @@ export default function MasterPage() {
 
 
   const selectedBomCategory = entity.key === "bomlist" ? modelCategories[String(form.model ?? "")] : undefined;
-  const visibleBomField = (key: string) => {
-    if (key === "model" || key === "order_number") return true;
-    if (!selectedBomCategory) return false;
-    if (selectedBomCategory === "ac") return !["sn_drum", "sn_pump"].includes(key);
-    if (selectedBomCategory === "wm") return ["sn", "sn_drum", "sn_pump"].includes(key);
-    return false;
-  };
+  const bomFields = selectedBomCategory && selectedBomCategory in BOM_FIELDS
+    ? BOM_FIELDS[selectedBomCategory as keyof typeof BOM_FIELDS]
+    : [];
 
   // Judul dialog
   const dialogTitle = editing ? `Edit ${entity.label}` : `Tambah ${entity.label}`;
@@ -460,29 +491,70 @@ export default function MasterPage() {
           </>
         }
       >
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        {entity.key === "bomlist" ? (
+          <div className="mt-4 space-y-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Combobox
+                label="Model"
+                options={models}
+                value={String(form.model ?? "")}
+                onChange={(value) => setForm((current) => ({ ...current, model: value }))}
+                placeholder="Ketik untuk mencari model"
+              />
+              <TextField
+                label="Order Number"
+                required
+                value={String(form.order_number ?? "")}
+                onChange={(event) => setForm((current) => ({ ...current, order_number: event.target.value }))}
+              />
+            </div>
+            {selectedBomCategory ? (
+              <>
+                <p className="rounded-lg bg-surface-container px-3 py-2 text-sm text-on-surface-variant">
+                  Kategori model: <strong className="text-on-surface">{selectedBomCategory === "ac" ? "Air Conditioner" : "Washing Machine"}</strong>
+                </p>
+                <div className="space-y-3">
+                  <h2 className="text-sm font-semibold text-on-surface">Material dan aturan registrasi</h2>
+                  {bomFields.map((field) => {
+                    const prefix = String(form[field.key] ?? "");
+                    const requiredKey = `${field.key}_required`;
+                    return (
+                      <div key={field.key} className="grid gap-2 rounded-lg border border-outline-variant p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                        <TextField
+                          label={`${field.label} · ${field.scope}`}
+                          value={prefix}
+                          onChange={(event) => setForm((current) => ({
+                            ...current,
+                            [field.key]: event.target.value,
+                            ...(event.target.value.trim() ? {} : { [requiredKey]: false }),
+                          }))}
+                          placeholder="Prefix material (opsional)"
+                        />
+                        <label className="flex h-11 items-center gap-2 text-sm text-on-surface-variant">
+                          <input
+                            type="checkbox"
+                            checked={form[requiredKey] === true}
+                            disabled={!prefix.trim()}
+                            onChange={(event) => setForm((current) => ({ ...current, [requiredKey]: event.target.checked }))}
+                            className="size-4 accent-primary disabled:cursor-not-allowed"
+                          />
+                          Wajib diisi
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <p className="rounded-lg bg-surface-container px-3 py-2 text-sm text-on-surface-variant">Pilih model untuk menampilkan field material sesuai kategori.</p>
+            )}
+          </div>
+        ) : (
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
           {entity.fields
             .filter((f) => !(editing && f.editOnly))
-            .filter((f) => entity.key !== "bomlist" || visibleBomField(f.key))
             .map((f) =>
-              entity.key === "bomlist" && f.key === "model" ? (
-                <Combobox
-                  key={f.key}
-                  label={f.label}
-                  options={models}
-                  value={String(form[f.key] ?? "")}
-                  onChange={(v) => setForm({ ...form, [f.key]: v })}
-                  placeholder="Ketik untuk mencari model"
-                />
-              ) : entity.key === "bomlist" && f.key !== "order_number" ? (
-                <TextField
-                  key={f.key}
-                  label={f.label}
-                  value={String(form[f.key] ?? "")}
-                  onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
-                  placeholder="Prefix SN (opsional)"
-                />
-              ) : entity.key === "model" && f.key === "category_id" ? (
+              entity.key === "model" && f.key === "category_id" ? (
                 <div key={f.key}>
                   <label className="mb-1.5 block text-sm font-medium text-foreground">Kategori *</label>
                   <Select
@@ -527,7 +599,8 @@ export default function MasterPage() {
                 />
               ),
             )}
-        </div>
+          </div>
+        )}
 
       </Dialog>
 

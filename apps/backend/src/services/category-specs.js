@@ -2,10 +2,9 @@ const AppError = require("../../lib/AppError");
 
 const AC_FIELDS = [
   ["sn", "Serial Number", null, true],
-  ["sn_odu", "Serial Number (ODU)", "ODU", false],
   ["sn_carton", "SN Carton", null, false],
-  ["pcb_idu", "SN PCB", "IDU", false],
-  ["sn_box", "SN Electrical Box", "IDU", false],
+  ["pcb_idu", "PCB IDU", "IDU", false],
+  ["pcb_odu", "PCB ODU", "ODU", false],
   ["sn_motor", "SN Motor", "ODU", false],
   ["sn_accessories", "SN Accessories", null, false],
 ];

@@ -150,6 +150,9 @@ model ac_bom_spec {
   pcb_idu_prefix          String?
   pcb_idu_required        Boolean @default(false)
   pcb_idu_unit            String? @db.VarChar(3)
+  pcb_odu_prefix          String?
+  pcb_odu_required        Boolean @default(false)
+  pcb_odu_unit            String? @db.VarChar(3)
   sn_box_prefix           String?
   sn_box_required         Boolean @default(false)
   sn_box_unit             String? @db.VarChar(3)
@@ -183,6 +186,7 @@ model ac_registration_spec {
   sn_odu         String?
   sn_carton      String?
   pcb_idu        String?
+  pcb_odu        String?
   sn_box         String?
   sn_motor       String?
   sn_accessories String?
@@ -206,6 +210,7 @@ model recordscan_ac {
   sn_odu         String?
   sn_carton      String?
   pcb_idu        String?
+  pcb_odu        String?
   sn_box         String?
   sn_motor       String?
   sn_accessories String?
@@ -218,6 +223,7 @@ model recordscan_ac {
   @@index([sn_odu])
   @@index([sn_carton])
   @@index([pcb_idu])
+  @@index([pcb_odu])
   @@index([sn_box])
   @@index([sn_motor])
   @@index([sn_accessories])

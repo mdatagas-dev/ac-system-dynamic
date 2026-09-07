@@ -181,9 +181,10 @@ test("typed category specs: WM has provisional typed fields only", () => {
 });
 test("typed category specs: AC metadata is complete before line filtering", () => {
   const { fieldsForCategory, fieldsForUnit } = require("../src/services/category-specs");
-  const all = fieldsForCategory("ac", { pcb_idu_prefix: "PCB", pcb_idu_required: true, pcb_idu_unit: "IDU", sn_motor_prefix: "MTR", sn_motor_required: true, sn_motor_unit: "ODU" });
-  assert.deepStrictEqual(all.map((field) => field.key), ["sn", "sn_odu", "sn_carton", "pcb_idu", "sn_box", "sn_motor", "sn_accessories"]);
+  const all = fieldsForCategory("ac", { pcb_idu_prefix: "PCB", pcb_idu_required: true, pcb_idu_unit: "IDU", pcb_odu_prefix: "PCBO", pcb_odu_required: true, pcb_odu_unit: "ODU", sn_motor_prefix: "MTR", sn_motor_required: true, sn_motor_unit: "ODU" });
+  assert.deepStrictEqual(all.map((field) => field.key), ["sn", "sn_carton", "pcb_idu", "pcb_odu", "sn_motor", "sn_accessories"]);
   assert.deepStrictEqual(fieldsForUnit(all, "IDU").map((field) => field.key).includes("pcb_idu"), true);
+  assert.deepStrictEqual(fieldsForUnit(all, "IDU").map((field) => field.key).includes("pcb_odu"), false);
   assert.deepStrictEqual(fieldsForUnit(all, "IDU").map((field) => field.key).includes("sn_motor"), false);
 });
 test("typed category specs: reject unknown fields and unsupported categories", () => {

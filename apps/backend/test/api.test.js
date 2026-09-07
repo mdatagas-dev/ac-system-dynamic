@@ -249,7 +249,7 @@ test("REGISTSCAN: post valid 201, get list, delete 200", async () => {
   let r = await api("POST", "/registscan/post", {
     model: MODEL_FULL, order_number: pvOrd, po_number: "PO-" + uniq, subline: "LINE TEST INPUT",
     userid: "u_" + uniq, shift: "1", plan: 10, sn: SN,
-    sn_odu: "ODU-" + uniq, sn_motor: "MTR-" + uniq, sn_box: "BOX-" + uniq,
+    pcb_odu: "PCBO-" + uniq, sn_motor: "MTR-" + uniq,
     pcb_idu: "PCB-" + uniq, sn_carton: "CTN-" + uniq, sn_accessories: "ACC-" + uniq,
   });
   assert.strictEqual(r.status, 201);
@@ -296,19 +296,19 @@ test("RDPS: post 201, edit 200, export 200, delete 200 (alur scan)", async () =>
   let r = await api("POST", "/registscan/post", {
     model: MODEL_FULL, order_number: ORDER, po_number: "PO-" + uniq, subline: "LINE TEST INPUT",
     userid: "u_" + uniq, shift: "1", plan: 10, sn: SN,
-    sn_odu: "ODU-" + uniq, sn_motor: "MTR-" + uniq, sn_box: "BOX-" + uniq,
+    pcb_odu: "PCBO-" + uniq, sn_motor: "MTR-" + uniq,
     pcb_idu: "PCB-" + uniq, sn_carton: "CTN-" + uniq, sn_accessories: "ACC-" + uniq,
   });
   assert.strictEqual(r.status, 201);
   registId = r.data.result?.id;
   track("registscan", registId);
 
-  r = await api("POST", "/rdps/post", { id_regist: registId, sn: SN, sn_odu: "ODU-" + uniq, sn_carton: "CTN-" + uniq, pcb_idu: "PCB-" + uniq, sn_box: "BOX-" + uniq, sn_motor: "MTR-" + uniq, sn_accessories: "ACC-" + uniq });
+  r = await api("POST", "/rdps/post", { id_regist: registId, sn: SN, sn_carton: "CTN-" + uniq, pcb_idu: "PCB-" + uniq, pcb_odu: "PCBO-" + uniq, sn_motor: "MTR-" + uniq, sn_accessories: "ACC-" + uniq });
   assert.strictEqual(r.status, 201);
   recordId = r.data.data?.id;
   track("recordscan", recordId);
 
-  r = await api("PUT", "/rdps/edit/" + recordId, { id_regist: registId, sn: SN, sn_odu: "ODU-" + uniq, sn_carton: "CTN-" + uniq, pcb_idu: "PCB-" + uniq, sn_box: "BOX-" + uniq, sn_motor: "MTR-" + uniq, sn_accessories: "ACC-" + uniq });
+  r = await api("PUT", "/rdps/edit/" + recordId, { id_regist: registId, sn: SN, sn_carton: "CTN-" + uniq, pcb_idu: "PCB-" + uniq, pcb_odu: "PCBO-" + uniq, sn_motor: "MTR-" + uniq, sn_accessories: "ACC-" + uniq });
   assert.strictEqual(r.status, 200);
 
   r = await api("GET", "/rdps/export-odf-po-detail?model=" + MODEL_FULL + "&order_number=" + ORDER);
