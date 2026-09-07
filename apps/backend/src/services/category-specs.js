@@ -6,7 +6,7 @@ const AC_FIELDS = [
   ["pcb_idu", "PCB IDU", "IDU", false],
   ["pcb_odu", "PCB ODU", "ODU", false],
   ["sn_motor", "SN Motor", "ODU", false],
-  ["sn_accessories", "SN Accessories", null, false],
+  ["sn_accessories", "SN Accessories", "IDU", false],
 ];
 const WM_FIELDS = [
   ["sn", "Serial Number", null, true],

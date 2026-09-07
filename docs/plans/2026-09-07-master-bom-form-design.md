@@ -17,7 +17,7 @@ Legacy `ai` and `an` map to `ac` for compatibility.
 | --- | --- |
 | Shared IDU/ODU | Serial Number (`sn`) |
 | Shared IDU/ODU | SN Carton (`sn_carton`) |
-| Shared IDU/ODU | SN Accessories (`sn_accessories`) |
+| IDU | SN Accessories (`sn_accessories`) |
 | IDU | PCB IDU (`pcb_idu`) |
 | ODU | PCB ODU (`pcb_odu`) |
 | ODU | SN Motor (`sn_motor`) |
