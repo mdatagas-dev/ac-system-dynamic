@@ -79,6 +79,16 @@ const ENTITIES: Entity[] = [
       { key: "model", label: "Model", required: true },
       { key: "order_number", label: "Order Number", required: true },
       { key: "product_category", label: "Kategori" },
+      // Kolom prefix material (paritas dengan tabel bomlist lama) — nilai
+      // diambil dari row.fields[] karena rule baru disimpan di tabel typed.
+      { key: "sn", label: "SN Unit" },
+      { key: "sn_carton", label: "SN Carton" },
+      { key: "pcb_idu", label: "PCB IDU" },
+      { key: "pcb_odu", label: "PCB ODU" },
+      { key: "sn_motor", label: "SN Motor" },
+      { key: "sn_accessories", label: "SN Accessories" },
+      { key: "sn_drum", label: "SN Drum" },
+      { key: "sn_pump", label: "SN Pump" },
     ],
     rowKey: (r) => String(r.id),
     getList: () => http.get<{ data: Record<string, unknown>[] }>("/bomlist?limit=100").then((r) => (r.data ?? []) as Record<string, unknown>[]),
@@ -153,6 +163,15 @@ const BOM_FIELDS = {
 } as const;
 
 type ProductCategoryRow = Record<string, unknown> & { id: string; slug: string; name: string; suffix_length?: number };
+// Kolom tabel BOM yang isinya prefix material dari row.fields[] (bukan kolom row)
+const BOM_PREFIX_KEYS = new Set(["sn", "sn_carton", "pcb_idu", "pcb_odu", "sn_motor", "sn_accessories", "sn_drum", "sn_pump"]);
+function bomPrefixOf(row: Record<string, unknown>, key: string): string {
+  const meta = Array.isArray(row.fields) ? (row.fields as Array<Record<string, unknown>>) : [];
+  const hit = meta.find((f) => String(f.key ?? "") === key);
+  if (!hit) return "-";
+  const prefix = String(hit.prefix ?? "").trim();
+  return prefix ? (hit.required === true ? `${prefix} *` : prefix) : "-";
+}
 
 
 export default function MasterPage() {
@@ -274,6 +293,11 @@ export default function MasterPage() {
         if (slug !== categoryFilter) return false;
       }
       if (!q) return true;
+      if (entity.key === "bomlist") {
+        // prefix material baru disimpan di row.fields[], ikutkan dalam pencarian
+        const meta = Array.isArray(row.fields) ? (row.fields as Array<Record<string, unknown>>) : [];
+        if (meta.some((f) => String(f.prefix ?? "").toLowerCase().includes(q))) return true;
+      }
       return entity.fields.some((f) =>
         String(row[f.key] ?? "").toLowerCase().includes(q),
       );
@@ -450,13 +474,15 @@ export default function MasterPage() {
                     <td key={f.key} className="p-3">
                       {f.type === "password"
                         ? "••••••"
-                        : entity.key === "model" && f.key === "category_id"
-                          ? String(row.category_name ?? "-")
-                          : f.type === "switch"
-                            ? row[f.key]
-                              ? "Ya"
-                              : "Tidak"
-                            : String(row[f.key] ?? "-")}
+                        : entity.key === "bomlist" && BOM_PREFIX_KEYS.has(f.key)
+                          ? bomPrefixOf(row, f.key)
+                          : entity.key === "model" && f.key === "category_id"
+                            ? String(row.category_name ?? "-")
+                            : f.type === "switch"
+                              ? row[f.key]
+                                ? "Ya"
+                                : "Tidak"
+                              : String(row[f.key] ?? "-")}
                     </td>
                   ))}
                   <td className="p-1 text-right whitespace-nowrap">

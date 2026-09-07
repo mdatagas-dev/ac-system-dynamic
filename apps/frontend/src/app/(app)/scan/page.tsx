@@ -47,23 +47,24 @@ interface ScanSummary {
 const scanToast = {
   success: (msg: string) => {
     const id = toast.success(msg, {
+      duration: 2000,
       classNames: {
-        toast: "!bg-green-600 !border-green-700 !text-white !w-[420px] !min-h-24 !text-lg",
-        title: "!text-white !text-lg",
+        toast: "!bg-green-600 !border-green-700 !text-white !w-[640px] !min-h-14 !text-base",
+        title: "!text-white !text-base",
         description: "!text-white/90",
-        actionButton: "!bg-white !text-green-700 !text-base !px-4 !py-2",
+        actionButton: "!bg-white !text-green-700 !text-sm !px-3 !py-1.5",
       },
       action: { label: "OK", onClick: () => toast.dismiss(id) },
     });
   },
   error: (msg: string) => {
     const id = toast.error(msg, {
-      duration: Infinity,
+      duration: 2000,
       classNames: {
-        toast: "!bg-red-600 !border-red-700 !text-white !w-[420px] !min-h-24 !text-lg",
-        title: "!text-white !text-lg",
+        toast: "!bg-red-600 !border-red-700 !text-white !w-[640px] !min-h-14 !text-base",
+        title: "!text-white !text-base",
         description: "!text-white/90",
-        actionButton: "!bg-white !text-red-700 !text-base !px-4 !py-2",
+        actionButton: "!bg-white !text-red-700 !text-sm !px-3 !py-1.5",
       },
       action: { label: "OK", onClick: () => toast.dismiss(id) },
     });
@@ -237,6 +238,13 @@ function ScanContent() {
       if (idx >= 0) inputRefs.current[idx]?.focus();
       return;
     }
+    // Aturan lama: SN Carton harus sama dengan SN Unit
+    const sn = (fieldValues.sn ?? "").trim();
+    const carton = (fieldValues.sn_carton ?? "").trim();
+    if (sn && carton && carton !== sn) {
+      scanToast.error("SN Carton tidak sama dengan SN Unit");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -324,7 +332,7 @@ function ScanContent() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="w-full max-w-xl">
+      {/* <div className="w-full max-w-xl">
         <div className="mb-1.5 text-sm font-medium text-on-surface">Pilih registrasi</div>
         <Select
           aria-label="Pilih registrasi"
@@ -334,15 +342,15 @@ function ScanContent() {
           onChange={(value) => setRegistId(value ?? null)}
           placeholder="Pilih batch untuk scan"
         />
-      </div>
+      </div> */}
       {selected && (
         <div className="rounded-xl bg-[#0f1445] p-4 text-white flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="text-lg font-bold tracking-wide">{selected.model}</div>
             <div className="text-sm opacity-80">PO NUMBER: {selected.po_number}</div>
-            {orderedFields.length > 0 && (
+            {/* {orderedFields.length > 0 && (
               <div className="mt-1 text-xs opacity-70">BOM: {orderedFields.length} field • {orderedFields.filter((f) => f.required).length} wajib</div>
-            )}
+            )} */}
           </div>
           <div className="text-right">
             <div className="text-sm font-semibold">{selected.subline}</div>
@@ -371,12 +379,12 @@ function ScanContent() {
           <Button className="mt-5" onClick={() => router.push("/regist")}>Kembali ke registrasi</Button>
         </Card>
       ) : (
-      <Card variant="outlined" className="mx-auto w-full max-w-[560px] !bg-white p-8">
-        <div className="flex flex-col gap-6">
+      <Card variant="outlined" className="mx-auto w-full max-w-3xl !bg-white p-10">
+        <div className="flex flex-col gap-8">
           <div className="flex items-center gap-4">
-            <div className="w-32 shrink-0 text-sm text-gray-700">Last Scan</div>
+            <div className="w-40 shrink-0 text-base font-medium text-gray-700">Last Scan</div>
             <div className="flex-1">
-              <div className="h-11 flex items-center rounded-md bg-gray-100 px-3 text-sm text-gray-600 border border-gray-200">
+              <div className="h-14 flex items-center rounded-md bg-gray-100 px-4 text-base text-gray-600 border border-gray-200">
                 {lastScan || "-"}
               </div>
             </div>
@@ -387,7 +395,7 @@ function ScanContent() {
           ) : (
             orderedFields.map((f, idx) => (
               <div key={f.key} className="flex items-center gap-4">
-                <div className="w-32 shrink-0 text-sm text-gray-900">
+                <div className="w-40 shrink-0 text-base font-medium text-gray-900">
                   {f.label}
                   {f.required ? "" : <span className="text-gray-400 font-normal"> </span>}
                 </div>
@@ -406,7 +414,7 @@ function ScanContent() {
                         else void scan();
                       }
                     }}
-                    className="h-11 w-full rounded-md border border-gray-300 bg-white px-3 text-sm outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20"
+                    className="h-14 w-full rounded-md border border-gray-300 bg-white px-4 text-lg outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20"
                     placeholder=""
                     name={f.key}
                     autoComplete="off"
@@ -417,9 +425,9 @@ function ScanContent() {
             ))
           )}
 
-          <div className="text-center text-xs text-gray-500 min-h-4">
+          {/* <div className="text-center text-xs text-gray-500 min-h-4">
             Auto pindah saat kolom terisi — tidak perlu Enter • Scan terakhir auto submit
-          </div>
+          </div> */}
         </div>
       </Card>
       )}
