@@ -327,6 +327,25 @@ test("RDPS: post 201, edit 200, export 200, delete 200 (alur scan)", async () =>
 });
 
 // ---------- TDD SLICE 1: DOUBLE-SN REJECTION ----------
+test("DATA EXPORT: riwayat scan global dapat dicari dan dipaginasi", async () => {
+  const ord = "ORDEXPORT-" + uniq;
+  const prefix = "EXP-" + uniq;
+  const bom = await api("POST", "/bomlist/post", { model: MODEL_SHORT, order_number: ord, sn: prefix });
+  track("bomlist", bom.data?.data?.id);
+  const registration = await api("POST", "/registscan/post", {
+    model: MODEL_FULL, order_number: ord, po_number: "PO-" + uniq, subline: "LINE IDU ASSY INPUT",
+    shift: "1", plan: 1, sn: prefix,
+  });
+  assert.strictEqual(registration.status, 201);
+  track("registscan", registration.data.result.id);
+  const scan = await api("POST", "/rdps/post", { id_regist: registration.data.result.id, sn: prefix + "001" });
+  assert.strictEqual(scan.status, 201);
+  track("recordscan", scan.data.data.id);
+  const result = await api("GET", `/rdps/data-export?keyword=${encodeURIComponent(ord)}&page=1&limit=20`);
+  assert.strictEqual(result.status, 200);
+  assert.ok(result.data.data.some((row) => row.order_number === ord));
+});
+
 test("TDD/DOUBLE-SN: scan SN sama di regist sama -> 400", async () => {
   const ord = "ORD2-" + uniq;
   const sub = "LINE IDU ASSY INPUT";

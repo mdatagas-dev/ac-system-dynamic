@@ -84,6 +84,9 @@ export default function RegistPage() {
   // batch yang sedang dilihat detailnya (dialog read-only)
   const [detail, setDetail] = useState<Regist | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [pinAction, setPinAction] = useState<"edit" | "delete" | null>(null);
+  const [pin, setPin] = useState("");
+  const [pinLoading, setPinLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -256,13 +259,18 @@ export default function RegistPage() {
     setDialogOpen(true);
   };
 
-  const submit = async () => {
+  const submit = async (verifiedPin?: string) => {
+    if (editing && user?.roleuser.toLowerCase() === "ppc" && !verifiedPin) {
+      setPin("");
+      setPinAction("edit");
+      return;
+    }
     try {
       if (editing) {
         await http.put(`/registscan/edit/${editing.id}`, {
           ...form,
           plan: Number(form.plan),
-        });
+        }, { extraHeaders: verifiedPin ? { "X-PIN": verifiedPin } : undefined });
         show("Registrasi diperbarui");
         setDialogOpen(false);
         setEditing(null);
@@ -291,15 +299,36 @@ export default function RegistPage() {
     }
   };
 
-  const remove = async () => {
+  const remove = async (verifiedPin?: string) => {
     if (!deleteId) return;
+    if (user?.roleuser.toLowerCase() === "ppc" && !verifiedPin) {
+      setPin("");
+      setPinAction("delete");
+      return;
+    }
     try {
-      await http.del(`/registscan/delete/${deleteId}`);
+      await http.del(`/registscan/delete/${deleteId}`, { extraHeaders: verifiedPin ? { "X-PIN": verifiedPin } : undefined });
       show("Data dihapus");
       setDeleteId(null);
       load(keyword, page);
     } catch (err) {
       show(`Gagal hapus: ${(err as Error).message}`);
+    }
+  };
+
+  const verifyPin = async () => {
+    if (!pinAction || !pin.trim()) return;
+    setPinLoading(true);
+    try {
+      await http.post("/pin/compare", { pin });
+      const action = pinAction;
+      setPinAction(null);
+      if (action === "edit") await submit(pin);
+      else await remove(pin);
+    } catch (err) {
+      show(`PIN tidak dapat diverifikasi: ${(err as Error).message}`);
+    } finally {
+      setPinLoading(false);
     }
   };
 
@@ -452,7 +481,7 @@ export default function RegistPage() {
         actions={
           <>
             <Button variant="text" onClick={() => setDialogOpen(false)}>Batal</Button>
-            <Button onClick={submit} disabled={!isFormValid}>{editing ? "Simpan Perubahan" : "Simpan"}</Button>
+            <Button onClick={() => submit()} disabled={!isFormValid}>{editing ? "Simpan Perubahan" : "Simpan"}</Button>
           </>
         }
       >
@@ -559,6 +588,16 @@ export default function RegistPage() {
       </Dialog>
 
       <Dialog
+        open={pinAction != null}
+        onOpenChange={(open) => !open && setPinAction(null)}
+        title="Verifikasi PIN"
+        description="PPC wajib memasukkan PIN harian sebelum mengubah atau menghapus registrasi."
+        actions={<><Button variant="text" onClick={() => setPinAction(null)}>Batal</Button><Button loading={pinLoading} onClick={verifyPin}>Verifikasi</Button></>}
+      >
+        <div className="mt-4"><TextField label="PIN Harian" type="password" value={pin} onChange={(event) => setPin(event.target.value)} /></div>
+      </Dialog>
+
+      <Dialog
         open={deleteId != null}
         onOpenChange={(open) => !open && setDeleteId(null)}
         title="Hapus Registrasi"
@@ -566,7 +605,7 @@ export default function RegistPage() {
         actions={
           <>
             <Button variant="text" onClick={() => setDeleteId(null)}>Batal</Button>
-            <Button onClick={remove}>Hapus</Button>
+            <Button onClick={() => remove()}>Hapus</Button>
           </>
         }
       />

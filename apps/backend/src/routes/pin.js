@@ -2,8 +2,9 @@ const express = require("express");
 const router = express.Router();
 const prisma = require("../../lib/prisma");
 const AppError = require("../../lib/AppError");
+const requirePermission = require("../../middlewares/requirePermission");
 
-router.get("/", async (req, res) => {
+router.get("/", requirePermission("pin:manage"), async (req, res) => {
   const result = await prisma.pin.findMany({
     orderBy: {
       date: "desc",
@@ -17,7 +18,7 @@ router.get("/", async (req, res) => {
   res.status(200).json({ message: "data berhasil", data: parsedResult });
 });
 
-router.post("/post", async (req, res) => {
+router.post("/post", requirePermission("pin:manage"), async (req, res) => {
   const { date, pin } = req.body;
   const dateIn = new Date(date);
 
@@ -44,7 +45,7 @@ router.post("/post", async (req, res) => {
   });
 });
 
-router.post("/compare", async (req, res) => {
+router.post("/compare", requirePermission("scan:write"), async (req, res) => {
   const { pin } = req.body;
   const today = new Date();
   const date = today.toISOString().split("T")[0];
@@ -65,7 +66,7 @@ router.post("/compare", async (req, res) => {
   res.status(200).json(true);
 });
 
-router.delete("/delete/:id", async (req, res) => {
+router.delete("/delete/:id", requirePermission("pin:manage"), async (req, res) => {
   const { id } = req.params;
   const result = await prisma.pin.delete({
     where: {

@@ -5,6 +5,7 @@ const { hasPermission } = require("../services/permissions");
 const { resolveBomRule, createRegistrationSpec, updateRegistrationSpec, registrationSpec } = require("../services/registration");
 const { isSupportedCategory, scanDelegate } = require("../services/category-specs");
 const requirePermission = require("../../middlewares/requirePermission");
+const requirePpcPin = require("../../middlewares/requirePpcPin");
 const { assertCanAccessRegistration } = require("../services/registration-access");
 const AppError = require("../../lib/AppError");
 
@@ -78,7 +79,7 @@ router.post("/post", requirePermission("registscan:write"), async (req, res) => 
   res.status(201).json({ message: "Data Added Successfully", result });
 });
 
-router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) => {
+router.put("/edit/:id", requirePermission("registscan:write"), requirePpcPin, async (req, res) => {
   const existing = await prisma.registscan.findUnique({ where: { id: req.params.id }, select: baseSelect });
   assertCanAccessRegistration(req.user, existing);
   const { payload, subline, plan } = registrationInput(req, false);
@@ -92,7 +93,7 @@ router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) 
   res.status(200).json({ message: "data successfully changed", result });
 });
 
-router.delete("/delete/:id", requirePermission("registscan:write"), async (req, res) => {
+router.delete("/delete/:id", requirePermission("registscan:write"), requirePpcPin, async (req, res) => {
   const existing = await prisma.registscan.findUnique({ where: { id: req.params.id }, select: baseSelect });
   assertCanAccessRegistration(req.user, existing);
   await prisma.registscan.delete({ where: { id: existing.id } });

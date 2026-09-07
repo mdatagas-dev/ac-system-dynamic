@@ -64,6 +64,7 @@ const optionsCors = {
     "iduser",
     "X-Requested-With",
     "Accept",
+    "X-PIN",
   ],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   credentials: true,
@@ -79,7 +80,7 @@ app.use("/users", auth, requirePermission("users:manage"), usersRoutes);
 app.use("/bomlist", auth, bomlistRoutes);
 app.use("/line", auth, requirePermission("master-data:write"), lineRoutes);
 app.use("/model", auth, modelRoutes);
-app.use("/pin", auth, requirePermission("pin:manage"), pinRoutes);
+app.use("/pin", auth, pinRoutes);
 app.use("/uph", auth, requirePermission("master-data:write"), uphRoutes);
 app.use("/product-categories", auth, requirePermission("master-data:write"), productCategoriesRoutes);
 app.use(

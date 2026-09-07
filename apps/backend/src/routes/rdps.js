@@ -3,6 +3,7 @@ const router = express.Router();
 const prisma = require("../../lib/prisma");
 const { createScan } = require("../services/scan");
 const requirePermission = require("../../middlewares/requirePermission");
+const requirePpcPin = require("../../middlewares/requirePpcPin");
 const { assertCanAccessRegistration } = require("../services/registration-access");
 const { findBomlist, loadTypedBom, registrationSpec } = require("../services/registration");
 const { definition, fieldsForCategory, fieldsForUnit, scanDelegate, typedData, validatePayload } = require("../services/category-specs");
@@ -70,7 +71,7 @@ router.post("/import", requirePermission("registscan:import-sn"), async (req, re
   res.status(201).json({ message: `Imported ${created} rows`, created });
 });
 
-router.put("/edit/:id", requirePermission("scan:write"), async (req, res) => {
+router.put("/edit/:id", requirePermission("scan:write"), requirePpcPin, async (req, res) => {
   const recordId = req.params.id;
   const registration = await registrationForRequest(req);
   const scans = scanDelegate(registration.product_category, prisma);
@@ -90,7 +91,7 @@ router.put("/edit/:id", requirePermission("scan:write"), async (req, res) => {
   res.status(200).json({ message: "data update successful", data: result });
 });
 
-router.delete("/delete/:id", requirePermission("scan:write"), async (req, res) => {
+router.delete("/delete/:id", requirePermission("scan:write"), requirePpcPin, async (req, res) => {
   const registration = await registrationForRequest(req);
   const scans = scanDelegate(registration.product_category, prisma);
   const existing = await scans.findUnique({ where: { id: req.params.id } });

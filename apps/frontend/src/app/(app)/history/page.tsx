@@ -25,8 +25,8 @@ interface ScanRecord {
   id: string;
   sn: string;
   sn_motor: string | null;
-  sn_box: string | null;
   pcb_idu: string | null;
+  pcb_odu: string | null;
   sn_carton: string | null;
   sn_accessories: string | null;
   sn_drum?: string | null;
@@ -119,7 +119,7 @@ function HistoryContent() {
       </div>
 
       <div className="max-w-sm">
-        <SearchField value={keyword} onChange={setKeyword} placeholder={isWm ? "Cari SN, drum, pump…" : "Cari SN, box, motor…"} />
+        <SearchField value={keyword} onChange={setKeyword} placeholder={isWm ? "Cari SN, drum, pump…" : "Cari SN, carton, PCB, motor, accessories…"} />
       </div>
 
       <Card variant="outlined" className="overflow-hidden">
@@ -135,9 +135,11 @@ function HistoryContent() {
                   </>
                 ) : (
                   <>
+                    <th className="p-3">Carton</th>
+                    <th className="p-3">PCB IDU</th>
+                    <th className="p-3">PCB ODU</th>
                     <th className="p-3">Motor</th>
-                    <th className="p-3">Box</th>
-                    <th className="p-3">PCB</th>
+                    <th className="p-3">Accessories</th>
                   </>
                 )}
                 <th className="p-3">Waktu</th>
@@ -155,9 +157,11 @@ function HistoryContent() {
                     </>
                   ) : (
                     <>
-                      <td className="p-3">{r.sn_motor ?? "-"}</td>
-                      <td className="p-3">{r.sn_box ?? "-"}</td>
+                      <td className="p-3">{r.sn_carton ?? "-"}</td>
                       <td className="p-3">{r.pcb_idu ?? "-"}</td>
+                      <td className="p-3">{r.pcb_odu ?? "-"}</td>
+                      <td className="p-3">{r.sn_motor ?? "-"}</td>
+                      <td className="p-3">{r.sn_accessories ?? "-"}</td>
                     </>
                   )}
                   <td className="p-3 text-on-surface-variant">

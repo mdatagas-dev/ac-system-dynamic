@@ -29,9 +29,10 @@ import { useVm3ReducedMotion } from "@/hooks/useVm3ReducedMotion";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: "space_dashboard", exact: true },
-  { href: "/regist", label: "Registrasi", icon: "assignment" },
-  { href: "/scan", label: "Scan", icon: "barcode_scanner" },
+  { href: "/regist", label: "Record Scan", icon: "assignment" },
+  // { href: "/scan", label: "Scan", icon: "barcode_scanner" },
   { href: "/history", label: "Riwayat", icon: "history" },
+  { href: "/data-export", label: "Data Export", icon: "table_chart" },
   { href: "/master", label: "Master Data", icon: "database" },
 ];
 
