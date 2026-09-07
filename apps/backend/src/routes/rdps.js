@@ -1,12 +1,13 @@
 const express = require("express");
 const router = express.Router();
 const prisma = require("../../lib/prisma");
-const { createScan } = require("../services/scan");
+const ExcelJS = require("exceljs");
+const { createScan, assertLengths } = require("../services/scan");
 const requirePermission = require("../../middlewares/requirePermission");
 const requirePpcPin = require("../../middlewares/requirePpcPin");
 const { assertCanAccessRegistration } = require("../services/registration-access");
 const { findBomlist, loadTypedBom, registrationSpec } = require("../services/registration");
-const { definition, fieldsForCategory, fieldsForUnit, scanDelegate, typedData, validatePayload } = require("../services/category-specs");
+const { definition, fieldsForCategory, fieldsForUnit, scanDelegate, typedData, validatePayload, assertPrefixes } = require("../services/category-specs");
 const { unitFromSubline } = require("../rules/unit");
 const AppError = require("../../lib/AppError");
 
@@ -35,7 +36,8 @@ router.get("/scan", async (req, res) => {
 router.get("/history", async (req, res) => {
   const registration = await registrationForRequest(req);
   const page = Math.max(Number(req.query.page) || 1, 1);
-  const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
+  // Paritas dengan endpoint lama: tanpa param limit -> seluruh baris (dipakai untuk ekspor).
+  const limit = req.query.limit ? Math.min(Math.max(Number(req.query.limit) || 10, 1), 100) : null;
   const keyword = String(req.query.keyword || "").trim();
   const fields = definition(registration.product_category).fields.map(([key]) => key);
   const where = {
@@ -45,11 +47,38 @@ router.get("/history", async (req, res) => {
   const scans = scanDelegate(registration.product_category, prisma);
   const [total, data] = await Promise.all([
     scans.count({ where }),
-    scans.findMany({ where, orderBy: { timestamps: "desc" }, skip: (page - 1) * limit, take: limit }),
+    scans.findMany({
+      where,
+      orderBy: { timestamps: "desc" },
+      ...(limit ? { skip: (page - 1) * limit, take: limit } : {}),
+    }),
   ]);
-  res.status(200).json({ data, validation: registration, currentPages: page, total, totalPages: Math.ceil(total / limit) });
+  res.status(200).json({ data, validation: registration, currentPages: page, total, totalPages: limit ? Math.ceil(total / limit) : 1 });
 });
 
+router.get("/history.xlsx", async (req, res) => {
+  const registration = await registrationForRequest(req);
+  const keyword = String(req.query.keyword || "").trim();
+  const keys = definition(registration.product_category).fields.map(([key]) => key);
+  const where = {
+    id_regist: registration.id,
+    ...(keyword ? { OR: keys.map((key) => ({ [key]: { contains: keyword, mode: "insensitive" } })) } : {}),
+  };
+  const rows = await scanDelegate(registration.product_category, prisma).findMany({ where, orderBy: { timestamps: "desc" } });
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Riwayat");
+  sheet.columns = [
+    { header: "TIME", key: "timestamps", width: 22 },
+    ...keys.map((key) => ({ header: key.toUpperCase(), key, width: 26 })),
+  ];
+  for (const row of rows) sheet.addRow({ ...row, timestamps: row.timestamps ? new Date(row.timestamps).toLocaleString("id-ID") : "" });
+  sheet.getRow(1).font = { bold: true };
+  sheet.views = [{ state: "frozen", ySplit: 1 }];
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="history-${registration.order_number || registration.id}.xlsx"`);
+  await workbook.xlsx.write(res);
+  res.end();
+});
 router.post("/post", requirePermission("scan:write"), async (req, res) => {
   const payload = req.body || {};
   if (!payload.sn || /[%$#@!^*]/.test(String(payload.sn))) throw new AppError("SN mengandung karakter tidak valid", 400, "INVALID_CHARS");
@@ -79,14 +108,17 @@ router.put("/edit/:id", requirePermission("scan:write"), requirePpcPin, async (r
   if (!existing || existing.id_regist !== registration.id) throw new AppError("Record tidak ditemukan", 404, "NOT_FOUND");
   const { category, spec } = await loadTypedBom(prisma, await findBomlist(prisma, registration.model, registration.order_number));
   if (category !== registration.product_category) throw new AppError("Kategori BOM tidak cocok dengan registrasi", 400, "CATEGORY_MISMATCH");
-  validatePayload(category, spec, req.body || {}, unitFromSubline(registration.subline));
+  validatePayload(category, spec, req.body || {}, unitFromSubline(registration.subline), { skipPrefix: true });
   const data = typedData(category, req.body || {}, { partial: true });
+  // Nilai hasil edit tetap wajib sepanjang nilai referensi registrasinya.
+  assertLengths(await registrationSpec(prisma, category, registration.id), data, fieldsForUnit(fieldsForCategory(category, spec), unitFromSubline(registration.subline)));
   // Editing cannot silently introduce duplicate values in this registration.
   for (const [key, value] of Object.entries(data)) {
     if (!value) continue;
     const duplicate = await scans.findFirst({ where: { id_regist: registration.id, [key]: value, NOT: { id: recordId } } });
     if (duplicate) throw new AppError(`Double scan ${key} di satu regist`, 400, "DOUBLE_SCAN");
   }
+  assertPrefixes(fieldsForUnit(fieldsForCategory(category, spec), unitFromSubline(registration.subline)), data);
   const result = await scans.update({ where: { id: recordId }, data });
   res.status(200).json({ message: "data update successful", data: result });
 });
