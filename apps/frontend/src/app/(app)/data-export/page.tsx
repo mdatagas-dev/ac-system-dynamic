@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { http } from "@/lib/api";
+import { downloadFile, http } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/vm3/Button";
 import { Card } from "@/components/vm3/Card";
@@ -58,6 +58,7 @@ export default function DataExportPage() {
   const [pin, setPin] = useState("");
   const [pinLoading, setPinLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [editValues, setEditValues] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
@@ -137,6 +138,19 @@ export default function DataExportPage() {
     }
   };
 
+  const downloadXlsx = async () => {
+    setExporting(true);
+    try {
+      const query = new URLSearchParams();
+      if (keyword.trim()) query.set("keyword", keyword.trim());
+      await downloadFile(`/rdps/data-export.xlsx?${query}`, "data-produksi.xlsx");
+    } catch (error) {
+      show(`Gagal mengunduh XLSX: ${(error as Error).message}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const totalPages = Math.max(1, Math.ceil(total / 20));
   const columnsFor = (scan: Scan) => displayCategory(scan.product_category) === "WM" ? WM_COLUMNS : AC_COLUMNS;
 
@@ -147,14 +161,17 @@ export default function DataExportPage() {
           <h1 className="text-2xl font-bold">Data Export</h1>
           <p className="mt-1 text-sm text-on-surface-variant">Riwayat seluruh scan produksi.</p>
         </div>
-        <div className="w-full max-w-sm"><SearchField value={keyword} onChange={(value) => { setKeyword(value); setPage(1); }} placeholder="Cari model, batch, PO, atau serial number…" /></div>
+        <div className="flex w-full max-w-xl flex-wrap gap-2 sm:flex-nowrap">
+          <SearchField value={keyword} onChange={(value) => { setKeyword(value); setPage(1); }} placeholder="Cari model, batch, PO, atau line…" />
+          <Button icon="download" loading={exporting} onClick={downloadXlsx}>Unduh XLSX</Button>
+        </div>
       </div>
 
       <Card variant="outlined" className="overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1100px] text-left text-sm">
             <thead><tr className="border-b border-outline-variant text-xs uppercase text-on-surface-variant">
-              <th className="p-3">Waktu</th><th className="p-3">Kategori</th><th className="p-3">Model</th><th className="p-3">Batch</th><th className="p-3">Serial / Material</th><th className="p-3">Action</th>
+              <th className="p-3">Waktu</th><th className="p-3">Kategori</th><th className="p-3">Model</th><th className="p-3">Batch</th><th className="p-3">PO</th><th className="p-3">Line</th><th className="p-3">Action</th>
             </tr></thead>
             <tbody>{rows.map((scan) => (
               <tr key={`${scan.source}-${scan.id}`} className="border-b border-outline-variant last:border-0 align-top">
@@ -162,7 +179,8 @@ export default function DataExportPage() {
                 <td className="p-3">{displayCategory(scan.product_category)}</td>
                 <td className="p-3 font-medium">{scan.model}</td>
                 <td className="p-3">{scan.order_number}</td>
-                <td className="p-3"><div className="grid grid-cols-2 gap-x-5 gap-y-1">{columnsFor(scan).map(([key, label]) => <span key={key}><span className="text-on-surface-variant">{label}: </span><span className="font-mono">{String(scan[key] ?? "-")}</span></span>)}</div></td>
+                <td className="p-3">{scan.po_number ?? "-"}</td>
+                <td className="p-3">{scan.subline}</td>
                 <td className="p-2 whitespace-nowrap"><Button className="h-9 px-3" variant="outlined" onClick={() => setDetail(scan)}>Detail</Button>{scan.source === "typed" && <Button className="ml-2 h-9 px-3" onClick={() => beginEdit(scan)}>Edit</Button>}</td>
               </tr>
             ))}</tbody>

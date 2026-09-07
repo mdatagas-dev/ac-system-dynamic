@@ -73,3 +73,24 @@ export const http = {
     api<T>(path, { ...opts, method: "PUT", body }),
   del: <T>(path: string, opts?: ApiOptions) => api<T>(path, { ...opts, method: "DELETE" }),
 };
+
+/** Unduh file (xlsx) dari backend dengan cookie session — paritas dengan ekspor lama. */
+export async function downloadFile(path: string, filename: string): Promise<void> {
+  const response = await fetch(`${API_URL}${path}`, { credentials: "include" });
+  if (!response.ok) {
+    let message = `Error ${response.status}`;
+    try {
+      const data = await response.json();
+      message = data?.error ?? data?.message ?? message;
+    } catch {
+      /* body bukan JSON */
+    }
+    throw new ApiError(message, response.status);
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}

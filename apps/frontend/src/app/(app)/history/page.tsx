@@ -5,7 +5,7 @@
  */
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { http } from "@/lib/api";
+import { downloadFile, http } from "@/lib/api";
 import { Card } from "@/components/vm3/Card";
 import { SearchField } from "@/components/vm3/SearchField";
 import { Select } from "@/components/vm3/Select";
@@ -53,6 +53,7 @@ function HistoryContent() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -100,6 +101,18 @@ function HistoryContent() {
     }
   };
 
+  const exportHistory = async () => {
+    if (!registId) return;
+    setExporting(true);
+    try {
+      const kw = keyword.trim();
+      await downloadFile(`/rdps/history.xlsx${kw ? `?keyword=${encodeURIComponent(kw)}` : ""}`, "history.xlsx");
+    } catch (err) {
+      show(`Gagal mengunduh XLSX: ${(err as Error).message}`);
+    } finally {
+      setExporting(false);
+    }
+  };
   const totalPages = Math.max(1, Math.ceil(total / 20));
   const selected = regists.find((regist) => regist.id === registId);
   const isWm = selected?.product_category === "wm";
@@ -118,8 +131,14 @@ function HistoryContent() {
         </div>
       </div>
 
-      <div className="max-w-sm">
-        <SearchField value={keyword} onChange={setKeyword} placeholder={isWm ? "Cari SN, drum, pump…" : "Cari SN, carton, PCB, motor, accessories…"} />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="max-w-sm flex-1">
+          <SearchField value={keyword} onChange={setKeyword} placeholder={isWm ? "Cari SN, drum, pump…" : "Cari SN, carton, PCB, motor, accessories…"} />
+        </div>
+        <Button variant="outlined" onClick={exportHistory} disabled={!registId || exporting || rows.length === 0}>
+          <span className="material-symbols-rounded text-base" aria-hidden>download</span>
+          {exporting ? "Mengunduh…" : "Export"}
+        </Button>
       </div>
 
       <Card variant="outlined" className="overflow-hidden">

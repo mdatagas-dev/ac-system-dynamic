@@ -33,6 +33,7 @@ const NAV = [
   // { href: "/scan", label: "Scan", icon: "barcode_scanner" },
   { href: "/history", label: "Riwayat", icon: "history" },
   { href: "/data-export", label: "Data Export", icon: "table_chart" },
+  { href: "/po-scan", label: "Data Scan", icon: "dataset" },
   { href: "/master", label: "Master Data", icon: "database" },
 ];
 

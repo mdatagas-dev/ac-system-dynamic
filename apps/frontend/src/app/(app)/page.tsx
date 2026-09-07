@@ -8,7 +8,7 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
-import { http } from "@/lib/api";
+import { downloadFile, http } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/vm3/Button";
 import { Card } from "@/components/vm3/Card";
@@ -42,6 +42,7 @@ function DashboardContent() {
   const [poRows, setPoRows] = useState<PoScanRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exportingRow, setExportingRow] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -89,6 +90,23 @@ function DashboardContent() {
     window.history.replaceState(null, "", q ? `/?q=${encodeURIComponent(q)}` : "/");
   };
 
+  const exportPo = async (row: PoScanRow) => {
+    const key = `${row.po_number}-${row.subline}`;
+    setExportingRow(key);
+    try {
+      const query = new URLSearchParams({
+        model: row.model,
+        order_number: row.order_number,
+        po_number: row.po_number,
+        subline: row.subline,
+      });
+      await downloadFile(`/rdps/export-odf-po-all.xlsx?${query}`, "allHistory.xlsx");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal mengunduh XLSX.");
+    } finally {
+      setExportingRow(null);
+    }
+  };
   const totalUnits = data?.reduce((acc, d) => acc + (d.total ?? 0), 0) ?? 0;
 
   const vContainer = withReducedMotion(staggerContainer(0.07), reduced);
@@ -210,7 +228,7 @@ function DashboardContent() {
             </div>
           </section>
 
-          <PoTable rows={poRows} adaFilter={Boolean(appliedQ)} />
+          <PoTable rows={poRows} adaFilter={Boolean(appliedQ)} onExport={exportPo} exportingKey={exportingRow} />
         </motion.div>
       )}
     </motion.div>

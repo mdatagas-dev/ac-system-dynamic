@@ -395,7 +395,7 @@ export function UphCard({ row }: { row: DashboardData }) {
 }
 
 /* ---------- Tabel Total Scan per PO (FINO polish) ---------- */
-export function PoTable({ rows, adaFilter }: { rows: PoScanRow[]; adaFilter: boolean }) {
+export function PoTable({ rows, adaFilter, onExport, exportingKey }: { rows: PoScanRow[]; adaFilter: boolean; onExport?: (row: PoScanRow) => void; exportingKey?: string | null }) {
   const [sortAsc, setSortAsc] = useState(false);
   const sorted = useMemo(() => [...rows].sort((a, b) => (sortAsc ? a.countsubline - b.countsubline : b.countsubline - a.countsubline)), [rows, sortAsc]);
   return (
@@ -429,6 +429,7 @@ export function PoTable({ rows, adaFilter }: { rows: PoScanRow[]; adaFilter: boo
                   </span>
                 </button>
               </th>
+              {onExport && <th scope="col" className="p-3"><span className="sr-only">Ekspor</span></th>}
             </tr>
           </thead>
           <tbody>
@@ -439,6 +440,18 @@ export function PoTable({ rows, adaFilter }: { rows: PoScanRow[]; adaFilter: boo
                 <td className="p-3 font-mono text-xs sm:text-sm">{row.po_number}</td>
                 <td className="p-3"><span className="rounded-full bg-secondary-container px-2.5 py-1 text-xs font-medium text-on-secondary-container">{row.subline}</span></td>
                 <td className="p-3 text-right font-medium tabular-nums">{nfID.format(row.countsubline)}</td>
+                {onExport && (
+                  <td className="p-3 text-right">
+                    <button
+                      type="button"
+                      disabled={exportingKey === `${row.po_number}-${row.subline}`}
+                      onClick={() => onExport(row)}
+                      className="rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      {exportingKey === `${row.po_number}-${row.subline}` ? "…" : "Export"}
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
