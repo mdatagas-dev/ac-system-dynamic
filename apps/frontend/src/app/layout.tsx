@@ -22,11 +22,11 @@ export const metadata: Metadata = {
   description: "Sistem monitoring produksi — UPH, scan PO, dan master data.",
 };
 
-/* SPACEX light (#fff) & dark (#000) — toggle sempurna */
+/* Match browser chrome to the PT GAS surface tokens. */
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#000000" },
+    { media: "(prefers-color-scheme: light)", color: "#fafafa" },
+    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
   ],
 };
 

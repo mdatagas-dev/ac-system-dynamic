@@ -12,7 +12,6 @@ import { bomFields, bomFieldsForUnit, unitFromSubline } from "@/lib/bom";
 import { Card } from "@/components/vm3/Card";
 import { Dialog } from "@/components/vm3/Dialog";
 import { Button } from "@/components/vm3/Button";
-import { Select } from "@/components/vm3/Select";
 import { TextArea } from "@/components/vm3/TextArea";
 import { useSnackbar } from "@/components/vm3/Snackbar";
 import { toast } from "sonner";
@@ -49,10 +48,10 @@ const scanToast = {
     const id = toast.success(msg, {
       duration: 2000,
       classNames: {
-        toast: "!bg-green-600 !border-green-700 !text-white !w-[640px] !min-h-14 !text-base",
-        title: "!text-white !text-base",
-        description: "!text-white/90",
-        actionButton: "!bg-white !text-green-700 !text-sm !px-3 !py-1.5",
+        toast: "!bg-success !border-success !text-black !w-[640px] !min-h-14 !text-base",
+        title: "!text-black !text-base",
+        description: "!text-black/75",
+        actionButton: "!bg-white !text-on-surface !text-sm !px-3 !py-1.5",
       },
       action: { label: "OK", onClick: () => toast.dismiss(id) },
     });
@@ -61,10 +60,10 @@ const scanToast = {
     const id = toast.error(msg, {
       duration: 2000,
       classNames: {
-        toast: "!bg-red-600 !border-red-700 !text-white !w-[640px] !min-h-14 !text-base",
-        title: "!text-white !text-base",
-        description: "!text-white/90",
-        actionButton: "!bg-white !text-red-700 !text-sm !px-3 !py-1.5",
+        toast: "!bg-error !border-error !text-black !w-[640px] !min-h-14 !text-base",
+        title: "!text-black !text-base",
+        description: "!text-black/75",
+        actionButton: "!bg-white !text-on-surface !text-sm !px-3 !py-1.5",
       },
       action: { label: "OK", onClick: () => toast.dismiss(id) },
     });
@@ -86,7 +85,7 @@ function ScanContent() {
   const router = useRouter();
   const idRegistParam = searchParams.get("idregist");
   const [regists, setRegists] = useState<Regist[]>([]);
-  const [registId, setRegistId] = useState<string | null>(idRegistParam);
+  const registId = idRegistParam;
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({ sn: "" });
   const [loading, setLoading] = useState(false);
   const [lastScan, setLastScan] = useState<string>("");
@@ -332,19 +331,8 @@ function ScanContent() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* <div className="w-full max-w-xl">
-        <div className="mb-1.5 text-sm font-medium text-on-surface">Pilih registrasi</div>
-        <Select
-          aria-label="Pilih registrasi"
-          className="w-full"
-          options={regists.map((regist) => ({ value: regist.id, label: `${regist.model} · ${regist.order_number} · ${regist.subline}` }))}
-          value={registId}
-          onChange={(value) => setRegistId(value ?? null)}
-          placeholder="Pilih batch untuk scan"
-        />
-      </div> */}
       {selected && (
-        <div className="rounded-xl bg-[#0f1445] p-4 text-white flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl bg-primary-container p-4 text-on-primary-container">
           <div>
             <div className="text-lg font-bold tracking-wide">{selected.model}</div>
             <div className="text-sm opacity-80">PO NUMBER: {selected.po_number}</div>
@@ -357,7 +345,7 @@ function ScanContent() {
             <div className="text-xs opacity-80">Plan: {selected.plan ?? "-"} &nbsp; Count: {count}</div>
           </div>
           {unitFromSubline(selected.subline) && (
-            <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide">
+            <span className="rounded-full bg-on-primary-container/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide">
               Unit: {unitFromSubline(selected.subline)}
             </span>
           )}
@@ -373,31 +361,31 @@ function ScanContent() {
       )}
 
       {isComplete ? (
-        <Card variant="outlined" className="mx-auto w-full max-w-[560px] border-green-600 bg-green-50 p-8 text-center">
-          <div className="text-lg font-bold text-green-900">Batch selesai</div>
-          <p className="mt-2 text-sm text-green-800">{count} / {selected?.plan} unit telah discan. Buat registrasi baru bila produksi berikutnya dimulai.</p>
+        <Card variant="outlined" className="mx-auto w-full max-w-[560px] border-success/40 bg-success/10 p-8 text-center">
+          <div className="text-lg font-bold text-success">Batch selesai</div>
+          <p className="mt-2 text-sm text-on-surface">{count} / {selected?.plan} unit telah discan. Buat registrasi baru bila produksi berikutnya dimulai.</p>
           <Button className="mt-5" onClick={() => router.push("/regist")}>Kembali ke registrasi</Button>
         </Card>
       ) : (
-      <Card variant="outlined" className="mx-auto w-full max-w-3xl !bg-white p-10">
+      <Card variant="outlined" className="mx-auto w-full max-w-3xl p-10">
         <div className="flex flex-col gap-8">
           <div className="flex items-center gap-4">
-            <div className="w-40 shrink-0 text-base font-medium text-gray-700">Last Scan</div>
+            <div className="w-40 shrink-0 text-base font-medium text-on-surface-variant">Last Scan</div>
             <div className="flex-1">
-              <div className="h-14 flex items-center rounded-md bg-gray-100 px-4 text-base text-gray-600 border border-gray-200">
+              <div className="flex h-14 items-center rounded-md border border-outline bg-surface-container-high px-4 text-base text-on-surface-variant">
                 {lastScan || "-"}
               </div>
             </div>
           </div>
 
           {orderedFields.length === 0 ? (
-            <div className="py-8 text-center text-sm text-gray-500">BOM rule tidak ditemukan untuk batch ini</div>
+            <div className="py-8 text-center text-sm text-on-surface-variant">BOM rule tidak ditemukan untuk batch ini</div>
           ) : (
             orderedFields.map((f, idx) => (
               <div key={f.key} className="flex items-center gap-4">
-                <div className="w-40 shrink-0 text-base font-medium text-gray-900">
+                <div className="w-40 shrink-0 text-base font-medium text-on-surface">
                   {f.label}
-                  {f.required ? "" : <span className="text-gray-400 font-normal"> </span>}
+                  {f.required ? "" : <span className="text-on-surface-variant/60 font-normal"> </span>}
                 </div>
                 <div className="flex-1">
                   <input
@@ -414,7 +402,7 @@ function ScanContent() {
                         else void scan();
                       }
                     }}
-                    className="h-14 w-full rounded-md border border-gray-300 bg-white px-4 text-lg outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/20"
+                    className="h-14 w-full rounded-md border border-outline bg-card px-4 text-lg text-on-surface outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
                     placeholder=""
                     name={f.key}
                     autoComplete="off"

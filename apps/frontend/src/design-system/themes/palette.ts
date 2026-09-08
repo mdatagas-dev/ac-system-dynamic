@@ -13,8 +13,8 @@ import {
 } from "@material/material-color-utilities";
 import { colorRoles, roleToVar, type ColorRole } from "./roles";
 
-/** Seed brand default VM3 — SPACEX unified hitam (1 tema dengan login) */
-export const DEFAULT_SEED = argbFromHex("#000000");
+/** PT GAS brand seed used when no custom theme is selected. */
+export const DEFAULT_SEED = argbFromHex("#3b82f6");
 
 export type ThemeMode = "light" | "dark";
 

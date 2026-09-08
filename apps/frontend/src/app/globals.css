@@ -52,8 +52,8 @@
     --muted-foreground: var(--vm3-color-on-surface-variant);
     --accent: var(--vm3-color-surface-container-high);
     --accent-foreground: var(--vm3-color-on-surface);
-    --destructive: #d32f2f;
-    --destructive-foreground: #ffffff;
+    --destructive: var(--vm3-color-error);
+    --destructive-foreground: var(--vm3-color-on-error);
     --border: var(--vm3-color-outline-variant);
     --input: var(--vm3-color-outline);
     --ring: var(--vm3-color-primary);
@@ -111,6 +111,9 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-success: var(--vm3-color-success);
+  --color-warning: var(--vm3-color-warning);
+  --color-info: var(--vm3-color-info);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

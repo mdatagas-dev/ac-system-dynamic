@@ -520,6 +520,7 @@ export default function MasterPage() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         title={dialogTitle}
+        className={entity.key === "bomlist" ? "sm:!max-w-4xl" : undefined}
         actions={
           <>
             <Button variant="text" onClick={() => setDialogOpen(false)}>
@@ -553,8 +554,8 @@ export default function MasterPage() {
                 <p className="rounded-lg bg-surface-container px-3 py-2 text-sm text-on-surface-variant">
                   Kategori model: <strong className="text-on-surface">{selectedBomCategory === "ac" ? "Air Conditioner" : "Washing Machine"}</strong>
                 </p>
-                <div className="space-y-3">
-                  <h2 className="text-sm font-semibold text-on-surface">Material dan aturan registrasi</h2>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <h2 className="text-sm font-semibold text-on-surface sm:col-span-2">Material dan aturan registrasi</h2>
                   {bomFields.map((field) => {
                     const prefix = String(form[field.key] ?? "");
                     const requiredKey = `${field.key}_required`;

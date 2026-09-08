@@ -10,6 +10,9 @@ const REQUIRED_AC_STAGES = [
   "LINE IDU TESTING INPUT", "LINE IDU TESTING OUTPUT", "LINE ODU TESTING INPUT", "LINE ODU TESTING OUTPUT",
   "LINE IDU PACKING INPUT", "LINE ODU PACKING INPUT",
 ];
+const REQUIRED_WM_STAGES = [
+  "LINE WM ASSY INPUT", "LINE WM ASSY OUTPUT", "LINE WM PACKING INPUT",
+];
 
 async function lockRegistration(tx, id) {
   const rows = await tx.$queryRaw`SELECT id FROM registscan WHERE id = ${id}::uuid FOR UPDATE`;
@@ -48,13 +51,34 @@ async function assertNoDuplicate(tx, category, idRegist, payload, fields) {
   }
 }
 
-async function assertAcStageOrder(tx, registration, payload) {
-  if (registration.product_category !== "ac" || !payload.sn) return;
-  const rows = await tx.$queryRaw`
-    SELECT r.subline FROM recordscan_ac s
-    JOIN registscan r ON r.id = s.id_regist
-    WHERE s.sn = ${String(payload.sn).trim().toUpperCase()}
-  `;
+async function batchStagesFor(tx, registration) {
+  const rows = await tx.registscan.findMany({
+    where: {
+      model: registration.model,
+      order_number: registration.order_number,
+      po_number: registration.po_number,
+      product_category: registration.product_category,
+    },
+    select: { subline: true },
+  });
+  return new Set(rows.map((row) => row.subline.toUpperCase().trim()));
+}
+
+async function assertStageOrder(tx, registration, payload) {
+  const category = registration.product_category;
+  if (!['ac', 'wm'].includes(category) || !payload.sn) return;
+  const sn = String(payload.sn).trim().toUpperCase();
+  const rows = category === "ac"
+    ? await tx.$queryRaw`
+        SELECT r.subline FROM recordscan_ac s
+        JOIN registscan r ON r.id = s.id_regist
+        WHERE s.sn = ${sn}
+      `
+    : await tx.$queryRaw`
+        SELECT r.subline FROM recordscan_wm s
+        JOIN registscan r ON r.id = s.id_regist
+        WHERE s.sn = ${sn}
+      `;
   const line = registration.subline.toUpperCase().trim();
   if (rows.some((row) => row.subline.toUpperCase() === line)) throw new AppError(`Double Scan di ${registration.subline}`, 400, "DOUBLE_SCAN");
   if (line.endsWith("OUTPUT") && !line.includes("PACKING OUTPUT")) {
@@ -63,18 +87,23 @@ async function assertAcStageOrder(tx, registration, payload) {
   }
   if (line.includes("PACKING")) {
     const unit = line.includes("IDU") ? "IDU" : line.includes("ODU") ? "ODU" : null;
-    const assemblyStages = unit
-      ? [`LINE ${unit} ASSY INPUT`, `LINE ${unit} ASSY OUTPUT`]
-      : [];
-    for (const stage of assemblyStages) {
+    const assemblyStages = category === "wm"
+      ? ["LINE WM ASSY INPUT", "LINE WM ASSY OUTPUT"]
+      : unit
+        ? [`LINE ${unit} ASSY INPUT`, `LINE ${unit} ASSY OUTPUT`]
+        : [];
+    const configuredStages = await batchStagesFor(tx, registration);
+    const stagesToCheck = assemblyStages.filter((stage) => configuredStages.has(stage));
+    for (const stage of stagesToCheck) {
       if (!rows.some((row) => row.subline.toUpperCase() === stage)) {
         throw new AppError(`unit belum melalui ${stage} sebelum packing`, 400, "ORDER_VIOLATION");
       }
     }
   }
   if (line.includes("PACKING OUTPUT")) {
-    const batchStages = await tx.registscan.findMany({ where: { model: registration.model, order_number: registration.order_number, po_number: registration.po_number, product_category: "ac" }, select: { subline: true } });
-    for (const stage of REQUIRED_AC_STAGES) {
+    const batchStages = await tx.registscan.findMany({ where: { model: registration.model, order_number: registration.order_number, po_number: registration.po_number, product_category: category }, select: { subline: true } });
+    const requiredStages = category === "wm" ? REQUIRED_WM_STAGES : REQUIRED_AC_STAGES;
+    for (const stage of requiredStages) {
       if (batchStages.some((row) => row.subline.toUpperCase() === stage) && !rows.some((row) => row.subline.toUpperCase() === stage)) {
         throw new AppError(`unit terlewat scan kembali di ${stage}`, 400, "MISSED_STAGE");
       }
@@ -92,7 +121,7 @@ async function createScan(tx, { user, id_regist, payload }) {
   const reference = await registrationSpec(tx, category, registration.id);
   assertLengths(reference, payload, fields);
   assertAccuracy(reference, payload, fields);
-  await assertAcStageOrder(tx, registration, payload);
+  await assertStageOrder(tx, registration, payload);
   await assertNoDuplicate(tx, category, registration.id, payload, fields);
   assertPrefixes(fields, payload);
   const count = await scanDelegate(category, tx).count({ where: { id_regist: registration.id } });
@@ -101,4 +130,4 @@ async function createScan(tx, { user, id_regist, payload }) {
   return { created, brand: null, po: registration.po_number, odf: registration.order_number, model: registration.model, unit: {} };
 }
 
-module.exports = { createScan, assertLengths, REQUIRED_AC_STAGES };
+module.exports = { createScan, assertLengths, REQUIRED_AC_STAGES, REQUIRED_WM_STAGES };

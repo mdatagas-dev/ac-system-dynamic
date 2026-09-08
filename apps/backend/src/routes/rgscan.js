@@ -68,11 +68,11 @@ router.get("/checkregist", async (req, res) => {
 
 function registrationInput(req, requireUserId) {
   const payload = req.body || {};
-  const subline = String(payload.subline ?? req.user?.section ?? "").trim();
-  const required = ["model", "order_number", "po_number", "shift", "plan"];
+  const subline = String(payload.subline ?? "").trim();
+  const required = ["model", "order_number", "po_number", "shift", "plan", "subline"];
   if (requireUserId) required.push("userid");
-  if (required.some((key) => payload[key] === undefined || payload[key] === null || String(payload[key]).trim() === "") || !subline) {
-    throw new AppError("model, order_number, po_number, shift, plan, dan subline wajib diisi", 400, "VALIDATION");
+  if (required.some((key) => payload[key] === undefined || payload[key] === null || String(payload[key]).trim() === "")) {
+    throw new AppError("model, order_number, po_number, shift, plan, dan line wajib diisi", 400, "VALIDATION");
   }
   const plan = Number(payload.plan);
   if (!Number.isInteger(plan) || plan <= 0) throw new AppError("plan harus bilangan bulat positif", 400, "VALIDATION");

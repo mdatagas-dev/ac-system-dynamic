@@ -127,6 +127,12 @@ test("LINE: post 201, duplikat 400, delete 200", async () => {
   assert.strictEqual(r.status, 200);
 });
 
+test("LINE: operator dapat membaca daftar line", async () => {
+  const r = await api("GET", "/line", undefined, token("ppc"));
+  assert.strictEqual(r.status, 200);
+  assert.ok(Array.isArray(r.data.data));
+});
+
 // ---------- PIN ----------
 test("PIN: post 200, duplikat 409, compare benar/salah, delete", async () => {
   let r = await api("POST", "/pin/post", { date: TODAY, pin: 4321 });
@@ -186,19 +192,15 @@ test("REGISTSCAN: post tanpa order_number -> 400 (validasi)", async () => {
   assert.strictEqual(r.status, 400);
 });
 
-test("REGISTSCAN: subline otomatis dari section user (tanpa subline di body)", async () => {
+test("REGISTSCAN: line wajib dipilih di body", async () => {
   const ord = "ORDS-" + uniq;
   await api("POST", "/bomlist/post", { model: MODEL_SHORT, order_number: ord, sn: SN });
   const r = await api("POST", "/registscan/post", {
     model: MODEL_FULL, order_number: ord, po_number: "PO-S-" + uniq,
     userid: "u_" + uniq, shift: "1", plan: 5, sn: SN,
   });
-  assert.strictEqual(r.status, 201, "tanpa subline di body harus pakai section JWT");
-  const rid = r.data.result?.id;
-  track("registscan", rid);
-  const list = await api("GET", "/registscan?keyword=" + ord + "&limit=5");
-  assert.strictEqual(list.status, 200);
-  assert.strictEqual(list.data.data[0].subline, "TEST", "subline diisi dari section user (token helper section=TEST)");
+  assert.strictEqual(r.status, 400);
+  assert.match(JSON.stringify(r.data), /line wajib diisi/);
 });
 
 test("REGISTSCAN: field wajib dari BOM tidak diisi -> 400", async () => {
@@ -623,6 +625,83 @@ test("WM: spesifikasi dan scan memakai kolom typed", async () => {
   assert.strictEqual(r.status, 201);
 });
 
+test("WM: tanpa registrasi ASSY OUTPUT, packing tetap boleh lanjut", async () => {
+  const categories = await api("GET", "/product-categories");
+  const wmId = categories.data.data.find((category) => category.slug === "wm")?.id;
+  const wmModel = "WM-OPTIONAL-" + uniq;
+  const order = "WMOPTIONAL-" + uniq;
+  const po = "PO-WMOPTIONAL-" + uniq;
+  let r = await api("POST", "/model/post", { brand: "WM", model: wmModel, pk: 1, category_id: wmId });
+  assert.strictEqual(r.status, 200);
+  track("model", r.data.data.id);
+  r = await api("POST", "/bomlist/post", { model: wmModel, order_number: order, sn: "WM", sn_drum: "DRM", sn_drum_required: true });
+  assert.strictEqual(r.status, 200);
+  track("bomlist", r.data.data.id);
+
+  const create = async (subline) => {
+    const response = await api("POST", "/registscan/post", {
+      model: wmModel, order_number: order, po_number: po, subline,
+      shift: "1", plan: 1, sn: "WM-REF", sn_drum: "DRM-REF",
+    });
+    assert.strictEqual(response.status, 201);
+    track("registscan", response.data.result.id);
+    return response.data.result.id;
+  };
+  const assyInput = await create("LINE WM ASSY INPUT");
+  const packingInput = await create("LINE WM PACKING INPUT");
+
+  r = await api("POST", "/rdps/post", { id_regist: packingInput, sn: "WM-002", sn_drum: "DRM-002" });
+  assert.strictEqual(r.status, 400);
+  r = await api("POST", "/rdps/post", { id_regist: assyInput, sn: "WM-002", sn_drum: "DRM-002" });
+  assert.strictEqual(r.status, 201);
+  r = await api("POST", "/rdps/post", { id_regist: packingInput, sn: "WM-002", sn_drum: "DRM-002" });
+  assert.strictEqual(r.status, 201);
+});
+
+test("WM: ASSY harus selesai sebelum packing", async () => {
+  const categories = await api("GET", "/product-categories");
+  const wmId = categories.data.data.find((category) => category.slug === "wm")?.id;
+  const wmModel = "WM-STAGE-" + uniq;
+  const order = "WMSTAGE-" + uniq;
+  const po = "PO-WMSTAGE-" + uniq;
+  let r = await api("POST", "/model/post", { brand: "WM", model: wmModel, pk: 1, category_id: wmId });
+  assert.strictEqual(r.status, 200);
+  track("model", r.data.data.id);
+  r = await api("POST", "/bomlist/post", { model: wmModel, order_number: order, sn: "WM", sn_drum: "DRM", sn_drum_required: true });
+  assert.strictEqual(r.status, 200);
+  track("bomlist", r.data.data.id);
+
+  const makeRegistration = async (subline) => {
+    const response = await api("POST", "/registscan/post", {
+      model: wmModel, order_number: order, po_number: po, subline,
+      shift: "1", plan: 1, sn: "WM-REF", sn_drum: "DRM-REF",
+    });
+    assert.strictEqual(response.status, 201);
+    track("registscan", response.data.result.id);
+    return response.data.result.id;
+  };
+  const scan = (id) => api("POST", "/rdps/post", { id_regist: id, sn: "WM-001", sn_drum: "DRM-001" });
+  const assyInput = await makeRegistration("LINE WM ASSY INPUT");
+  const assyOutput = await makeRegistration("LINE WM ASSY OUTPUT");
+  const packingInput = await makeRegistration("LINE WM PACKING INPUT");
+  const packingOutput = await makeRegistration("LINE WM PACKING OUTPUT");
+
+  r = await scan(packingInput);
+  assert.strictEqual(r.status, 400);
+  assert.match(JSON.stringify(r.data), /LINE WM ASSY INPUT/);
+  r = await scan(assyInput);
+  assert.strictEqual(r.status, 201);
+  r = await scan(packingInput);
+  assert.strictEqual(r.status, 400);
+  assert.match(JSON.stringify(r.data), /LINE WM ASSY OUTPUT/);
+  r = await scan(assyOutput);
+  assert.strictEqual(r.status, 201);
+  r = await scan(packingInput);
+  assert.strictEqual(r.status, 201);
+  r = await scan(packingOutput);
+  assert.strictEqual(r.status, 201);
+});
+
 // ---------- TDD SLICE: BULK IMPORT + SOFT-DELETE BOM ----------
 test("TDD/IMPORT: import scan divalidasi BOM + hanya superuser", async () => {
   const ord = "ORDIMP-" + uniq;
@@ -630,7 +709,7 @@ test("TDD/IMPORT: import scan divalidasi BOM + hanya superuser", async () => {
   await api("POST", "/bomlist/post", { model: MODEL_SHORT, order_number: ord, sn: pre });
   const r = await api("POST", "/registscan/post", {
     model: MODEL_FULL, order_number: ord, po_number: "PO-IMP-" + uniq,
-    userid: "u_imp_" + uniq, shift: "1", plan: 10, sn: pre + "0001",
+    userid: "u_imp_" + uniq, subline: "LINE IDU ASSY INPUT", shift: "1", plan: 10, sn: pre + "0001",
   });
   assert.strictEqual(r.status, 201);
   const rid = r.data.result.id;
@@ -691,7 +770,7 @@ test("TDD/ACCESS: ppc tidak bisa scan/edit/hapus registrasi milik user lain", as
   await api("POST", "/bomlist/post", { model: MODEL_SHORT, order_number: ord, sn });
   const r = await api("POST", "/registscan/post", {
     model: MODEL_FULL, order_number: ord, po_number: "PO-ACC-" + uniq,
-    userid: "owner_" + uniq, shift: "1", plan: 5, sn,
+    userid: "owner_" + uniq, subline: "LINE IDU ASSY INPUT", shift: "1", plan: 5, sn,
   });
   assert.strictEqual(r.status, 201);
   const rid = r.data.result.id;
@@ -728,20 +807,20 @@ test("PPC: registrasi terbuka memblokir registrasi baru, edit tidak butuh PIN", 
   const bom = await api("POST", "/bomlist/post", { model: MODEL_SHORT, order_number: ord, sn });
   track("bomlist", bom.data?.data?.id);
   const first = await api("POST", "/registscan/post", {
-    model: MODEL_FULL, order_number: ord, po_number: po, shift: "1", plan: 1, sn,
+    model: MODEL_FULL, order_number: ord, po_number: po, subline: "LINE IDU ASSY INPUT", shift: "1", plan: 1, sn,
   }, ppcToken);
   assert.strictEqual(first.status, 201);
   const firstId = first.data.result.id;
   track("registscan", firstId);
 
   const blocked = await api("POST", "/registscan/post", {
-    model: MODEL_FULL, order_number: ord, po_number: po + "-2", shift: "1", plan: 1, sn,
+    model: MODEL_FULL, order_number: ord, po_number: po + "-2", subline: "LINE IDU ASSY INPUT", shift: "1", plan: 1, sn,
   }, ppcToken);
   assert.strictEqual(blocked.status, 409);
   assert.strictEqual(blocked.data.code, "OPEN_REGISTRATION");
 
   const edited = await api("PUT", "/registscan/edit/" + firstId, {
-    model: MODEL_FULL, order_number: ord, po_number: po, shift: "1", plan: 1, sn,
+    model: MODEL_FULL, order_number: ord, po_number: po, subline: "LINE IDU ASSY INPUT", shift: "1", plan: 1, sn,
   }, ppcToken);
   assert.strictEqual(edited.status, 200);
 
@@ -750,7 +829,7 @@ test("PPC: registrasi terbuka memblokir registrasi baru, edit tidak butuh PIN", 
   track("recordscan", scanned.data.data.id);
 
   const allowed = await api("POST", "/registscan/post", {
-    model: MODEL_FULL, order_number: ord, po_number: po + "-2", shift: "1", plan: 1, sn,
+    model: MODEL_FULL, order_number: ord, po_number: po + "-2", subline: "LINE IDU ASSY INPUT", shift: "1", plan: 1, sn,
   }, ppcToken);
   assert.strictEqual(allowed.status, 201);
   track("registscan", allowed.data.result.id);
@@ -779,7 +858,7 @@ test("TDD/SEQ: SN harus di-scan INPUT dulu sebelum OUTPUT line yang sama", async
   const IN = "LINE IDU ASSY INPUT";
   const OUT = "LINE IDU ASSY OUTPUT";
 
-  // token dengan section berbeda -> subline registscan ikut section JWT (tanpa login nyata)
+  // Operator memilih line pada payload (tanpa login nyata)
   const tokenIn = token("superuser", IN);
   const tokenOut = token("superuser", OUT);
 
@@ -789,7 +868,7 @@ test("TDD/SEQ: SN harus di-scan INPUT dulu sebelum OUTPUT line yang sama", async
   const mkRegist = async (t, u) => {
     const r = await api("POST", "/registscan/post", {
       model: MODEL_FULL, order_number: ord, po_number: "PO-SEQ-" + uniq,
-      userid: "u_seq_" + uniq, shift: "1", plan: 5, sn,
+      userid: "u_seq_" + uniq, subline: u, shift: "1", plan: 5, sn,
     }, t);
     assert.strictEqual(r.status, 201, (u || "") + " regist harus dibuat");
     const rid = r.data.result.id;
@@ -828,16 +907,16 @@ test("TDD/SEQ: packing input wajib melewati assy input dan output", async () => 
 
   const mkRegist = async (t, section) => {
     const r = await api("POST", "/registscan/post", {
-      model: MODEL_FULL, order_number: ord, po_number: po, shift: "1", plan: 1, sn,
+      model: MODEL_FULL, order_number: ord, po_number: po, subline: section, shift: "1", plan: 1, sn,
     }, t);
     assert.strictEqual(r.status, 201, section + " regist harus dibuat");
     const rid = r.data.result.id;
     track("registscan", rid);
     return rid;
   };
-  const ridIn = await mkRegist(tokenIn, "assy input");
-  const ridOut = await mkRegist(tokenOut, "assy output");
-  const ridPacking = await mkRegist(tokenPacking, "packing input");
+  const ridIn = await mkRegist(tokenIn, "LINE IDU ASSY INPUT");
+  const ridOut = await mkRegist(tokenOut, "LINE IDU ASSY OUTPUT");
+  const ridPacking = await mkRegist(tokenPacking, "LINE IDU PACKING INPUT");
 
   let r = await api("POST", "/rdps/post", { id_regist: ridPacking, sn }, tokenPacking);
   assert.strictEqual(r.status, 400, "packing sebelum assy harus ditolak");
@@ -857,5 +936,36 @@ test("TDD/SEQ: packing input wajib melewati assy input dan output", async () => 
 
   r = await api("POST", "/rdps/post", { id_regist: ridPacking, sn }, tokenPacking);
   assert.strictEqual(r.status, 201, "packing setelah assy input dan output harus sukses");
+  track("recordscan", r.data.data?.id);
+});
+
+test("TDD/SEQ: packing boleh lanjut tanpa registrasi assy output", async () => {
+  const ord = "ORDPACK-OPTIONAL-" + uniq;
+  const sn = "PACK-OPTIONAL-" + uniq + "0001";
+  const po = "PO-PACK-OPTIONAL-" + uniq;
+  const tokenIn = token("superuser", "LINE IDU ASSY INPUT");
+  const tokenPacking = token("superuser", "LINE IDU PACKING INPUT");
+
+  const rb = await api("POST", "/bomlist/post", { model: MODEL_SHORT, order_number: ord, sn });
+  track("bomlist", rb.data?.data?.id);
+
+  const makeRegistration = async (t, subline) => {
+    const r = await api("POST", "/registscan/post", {
+      model: MODEL_FULL, order_number: ord, po_number: po, subline, shift: "1", plan: 1, sn,
+    }, t);
+    assert.strictEqual(r.status, 201, subline + " regist harus dibuat");
+    track("registscan", r.data.result.id);
+    return r.data.result.id;
+  };
+  const ridIn = await makeRegistration(tokenIn, "LINE IDU ASSY INPUT");
+  const ridPacking = await makeRegistration(tokenPacking, "LINE IDU PACKING INPUT");
+
+  let r = await api("POST", "/rdps/post", { id_regist: ridPacking, sn }, tokenPacking);
+  assert.strictEqual(r.status, 400, "packing sebelum assy input harus ditolak");
+  r = await api("POST", "/rdps/post", { id_regist: ridIn, sn }, tokenIn);
+  assert.strictEqual(r.status, 201);
+  track("recordscan", r.data.data?.id);
+  r = await api("POST", "/rdps/post", { id_regist: ridPacking, sn }, tokenPacking);
+  assert.strictEqual(r.status, 201, "packing tanpa assy output harus sukses");
   track("recordscan", r.data.data?.id);
 });

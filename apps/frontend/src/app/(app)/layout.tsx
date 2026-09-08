@@ -9,6 +9,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { motion, AnimatePresence } from "motion/react";
 import { useAuth } from "@/lib/auth";
 import { IconButton } from "@/components/vm3/IconButton";
@@ -35,6 +36,7 @@ const NAV = [
   // { href: "/data-export", label: "Data Export", icon: "table_chart" },
   { href: "/po-scan", label: "Data Scan", icon: "dataset" },
   { href: "/master", label: "Master Data", icon: "database" },
+  { href: "/documentation", label: "Dokumentasi", icon: "menu_book", superuserOnly: true },
 ];
 
 // ppc (operator) hanya melihat registrasi di nav — scan dibuka via tombol aksi di tabel regist
@@ -58,7 +60,8 @@ function NavLink({ item, active, onNavigate, children }: NavLinkProps) {
       aria-current={active ? "page" : undefined}
       onClick={(e) => {
         // Hormati new-tab / modifier dan cegah navigasi ke halaman yang sama
-        if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return;
+        if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0)
+          return;
         if (active) {
           e.preventDefault();
           return;
@@ -72,7 +75,11 @@ function NavLink({ item, active, onNavigate, children }: NavLinkProps) {
   );
 }
 
-export default function AppShellLayout({ children }: { children: React.ReactNode }) {
+export default function AppShellLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const { user, initializing, logout } = useAuth();
   const { mode, toggleMode } = useTheme();
   const router = useRouter();
@@ -108,10 +115,11 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
     });
 
   // ppc (operator) hanya melihat registrasi di nav — scan dibuka via tombol aksi regist
+  const isSuperuser = user?.roleuser?.toLowerCase() === "superuser";
   const navItems =
     user?.roleuser?.toLowerCase() === "ppc"
       ? NAV.filter((n) => PPC_ONLY.has(n.href))
-      : NAV;
+      : NAV.filter((n) => !n.superuserOnly || isSuperuser);
 
   // Elevasi appbar saat digulir
   useEffect(() => {
@@ -150,7 +158,9 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
   const isActive = (href: string, exact?: boolean) =>
     exact ? pathname === href : pathname.startsWith(href);
 
-  const activeNav = [...navItems].reverse().find((n) => isActive(n.href, n.exact));
+  const activeNav = [...navItems]
+    .reverse()
+    .find((n) => isActive(n.href, n.exact));
 
   const navigate = (href: string) => {
     setDrawerOpen(false);
@@ -161,7 +171,9 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
   };
 
   const vtName =
-    pathname === "/" ? "main-root" : `main-${pathname.slice(1).replace(/[^a-zA-Z0-9]/g, "-")}`;
+    pathname === "/"
+      ? "main-root"
+      : `main-${pathname.slice(1).replace(/[^a-zA-Z0-9]/g, "-")}`;
 
   return (
     <div className="min-h-dvh">
@@ -176,13 +188,28 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
         title={activeNav?.label ?? "AC System"}
         scrolled={scrolled}
         leading={
-          /* Drawer hanya untuk mobile — desktop memakai rail yang bisa dilebarkan */
-          <IconButton
-            icon="menu"
-            label="Buka menu"
-            onClick={() => setDrawerOpen(true)}
-            className="lg:hidden"
-          />
+          <div className="flex items-center gap-2">
+            <Link
+              href="/"
+              aria-label="AC System — beranda"
+              className="flex items-center gap-2 rounded-md p-1 transition-opacity hover:opacity-80"
+            >
+              <Image
+                src="/logo.png"
+                alt="PT GAS Electronics"
+                width={56}
+                height={56}
+                className="size-14 rounded-md object-contain"
+                priority
+              />
+            </Link>
+            <IconButton
+              icon="menu"
+              label="Buka menu"
+              onClick={() => setDrawerOpen(true)}
+              className="lg:hidden"
+            />
+          </div>
         }
         actions={
           <>
@@ -194,7 +221,11 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
             <span className="hidden px-2 text-sm text-on-surface-variant sm:block">
               {user.username}
             </span>
-            <IconButton icon="logout" label="Keluar" onClick={() => setLogoutOpen(true)} />
+            <IconButton
+              icon="logout"
+              label="Keluar"
+              onClick={() => setLogoutOpen(true)}
+            />
           </>
         }
       />
@@ -206,7 +237,9 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
             {/* Toggle lebar rail */}
             <button
               type="button"
-              aria-label={railExpanded ? "Ciutkan navigasi" : "Lebarkan navigasi"}
+              aria-label={
+                railExpanded ? "Ciutkan navigasi" : "Lebarkan navigasi"
+              }
               aria-expanded={railExpanded}
               onClick={toggleRail}
               className="mb-2 flex h-10 w-full items-center gap-3 rounded-full px-3 text-on-surface-variant transition-colors hover:bg-on-surface/8 lg:justify-center lg:px-0"
@@ -226,7 +259,12 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
             </button>
 
             {navItems.map((item) => (
-              <NavLink key={item.href} item={item} active={isActive(item.href, item.exact)} onNavigate={navigate}>
+              <NavLink
+                key={item.href}
+                item={item}
+                active={isActive(item.href, item.exact)}
+                onNavigate={navigate}
+              >
                 <RailItem
                   icon={item.icon}
                   label={item.label}
@@ -269,7 +307,12 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
       <div className="lg:hidden">
         <NavigationBar>
           {navItems.map((item) => (
-            <NavLink key={item.href} item={item} active={isActive(item.href, item.exact)} onNavigate={navigate}>
+            <NavLink
+              key={item.href}
+              item={item}
+              active={isActive(item.href, item.exact)}
+              onNavigate={navigate}
+            >
               <NavItem
                 icon={item.icon}
                 label={item.label}
@@ -282,12 +325,17 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
 
       <NavigationDrawer open={drawerOpen} onOpenChange={setDrawerOpen}>
         <div className="mb-4 flex items-center gap-3 px-4 pt-2">
-          <span className="material-symbols-rounded text-3xl text-primary" aria-hidden>
+          <span
+            className="material-symbols-rounded text-3xl text-primary"
+            aria-hidden
+          >
             ac_unit
           </span>
           <div>
             <div className="font-semibold">{user.username}</div>
-            <div className="text-sm text-on-surface-variant">{user.roleuser}</div>
+            <div className="text-sm text-on-surface-variant">
+              {user.roleuser}
+            </div>
           </div>
         </div>
         <List>

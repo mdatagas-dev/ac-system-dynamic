@@ -2,13 +2,14 @@ const express = require("express");
 const router = express.Router();
 const prisma = require("../../lib/prisma");
 const AppError = require("../../lib/AppError");
+const requirePermission = require("../../middlewares/requirePermission");
 
 router.get("/", async (req, res) => {
   const lines = await prisma.line.findMany();
   res.status(200).json({ message: "success", data: lines });
 });
 
-router.post("/post", async (req, res) => {
+router.post("/post", requirePermission("master-data:write"), async (req, res) => {
   const { line } = req.body;
   const upCaseLine = line.toUpperCase();
 
@@ -30,7 +31,7 @@ router.post("/post", async (req, res) => {
     .json({ message: "Line created successfully", data: newLine });
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requirePermission("master-data:write"), async (req, res) => {
   const { id } = req.params;
   const deletedLine = await prisma.line.delete({
     where: { id: id },

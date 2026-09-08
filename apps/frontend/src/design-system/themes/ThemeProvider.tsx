@@ -27,8 +27,8 @@ const SEED_KEY = "vm3-seed";
 
 /** Hex default seed (huruf kecil) untuk pembandingan */
 const DEFAULT_SEED_HEX = hexFromArgb(DEFAULT_SEED).toLowerCase();
-/** Seed lama — migrasi otomatis ke SPACEX hitam unified */
-const LEGACY_SEEDS = new Set(["#0b57d0", "#7cb342", "#7CB342".toLowerCase()]);
+/** Seeds from earlier themes — migrate them to the PT GAS blue default. */
+const LEGACY_SEEDS = new Set(["#000000", "#0b57d0", "#7cb342"]);
 
 interface ThemeContextValue {
   mode: ThemeMode;
@@ -55,7 +55,7 @@ function initialSeed(): string {
   if (typeof window === "undefined") return hexFromArgb(DEFAULT_SEED);
   const stored = window.localStorage.getItem(SEED_KEY);
   if (!stored) return hexFromArgb(DEFAULT_SEED);
-  // Migrasi: seed lama (biru / FINO hijau) → hitam SPACEX unified
+  // Migrate old black, blue, and green themes to the PT GAS blue default
   if (LEGACY_SEEDS.has(stored.trim().toLowerCase())) {
     try {
       window.localStorage.setItem(SEED_KEY, hexFromArgb(DEFAULT_SEED));

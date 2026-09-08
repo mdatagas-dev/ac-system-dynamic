@@ -78,7 +78,7 @@ app.use(express.urlencoded({ limit: "5mb", extended: true }));
 app.use("/auth", loginRoutes);
 app.use("/users", auth, requirePermission("users:manage"), usersRoutes);
 app.use("/bomlist", auth, bomlistRoutes);
-app.use("/line", auth, requirePermission("master-data:write"), lineRoutes);
+app.use("/line", auth, lineRoutes);
 app.use("/model", auth, modelRoutes);
 app.use("/pin", auth, pinRoutes);
 app.use("/uph", auth, requirePermission("master-data:write"), uphRoutes);

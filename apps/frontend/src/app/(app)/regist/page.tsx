@@ -12,12 +12,18 @@ import { Button } from "@/components/vm3/Button";
 import { TextField } from "@/components/vm3/TextField";
 import { Card } from "@/components/vm3/Card";
 import { Dialog } from "@/components/vm3/Dialog";
+import { Select } from "@/components/vm3/Select";
 import { SearchField } from "@/components/vm3/SearchField";
 import { IconButton } from "@/components/vm3/IconButton";
 import { Combobox } from "@/components/vm3/Combobox";
 import { useSnackbar } from "@/components/vm3/Snackbar";
 import { useAuth } from "@/lib/auth";
 import { bomFields, bomFieldsForUnit, unitFromSubline, type BomRule } from "@/lib/bom";
+
+interface Line {
+  id: string;
+  line: string | null;
+}
 
 interface Regist {
   id: string;
@@ -45,6 +51,7 @@ const EMPTY: Record<string, string> = {
   model: "",
   order_number: "",
   po_number: "",
+  subline: "",
   shift: "1",
   plan: "10",
   sn: "",
@@ -78,6 +85,8 @@ export default function RegistPage() {
   const router = useRouter();
   const isPpc = user?.roleuser.toLowerCase() === "ppc";
   const [rows, setRows] = useState<Regist[]>([]);
+  const [lines, setLines] = useState<Line[]>([]);
+  const [lineLoading, setLineLoading] = useState(true);
   const [form, setForm] = useState<Record<string, string>>(EMPTY);
   const [dialogOpen, setDialogOpen] = useState(false);
   // batch yang sedang diedit (null = mode create)
@@ -93,6 +102,38 @@ export default function RegistPage() {
   const [searchInput, setSearchInput] = useState("");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+
+  useEffect(() => {
+    let cancelled = false;
+    http
+      .get<{ data: Line[] }>("/line")
+      .then((res) => {
+        if (!cancelled) setLines(res.data ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLines([]);
+          show("Gagal memuat daftar line");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLineLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [show]);
+
+  const lineOptions = useMemo(() => {
+    const options = lines.flatMap(({ line }) => {
+      const value = line?.trim();
+      return value ? [{ value, label: value }] : [];
+    });
+    if (form.subline && !options.some((option) => option.value === form.subline)) {
+      options.unshift({ value: form.subline, label: form.subline });
+    }
+    return options;
+  }, [form.subline, lines]);
 
   // Batch belum tuntas (plan > scan) — operator harus menyelesaikannya dulu.
   const [pending, setPending] = useState<{ id: string; model: string; order_number: string; plan: number; total: number }[]>([]);
@@ -174,7 +215,7 @@ export default function RegistPage() {
           const candidates = (res.data ?? []).filter(
             (b) => b.order_number === order && model.startsWith(b.model),
           );
-          const opUnit = unitFromSubline(user?.section ?? null);
+          const opUnit = unitFromSubline(form.subline);
           const hit =
             candidates.find((b) => bomlistForUnit(b, opUnit)) ?? candidates[0];
           if (hit) {
@@ -198,19 +239,19 @@ export default function RegistPage() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [form.model, form.order_number, user?.section]);
+  }, [form.model, form.order_number, form.subline]);
 
-  // field form = template BOM difilter per unit line operator (IDU/ODU)
+  // field form = template BOM difilter sesuai line yang dipilih operator
   const fields = useMemo(
-    () => bomFieldsForUnit(bomFields(bomRule), unitFromSubline(user?.section ?? null)),
-    [bomRule, user?.section],
+    () => bomFieldsForUnit(bomFields(bomRule), unitFromSubline(form.subline)),
+    [bomRule, form.subline],
   );
   const requiredKeys = useMemo(
     () => fields.filter((f) => f.required).map((f) => f.key),
     [fields],
   );
   const isFormValid =
-    ["model", "order_number", "po_number"].every(
+    ["model", "order_number", "po_number", "subline"].every(
       (k) => String((form as Record<string, unknown>)[k] ?? "").trim() !== "",
     ) &&
     // BOM rule wajib ada — tanpa rule, backend menolak ("Batch tidak ada di bomlist")
@@ -248,6 +289,8 @@ export default function RegistPage() {
       show("Selesaikan scan yang masih terbuka sebelum membuat registrasi baru");
       return;
     }
+    setEditing(null);
+    setForm(EMPTY);
     setDialogOpen(true);
   };
 
@@ -258,6 +301,7 @@ export default function RegistPage() {
       model: r.model ?? "",
       order_number: r.order_number ?? "",
       po_number: r.po_number ?? "",
+      subline: r.subline ?? "",
       shift: r.shift ?? "1",
       plan: String(r.plan ?? ""),
       sn: r.sn ?? "",
@@ -348,12 +392,12 @@ export default function RegistPage() {
           <div className="w-64">
             <SearchField value={searchInput} onChange={setSearchInput} placeholder="searching..." />
           </div>
-          <Button variant="filled" onClick={handleSearch} className="!bg-[#0d7ea7] !text-white">
+          <Button variant="filled" onClick={handleSearch} className="!bg-primary !text-on-primary">
             Search
           </Button>
         </div>
         <div className="ml-auto">
-          <Button icon="add" onClick={openCreate} disabled={pendingLoading || (isPpc && pending.length > 0)} className="!bg-[#0d7ea7] !text-white">
+          <Button icon="add" onClick={openCreate} disabled={pendingLoading || (isPpc && pending.length > 0)} className="!bg-primary !text-on-primary">
             {isPpc && pending.length > 0 ? "Selesaikan scan dulu" : "Create"}
           </Button>
         </div>
@@ -361,12 +405,12 @@ export default function RegistPage() {
 
       {/* Batch belum tuntas — operator diminta melengkapinya dulu */}
       {pending.length > 0 && (
-        <Card variant="outlined" className="border-amber-400 bg-amber-50 p-4">
+        <Card variant="outlined" className="border-warning/40 bg-warning/10 p-4">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="material-symbols-rounded text-amber-600" aria-hidden>warning</span>
+            <span className="material-symbols-rounded text-warning" aria-hidden>warning</span>
             <div className="min-w-0 text-sm">
-              <div className="font-semibold text-amber-900">{pending.length} batch belum tuntas — lanjutkan scan. Batch yang selesai harus dibuatkan registrasi baru.</div>
-              <div className="truncate text-amber-800">
+              <div className="font-semibold text-warning">{pending.length} batch belum tuntas — lanjutkan scan. Batch yang selesai harus dibuatkan registrasi baru.</div>
+              <div className="truncate text-on-surface-variant">
                 {pending.map((p) => `${p.order_number} (${p.total}/${p.plan})`).join(" • ")}
               </div>
             </div>
@@ -375,7 +419,7 @@ export default function RegistPage() {
                 <Button
                   key={p.id}
                   variant="filled"
-                  className="!bg-[#0d7ea7] !text-white"
+                  className="!bg-primary !text-on-primary"
                   onClick={() => router.push(`/scan?idregist=${p.id}`)}
                 >
                   Scan {p.order_number}
@@ -420,14 +464,14 @@ export default function RegistPage() {
                       <button
                         type="button"
                         onClick={() => setDetail(r)}
-                        className="rounded-md bg-[#0d7ea7] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0b6a97] transition-colors"
+                        className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-on-primary transition-colors hover:bg-primary/90"
                       >
                         Detail
                       </button>
                       <button
                         type="button"
                         onClick={() => openEdit(r)}
-                        className="rounded-md bg-[#facc15] px-3 py-1.5 text-xs font-semibold text-black hover:bg-[#eab308] transition-colors"
+                        className="rounded-md bg-warning px-3 py-1.5 text-xs font-semibold text-black transition-colors hover:bg-warning/90"
                       >
                         Edit
                       </button>
@@ -435,17 +479,17 @@ export default function RegistPage() {
                         type="button"
                         aria-label="Scan"
                         onClick={() => router.push(`/scan?idregist=${r.id}`)}
-                        className="flex h-9 w-12 items-center justify-center rounded-md bg-gray-200 hover:bg-gray-300 transition-colors"
+                        className="flex h-9 w-12 items-center justify-center rounded-md bg-surface-container-high transition-colors hover:bg-surface-container-highest"
                       >
-                        <span className="material-symbols-rounded text-[24px] text-gray-700" aria-hidden>barcode_scanner</span>
+                        <span className="material-symbols-rounded text-[24px] text-on-surface-variant" aria-hidden>barcode_scanner</span>
                       </button>
                       <button
                         type="button"
                         aria-label="Riwayat"
                         onClick={() => router.push(`/history?idregist=${r.id}`)}
-                        className="flex h-9 w-12 items-center justify-center rounded-md bg-gray-200 hover:bg-gray-300 transition-colors"
+                        className="flex h-9 w-12 items-center justify-center rounded-md bg-surface-container-high transition-colors hover:bg-surface-container-highest"
                       >
-                        <span className="material-symbols-rounded text-[24px] text-gray-700" aria-hidden>history</span>
+                        <span className="material-symbols-rounded text-[24px] text-on-surface-variant" aria-hidden>history</span>
                       </button>
                       <IconButton icon="delete" label="Hapus" onClick={() => setDeleteId(r.id)} className="!h-9 !w-9" />
                     </div>
@@ -465,12 +509,12 @@ export default function RegistPage() {
             {Array.from({ length: Math.min(totalPages, 5) }, (_, idx) => {
               const p = idx + 1;
               return (
-                <button key={p} type="button" onClick={() => setPage(p)} className={`min-w-7 rounded px-2 py-1 text-sm ${page === p ? "bg-gray-200 font-semibold" : "hover:bg-surface-container"}`}>{p}</button>
+                <button key={p} type="button" onClick={() => setPage(p)} className={`min-w-7 rounded px-2 py-1 text-sm ${page === p ? "bg-surface-container-highest font-semibold" : "hover:bg-surface-container"}`}>{p}</button>
               );
             })}
             {totalPages > 5 && <span className="px-2 text-sm text-on-surface-variant">...</span>}
             {totalPages > 5 && (
-              <button type="button" onClick={() => setPage(totalPages)} className={`min-w-7 rounded px-2 py-1 text-sm ${page === totalPages ? "bg-gray-200 font-semibold" : "hover:bg-surface-container"}`}>{totalPages}</button>
+              <button type="button" onClick={() => setPage(totalPages)} className={`min-w-7 rounded px-2 py-1 text-sm ${page === totalPages ? "bg-surface-container-highest font-semibold" : "hover:bg-surface-container"}`}>{totalPages}</button>
             )}
             <button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="rounded px-2 py-1 text-sm disabled:opacity-40 hover:bg-surface-container">»</button>
           </div>
@@ -485,6 +529,7 @@ export default function RegistPage() {
           if (!open) setEditing(null);
         }}
         title={editing ? "Edit Registrasi" : "Registrasi Baru"}
+        className="sm:!max-w-4xl"
         description="Masukkan Model, Batch, PO Number sesuai dengan plan"
         actions={
           <>
@@ -505,20 +550,28 @@ export default function RegistPage() {
                 placeholder="Ketik untuk mencari model"
               />
               {!modelKnown && form.model.trim() && (
-                <p className="mt-1 text-xs text-amber-700">Model tidak ada di Model Master</p>
+                <p className="mt-1 text-xs text-warning">Model tidak ada di Model Master</p>
               )}
             </div>
             <TextField label="Order Number" value={form.order_number} onChange={(e) => setForm({ ...form, order_number: e.target.value })} required />
             <TextField label="PO Number" value={form.po_number} onChange={(e) => setForm({ ...form, po_number: e.target.value })} required />
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-foreground">Line *</label>
+              <Select
+                options={lineOptions}
+                value={form.subline || null}
+                onChange={(value) => setForm({ ...form, subline: value ?? "" })}
+                placeholder={lineLoading ? "Memuat line..." : "Pilih line produksi"}
+                disabled={lineLoading || lineOptions.length === 0}
+                aria-label="Line produksi"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                {lineLoading ? "Memuat daftar line..." : lineOptions.length ? "Pilih line yang akan menjalankan batch ini." : "Belum ada line tersedia."}
+              </p>
+            </div>
             <TextField label="Shift" value={form.shift} onChange={(e) => setForm({ ...form, shift: e.target.value })} />
             <TextField label="Plan" type="number" value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} />
           </div>
-
-          {/* Subline otomatis dari section user */}
-          {/* <div className="rounded-lg bg-surface-container px-3 py-2 text-xs text-on-surface-variant">
-            Subline otomatis dari section Anda:{" "}
-            <span className="font-semibold">{user?.section || "—"}</span>
-          </div> */}
 
           {/* Status BOM rule — sumber field SN */}
           {ruleLoading ? (
@@ -526,7 +579,7 @@ export default function RegistPage() {
               Memuat BOM rule...
             </div>
           ) : ruleError ? (
-            <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-xs text-red-700">
+            <div className="rounded-lg border border-error/40 bg-error/10 p-3 text-xs text-error">
               {ruleError} — minta admin membuat BOM rule untuk model + order ini.
             </div>
           ) : bomRule ? (

@@ -19,6 +19,9 @@
   --color-on-tertiary-container: var(--vm3-color-on-tertiary-container);
   --color-error: var(--vm3-color-error);
   --color-on-error: var(--vm3-color-on-error);
+  --color-success: var(--vm3-color-success);
+  --color-warning: var(--vm3-color-warning);
+  --color-info: var(--vm3-color-info);
   --color-error-container: var(--vm3-color-error-container);
   --color-on-error-container: var(--vm3-color-on-error-container);
   --color-surface-dim: var(--vm3-color-surface-dim);
