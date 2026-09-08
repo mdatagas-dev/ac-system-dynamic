@@ -76,6 +76,7 @@ export default function RegistPage() {
   const { show } = useSnackbar();
   const { user } = useAuth();
   const router = useRouter();
+  const isPpc = user?.roleuser.toLowerCase() === "ppc";
   const [rows, setRows] = useState<Regist[]>([]);
   const [form, setForm] = useState<Record<string, string>>(EMPTY);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -84,7 +85,7 @@ export default function RegistPage() {
   // batch yang sedang dilihat detailnya (dialog read-only)
   const [detail, setDetail] = useState<Regist | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [pinAction, setPinAction] = useState<"edit" | "delete" | null>(null);
+  const [pinAction, setPinAction] = useState<"delete" | null>(null);
   const [pin, setPin] = useState("");
   const [pinLoading, setPinLoading] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -93,9 +94,11 @@ export default function RegistPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
-  // Batch belum tuntas (plan > scan) — "Harap lengkapi record berikut!"
+  // Batch belum tuntas (plan > scan) — operator harus menyelesaikannya dulu.
   const [pending, setPending] = useState<{ id: string; model: string; order_number: string; plan: number; total: number }[]>([]);
+  const [pendingLoading, setPendingLoading] = useState(true);
   const loadPending = async () => {
+    setPendingLoading(true);
     try {
       const res = await http.get<{ data: { id: string; model: string; order_number: string; plan: number; total: number }[] }>(
         "/registscan/checkregist",
@@ -104,6 +107,8 @@ export default function RegistPage() {
       setPending(res.data ?? []);
     } catch {
       setPending([]);
+    } finally {
+      setPendingLoading(false);
     }
   };
 
@@ -114,7 +119,8 @@ export default function RegistPage() {
         { extraHeaders: { iduser: user?.id ?? "" } },
       )
       .then((res) => setPending(res.data ?? []))
-      .catch(() => setPending([]));
+      .catch(() => setPending([]))
+      .finally(() => setPendingLoading(false));
   }, [user?.id]);
 
   // BOM rule (sumber field SN) — dicari dari order_number yang unik per rule
@@ -237,6 +243,14 @@ export default function RegistPage() {
     setPage(1);
   };
 
+  const openCreate = () => {
+    if (isPpc && pending.length > 0) {
+      show("Selesaikan scan yang masih terbuka sebelum membuat registrasi baru");
+      return;
+    }
+    setDialogOpen(true);
+  };
+
   // Edit memakai dialog create: prefill form, BOM probe jalan otomatis dari model+order
   const openEdit = (r: Regist) => {
     setEditing(r);
@@ -259,18 +273,13 @@ export default function RegistPage() {
     setDialogOpen(true);
   };
 
-  const submit = async (verifiedPin?: string) => {
-    if (editing && user?.roleuser.toLowerCase() === "ppc" && !verifiedPin) {
-      setPin("");
-      setPinAction("edit");
-      return;
-    }
+  const submit = async () => {
     try {
       if (editing) {
         await http.put(`/registscan/edit/${editing.id}`, {
           ...form,
           plan: Number(form.plan),
-        }, { extraHeaders: verifiedPin ? { "X-PIN": verifiedPin } : undefined });
+        });
         show("Registrasi diperbarui");
         setDialogOpen(false);
         setEditing(null);
@@ -311,6 +320,7 @@ export default function RegistPage() {
       show("Data dihapus");
       setDeleteId(null);
       load(keyword, page);
+      void loadPending();
     } catch (err) {
       show(`Gagal hapus: ${(err as Error).message}`);
     }
@@ -321,10 +331,8 @@ export default function RegistPage() {
     setPinLoading(true);
     try {
       await http.post("/pin/compare", { pin });
-      const action = pinAction;
       setPinAction(null);
-      if (action === "edit") await submit(pin);
-      else await remove(pin);
+      await remove(pin);
     } catch (err) {
       show(`PIN tidak dapat diverifikasi: ${(err as Error).message}`);
     } finally {
@@ -345,8 +353,8 @@ export default function RegistPage() {
           </Button>
         </div>
         <div className="ml-auto">
-          <Button icon="add" onClick={() => setDialogOpen(true)} className="!bg-[#0d7ea7] !text-white">
-            Create
+          <Button icon="add" onClick={openCreate} disabled={pendingLoading || (isPpc && pending.length > 0)} className="!bg-[#0d7ea7] !text-white">
+            {isPpc && pending.length > 0 ? "Selesaikan scan dulu" : "Create"}
           </Button>
         </div>
       </div>
@@ -523,10 +531,10 @@ export default function RegistPage() {
             </div>
           ) : bomRule ? (
             <section aria-label="Field sesuai BOM rule">
-              <div className="mb-2 text-sm font-medium text-on-surface-variant">
+              {/* <div className="mb-2 text-sm font-medium text-on-surface-variant">
                 Field BOM ({fields.length} dideklarasikan • {requiredKeys.length} wajib) — nilai harus
                 mengandung prefix dari BOM
-              </div>
+              </div> */}
               <div className="grid gap-4 sm:grid-cols-2">
                 {fields.map((f) => (
                   <TextField
@@ -591,7 +599,7 @@ export default function RegistPage() {
         open={pinAction != null}
         onOpenChange={(open) => !open && setPinAction(null)}
         title="Verifikasi PIN"
-        description="PPC wajib memasukkan PIN harian sebelum mengubah atau menghapus registrasi."
+        description="PPC wajib memasukkan PIN harian sebelum menghapus registrasi."
         actions={<><Button variant="text" onClick={() => setPinAction(null)}>Batal</Button><Button loading={pinLoading} onClick={verifyPin}>Verifikasi</Button></>}
       >
         <div className="mt-4"><TextField label="PIN Harian" type="password" value={pin} onChange={(event) => setPin(event.target.value)} /></div>

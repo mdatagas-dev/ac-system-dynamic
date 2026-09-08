@@ -19,6 +19,24 @@ async function scanCount(db, registration) {
   return db.recordscan.count({ where: { id_regist: registration.id } });
 }
 
+async function assertNoOpenRegistration(db, userId) {
+  const registrations = await db.registscan.findMany({
+    where: { userid: userId },
+    select: { id: true, model: true, order_number: true, plan: true, product_category: true },
+  });
+  for (const registration of registrations) {
+    if (registration.plan == null) continue;
+    const total = await scanCount(db, registration);
+    if (total < registration.plan) {
+      throw new AppError(
+        `Selesaikan scan ${registration.order_number} terlebih dahulu (${total}/${registration.plan})`,
+        409,
+        "OPEN_REGISTRATION",
+      );
+    }
+  }
+}
+
 router.get("/", async (req, res) => {
   const page = Math.max(Number(req.query.page) || 1, 1);
   const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
@@ -68,8 +86,14 @@ function registrationInput(req, requireUserId) {
 router.post("/post", requirePermission("registscan:write"), async (req, res) => {
   const { payload, subline, plan } = registrationInput(req, false);
   const userid = hasPermission(req.user, "registscan:read") && payload.userid ? String(payload.userid) : req.user.id;
-  const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload, subline });
   const result = await prisma.$transaction(async (tx) => {
+    // Serialize PPC registrations per operator so two quick submissions cannot
+    // bypass the one-open-registration rule.
+    if (String(req.user?.roleuser || "").toLowerCase() === "ppc") {
+      await tx.$queryRaw`WITH lock AS (SELECT pg_advisory_xact_lock(hashtextextended(${userid}, 0))) SELECT 1 FROM lock`;
+      await assertNoOpenRegistration(tx, userid);
+    }
+    const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload, subline, db: tx });
     const registration = await tx.registscan.create({
       data: { model: String(payload.model).trim(), order_number: String(payload.order_number).trim(), po_number: String(payload.po_number).trim(), subline, userid, shift: String(payload.shift), plan, product_category: resolved.category },
     });
@@ -79,7 +103,7 @@ router.post("/post", requirePermission("registscan:write"), async (req, res) => 
   res.status(201).json({ message: "Data Added Successfully", result });
 });
 
-router.put("/edit/:id", requirePermission("registscan:write"), requirePpcPin, async (req, res) => {
+router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) => {
   const existing = await prisma.registscan.findUnique({ where: { id: req.params.id }, select: baseSelect });
   assertCanAccessRegistration(req.user, existing);
   const { payload, subline, plan } = registrationInput(req, false);

@@ -740,6 +740,44 @@ test("TDD/ACCESS: ppc tidak bisa scan/edit/hapus registrasi milik user lain", as
   assert.strictEqual(del2.status, 200, "superuser tetap bisa hapus");
 });
 
+test("PPC: registrasi terbuka memblokir registrasi baru, edit tidak butuh PIN", async () => {
+  const ord = "ORDOPEN-" + uniq;
+  const po = "PO-OPEN-" + uniq;
+  const sn = "OPEN-" + uniq;
+  const ppcId = "33333333-3333-3333-3333-333333333333";
+  const ppcToken = token("ppc", "LINE IDU ASSY INPUT", ppcId);
+
+  const bom = await api("POST", "/bomlist/post", { model: MODEL_SHORT, order_number: ord, sn });
+  track("bomlist", bom.data?.data?.id);
+  const first = await api("POST", "/registscan/post", {
+    model: MODEL_FULL, order_number: ord, po_number: po, shift: "1", plan: 1, sn,
+  }, ppcToken);
+  assert.strictEqual(first.status, 201);
+  const firstId = first.data.result.id;
+  track("registscan", firstId);
+
+  const blocked = await api("POST", "/registscan/post", {
+    model: MODEL_FULL, order_number: ord, po_number: po + "-2", shift: "1", plan: 1, sn,
+  }, ppcToken);
+  assert.strictEqual(blocked.status, 409);
+  assert.strictEqual(blocked.data.code, "OPEN_REGISTRATION");
+
+  const edited = await api("PUT", "/registscan/edit/" + firstId, {
+    model: MODEL_FULL, order_number: ord, po_number: po, shift: "1", plan: 1, sn,
+  }, ppcToken);
+  assert.strictEqual(edited.status, 200);
+
+  const scanned = await api("POST", "/rdps/post", { id_regist: firstId, sn }, ppcToken);
+  assert.strictEqual(scanned.status, 201);
+  track("recordscan", scanned.data.data.id);
+
+  const allowed = await api("POST", "/registscan/post", {
+    model: MODEL_FULL, order_number: ord, po_number: po + "-2", shift: "1", plan: 1, sn,
+  }, ppcToken);
+  assert.strictEqual(allowed.status, 201);
+  track("registscan", allowed.data.result.id);
+});
+
 // ---------- LOGIN RATE LIMIT (lockout per akun; self-clean agar tak ganggu test lain) ----------
 test("AUTH/LOCKOUT: 5 gagal login -> 429 (rate limit)", async () => {
   const u = "lock_" + uniq;
