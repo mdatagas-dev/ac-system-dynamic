@@ -9,22 +9,22 @@ datasource db {
 }
 
 model bomlist {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sn_carton        String?   @db.VarChar(255)
-  pcb_idu          String?   @db.VarChar(255)
-  sn_box           String?   @db.VarChar(255)
-  sn_motor         String?   @db.VarChar(255)
-  sn_accessories   String?   @db.VarChar(255)
-  order_number     String?   @db.VarChar(255)
-  sn               String?   @db.VarChar(255)
-  timestamps       DateTime? @default(now()) @db.Timestamp(6)
-  model            String?   @db.VarChar(255)
-  product_category String?   @db.VarChar(50)
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sn_carton        String?      @db.VarChar(255)
+  pcb_idu          String?      @db.VarChar(255)
+  sn_box           String?      @db.VarChar(255)
+  sn_motor         String?      @db.VarChar(255)
+  sn_accessories   String?      @db.VarChar(255)
+  order_number     String?      @db.VarChar(255)
+  sn               String?      @db.VarChar(255)
+  timestamps       DateTime?    @default(now()) @db.Timestamp(6)
+  model            String?      @db.VarChar(255)
+  product_category String?      @db.VarChar(50)
   // Legacy JSONB columns are retained only during the data-migration window.
   // New category-aware writes use ac_bom_spec or wm_bom_spec instead.
-  components       Json?     @db.JsonB
-  unit_map         Json?     @db.JsonB
-  is_active        Boolean   @default(true)
+  components       Json?        @db.JsonB
+  unit_map         Json?        @db.JsonB
+  is_active        Boolean      @default(true)
   ac_spec          ac_bom_spec?
   wm_spec          wm_bom_spec?
 }
@@ -54,26 +54,26 @@ model recordscan {
 }
 
 model registscan {
-  timestamps       DateTime? @default(now()) @db.Timestamptz(6)
-  model            String    @db.VarChar(255)
-  order_number     String    @db.VarChar(255)
-  subline          String    @db.VarChar(255)
-  userid           String    @db.VarChar(255)
-  shift            String?   @db.VarChar(255)
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sn               String?   @db.VarChar
-  sn_carton        String?   @db.VarChar
-  pcb_idu          String?   @db.VarChar
-  sn_box           String?   @db.VarChar
-  sn_motor         String?   @db.VarChar
-  sn_accessories   String?   @db.VarChar
-  sn_odu           String?   @db.VarChar
+  timestamps       DateTime?             @default(now()) @db.Timestamptz(6)
+  model            String                @db.VarChar(255)
+  order_number     String                @db.VarChar(255)
+  subline          String                @db.VarChar(255)
+  userid           String                @db.VarChar(255)
+  shift            String?               @db.VarChar(255)
+  id               String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sn               String?               @db.VarChar
+  sn_carton        String?               @db.VarChar
+  pcb_idu          String?               @db.VarChar
+  sn_box           String?               @db.VarChar
+  sn_motor         String?               @db.VarChar
+  sn_accessories   String?               @db.VarChar
+  sn_odu           String?               @db.VarChar
   plan             Int?
-  po_number        String?   @db.VarChar(255)
-  product_category String?   @db.VarChar(50)
+  po_number        String?               @db.VarChar(255)
+  product_category String?               @db.VarChar(50)
   // Legacy columns retained for backwards-compatible reads during cutover.
-  components       Json?     @db.JsonB
-  fields_snapshot  Json?     @db.JsonB
+  components       Json?                 @db.JsonB
+  fields_snapshot  Json?                 @db.JsonB
   ac_spec          ac_registration_spec?
   wm_spec          wm_registration_spec?
   ac_scans         recordscan_ac[]
@@ -125,16 +125,14 @@ model pin {
 }
 
 model product_categories {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  slug       String   @unique @db.VarChar(50)
-  name       String   @db.VarChar(100)
-  fields     Json?    @db.JsonB
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug       String    @unique @db.VarChar(50)
+  name       String    @db.VarChar(100)
+  fields     Json?     @db.JsonB
   created_at DateTime? @default(now()) @db.Timestamp(6)
   model      model[]
 }
 
-// Audit trail perubahan template kategori: siapa mengubah apa kapan.
-// slug tanpa FK — baris bertahan walau kategori dihapus.
 // AC BOM values and field settings. Each BOM has at most one AC specification.
 model ac_bom_spec {
   bom_id                  String  @id @db.Uuid
@@ -248,7 +246,7 @@ model recordscan_wm {
 }
 
 model legacy_component_quarantine {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   source_table String   @db.VarChar(64)
   source_id    String   @db.VarChar(255)
   category     String?  @db.VarChar(50)
@@ -260,6 +258,8 @@ model legacy_component_quarantine {
   @@index([source_table, source_id])
 }
 
+// Audit trail perubahan template kategori. Slug tidak memakai FK agar audit
+// tetap tersimpan setelah kategori dihapus.
 model product_categories_audit {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   slug       String   @db.VarChar(50)
