@@ -317,6 +317,8 @@ test("RDPS: post 201, edit 200, export 200, delete 200 (alur scan)", async () =>
   r = await api("GET", "/rdps/export-odf-po-all?model=" + MODEL_FULL + "&order_number=" + ORDER);
   assert.strictEqual(r.status, 200);
   assert.ok(Array.isArray(r.data.data));
+  assert.ok(r.data.data.some((row) => Object.hasOwn(row, "scanTime")));
+  assert.ok(r.data.data.some((row) => Object.hasOwn(row, "registTime")));
   // xlsx variant — paritas dengan ekspor lama (datascan Export -> allHistory.xlsx)
   r = await api("GET", "/rdps/export-odf-po-all.xlsx?model=" + MODEL_FULL + "&order_number=" + ORDER);
   assert.strictEqual(r.status, 200);

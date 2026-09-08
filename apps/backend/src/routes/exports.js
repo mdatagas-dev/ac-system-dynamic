@@ -128,7 +128,7 @@ async function queryOdfPoAll({ model, order_number, po_number, subline }) {
 	TO_CHAR(
 	    (rgs.timestamps AT TIME ZONE 'Asia/Jakarta'),
 	    'HH24:MI:ss DD-MM-YYYY'
-  	) AS registTime,
+  	) AS "registTime",
 	rgs.model,
 	rgs.po_number,
 	rgs.order_number,
@@ -136,7 +136,7 @@ async function queryOdfPoAll({ model, order_number, po_number, subline }) {
 	TO_CHAR(
 	    (rcd.timestamps AT TIME ZONE 'Asia/Jakarta'),
 	    'HH24:MI:ss DD-MM-YYYY'
-  	) AS scanTime,
+  	) AS "scanTime",
 	rcd.sn,
 	rcd.sn_motor,
 	rcd.pcb_idu,
