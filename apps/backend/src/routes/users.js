@@ -28,7 +28,7 @@ router.get("/", async (req, res) => {
     where,
     skip,
     take: Number(limit),
-    omit: { hash: true, password: true },
+    omit: { hash: true },
   });
 
   const resultIndex = result.map((item, index) => ({
@@ -66,15 +66,9 @@ router.put("/update/:id", async (req, res) => {
     where: { id },
   });
 
-  let setHash;
-  let setPassword;
-  if (password && password.trim() !== "") {
-    setHash = await bcrypt.hash(password, 10);
-    setPassword = password;
-  } else {
-    setHash = currentUser?.hash;
-    setPassword = currentUser?.password;
-  }
+  const setHash = password && password.trim() !== ""
+    ? await bcrypt.hash(password, 10)
+    : currentUser?.hash;
   const result = await prisma.users.update({
     where: { id: id },
     data: {
@@ -84,11 +78,11 @@ router.put("/update/:id", async (req, res) => {
       roleuser,
       email,
       hash: setHash,
-      password: setPassword,
     },
   });
 
-  res.status(201).json({ message: "Updated success", result });
+  const { hash: _updatedHash, ...safeResult } = result;
+  res.status(201).json({ message: "Updated success", result: safeResult });
 });
 
 router.post("/regist", async (req, res) => {
@@ -116,14 +110,14 @@ router.post("/regist", async (req, res) => {
     data: {
       username,
       hash: hashedPassword,
-      password,
       email,
       roleuser,
       departement,
       section,
     },
   });
-  res.status(201).json({ message: "Registration successful", user: newUser });
+  const { hash: _hash, ...safeUser } = newUser;
+  res.status(201).json({ message: "Registration successful", user: safeUser });
 });
 
 router.delete("/delete/:id", async (req, res) => {
@@ -131,7 +125,8 @@ router.delete("/delete/:id", async (req, res) => {
   const result = await prisma.users.delete({
     where: { id },
   });
-  res.status(200).json({ message: "delete successful", result });
+  const { hash: _deletedHash, ...safeResult } = result;
+  res.status(200).json({ message: "delete successful", result: safeResult });
 });
 
 module.exports = router;

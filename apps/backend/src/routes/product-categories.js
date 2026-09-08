@@ -15,8 +15,7 @@ router.get("/", async (_req, res) => {
 router.post("/post", async (req, res) => {
   const { slug, name } = req.body || {};
   if (!slug || !name) throw new AppError("slug dan name wajib", 400, "VALIDATION");
-  const normalized = String(slug).trim().toLowerCase() === "washing" ? "wm" : String(slug).trim().toLowerCase();
-  categoryKey(normalized);
+  const normalized = categoryKey(slug);
   const exists = await prisma.product_categories.findUnique({ where: { slug: normalized } });
   if (exists) throw new AppError("Kategori sudah ada", 409, "DUPLICATE");
   const data = await prisma.product_categories.create({ data: { slug: normalized, name: String(name).trim() } });

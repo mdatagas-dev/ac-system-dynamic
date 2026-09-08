@@ -3,7 +3,7 @@ const router = express.Router();
 const prisma = require("../../lib/prisma");
 const { hasPermission } = require("../services/permissions");
 const { resolveBomRule, createRegistrationSpec, updateRegistrationSpec, registrationSpec } = require("../services/registration");
-const { isSupportedCategory, scanDelegate } = require("../services/category-specs");
+const { scanDelegate } = require("../services/category-specs");
 const requirePermission = require("../../middlewares/requirePermission");
 const requirePpcPin = require("../../middlewares/requirePpcPin");
 const { assertCanAccessRegistration } = require("../services/registration-access");
@@ -12,11 +12,7 @@ const AppError = require("../../lib/AppError");
 const baseSelect = { id: true, model: true, order_number: true, po_number: true, subline: true, userid: true, shift: true, plan: true, timestamps: true, product_category: true };
 
 async function scanCount(db, registration) {
-  if (isSupportedCategory(registration.product_category)) {
-    return scanDelegate(registration.product_category, db).count({ where: { id_regist: registration.id } });
-  }
-  // Legacy registrations remain readable during the additive migration.
-  return db.recordscan.count({ where: { id_regist: registration.id } });
+  return scanDelegate(registration.product_category, db).count({ where: { id_regist: registration.id } });
 }
 
 async function assertNoOpenRegistration(db, userId) {

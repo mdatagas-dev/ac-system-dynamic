@@ -85,10 +85,6 @@ async function queryDataExport(user, { page = 1, limit = 20, keyword = "" }) {
     SELECT id, id_regist, sn, sn_carton, pcb_idu, pcb_odu, sn_motor, sn_accessories, NULL::varchar AS sn_drum, NULL::varchar AS sn_pump, timestamps, 'ac'::varchar AS product_category, 'typed'::varchar AS source FROM recordscan_ac
     UNION ALL
     SELECT id, id_regist, sn, NULL::varchar, NULL::varchar, NULL::varchar, NULL::varchar, NULL::varchar, sn_drum, sn_pump, timestamps, 'wm'::varchar, 'typed'::varchar FROM recordscan_wm
-    UNION ALL
-    SELECT s.id, s.id_regist::uuid, s.sn, s.sn_carton, s.pcb_idu, NULL::varchar, s.sn_motor, s.sn_accessories, s.components->>'sn_drum', s.components->>'sn_pump', s.timestamps, r.product_category, 'legacy'::varchar
-    FROM recordscan s JOIN registscan r ON r.id = s.id_regist::uuid
-    WHERE s.id_regist ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND (r.product_category NOT IN ('ac', 'wm') OR r.product_category IS NULL)
   `;
   const base = `FROM (${source}) s JOIN registscan rgs ON rgs.id = s.id_regist ${where}`;
   const countRows = await prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS total ${base}`, ...params);

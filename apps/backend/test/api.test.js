@@ -2,8 +2,6 @@
 const { test, before, after } = require("node:test");
 const assert = require("node:assert");
 const { api, token, track, waitForServer, cleanupAll, uniq } = require("../test-helpers");
-const prisma = require("../lib/prisma");
-
 let bomlistId, modelId, lineId, pinId, userId, registId, recordId;
 const TODAY = new Date().toISOString().split("T")[0];
 const MODEL_SHORT = "TDD-" + uniq;        // bomlist.model
@@ -261,26 +259,6 @@ test("REGISTSCAN: post valid 201, get list, delete 200", async () => {
   assert.strictEqual(r.status, 200);
   r = await api("DELETE", "/registscan/delete/" + registId);
   assert.strictEqual(r.status, 200);
-});
-
-test("REGISTSCAN: legacy category tetap dapat dibaca setelah migrasi typed", async () => {
-  const legacy = await prisma.registscan.create({
-    data: {
-      model: "AN-LEGACY-" + uniq,
-      order_number: "ORD-LEGACY-" + uniq,
-      po_number: "PO-LEGACY-" + uniq,
-      subline: "LEGACY",
-      userid: "11111111-1111-1111-1111-111111111111",
-      shift: "1",
-      plan: 1,
-      product_category: "an",
-      components: { sn: "LEGACY-SN" },
-    },
-  });
-  track("registscan", legacy.id);
-  const result = await api("GET", "/registscan?limit=10&page=1");
-  assert.strictEqual(result.status, 200);
-  assert.ok(result.data.data.some((row) => row.id === legacy.id));
 });
 
 // ---------- RDPS ----------

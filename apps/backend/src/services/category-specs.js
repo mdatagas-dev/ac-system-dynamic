@@ -26,22 +26,14 @@ function categoryKey(category) {
   return key;
 }
 
-function isSupportedCategory(category) {
-  try {
-    categoryKey(category);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function definition(category) {
   return definitions[categoryKey(category)];
 }
 
 function fieldsForCategory(category, bomSpec) {
-  return definition(category).fields.map(([key, label, defaultUnit, defaultRequired]) => {
-    const unit = category === "ac" ? (bomSpec?.[`${key}_unit`] ?? defaultUnit) : defaultUnit;
+  const keyCategory = categoryKey(category);
+  return definition(keyCategory).fields.map(([key, label, defaultUnit, defaultRequired]) => {
+    const unit = keyCategory === "ac" ? (bomSpec?.[`${key}_unit`] ?? defaultUnit) : defaultUnit;
     const prefix = bomSpec?.[`${key}_prefix`] ?? "";
     const required = bomSpec?.[`${key}_required`] ?? defaultRequired;
     return { key, label, unit, prefix, required: Boolean(required && prefix) };
@@ -106,11 +98,12 @@ function typedData(category, payload, { partial = false } = {}) {
 }
 
 function bomSpecData(category, payload) {
+  const keyCategory = categoryKey(category);
   const data = {};
-  for (const [key, , defaultUnit, defaultRequired] of definition(category).fields) {
+  for (const [key, , defaultUnit, defaultRequired] of definition(keyCategory).fields) {
     data[`${key}_prefix`] = normalize(payload[key]);
     data[`${key}_required`] = parseBoolean(payload[`${key}_required`], defaultRequired);
-    if (category === "ac") data[`${key}_unit`] = payload[`${key}_unit`] ?? defaultUnit;
+    if (keyCategory === "ac") data[`${key}_unit`] = payload[`${key}_unit`] ?? defaultUnit;
   }
   return data;
 }
@@ -120,6 +113,6 @@ function scanDelegate(category, db) {
 }
 
 module.exports = {
-  categoryKey, isSupportedCategory, definition, fieldsForCategory, fieldsForUnit, validatePayload, assertPrefixes,
+  categoryKey, definition, fieldsForCategory, fieldsForUnit, validatePayload, assertPrefixes,
   typedData, bomSpecData, scanDelegate, normalize, present,
 };
