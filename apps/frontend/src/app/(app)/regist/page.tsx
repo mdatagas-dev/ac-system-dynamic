@@ -485,7 +485,7 @@ export default function RegistPage() {
           if (!open) setEditing(null);
         }}
         title={editing ? "Edit Registrasi" : "Registrasi Baru"}
-        description="Field SN mengikuti BOM rule untuk model + order number."
+        description="Masukkan Model, Batch, PO Number sesuai dengan plan"
         actions={
           <>
             <Button variant="text" onClick={() => setDialogOpen(false)}>Batal</Button>
@@ -515,10 +515,10 @@ export default function RegistPage() {
           </div>
 
           {/* Subline otomatis dari section user */}
-          <div className="rounded-lg bg-surface-container px-3 py-2 text-xs text-on-surface-variant">
+          {/* <div className="rounded-lg bg-surface-container px-3 py-2 text-xs text-on-surface-variant">
             Subline otomatis dari section Anda:{" "}
             <span className="font-semibold">{user?.section || "—"}</span>
-          </div>
+          </div> */}
 
           {/* Status BOM rule — sumber field SN */}
           {ruleLoading ? (
@@ -550,7 +550,7 @@ export default function RegistPage() {
             </section>
           ) : (
             <div className="rounded-lg border border-dashed border-outline-variant p-4 text-xs text-on-surface-variant">
-              Isi <b>Model</b> dan <b>Order Number</b> untuk memuat field SN dari BOM rule.
+              {/* Isi <b>Model</b> dan <b>Batch</b> untuk memuat field SN dari BOM rule. */}
             </div>
           )}
         </div>
