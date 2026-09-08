@@ -9,6 +9,7 @@
  * (tab Model & BOM List) yang memfilter baris yang sudah dimuat.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { http } from "@/lib/api";
 import { Button } from "@/components/vm3/Button";
 import { IconButton } from "@/components/vm3/IconButton";
@@ -19,6 +20,7 @@ import { Dialog } from "@/components/vm3/Dialog";
 import { Select } from "@/components/vm3/Select";
 import { Combobox } from "@/components/vm3/Combobox";
 import { useSnackbar } from "@/components/vm3/Snackbar";
+import { useAuth } from "@/lib/auth";
 
 /* ---------- Definisi entitas ---------- */
 interface Field {
@@ -176,6 +178,14 @@ function bomPrefixOf(row: Record<string, unknown>, key: string): string {
 
 export default function MasterPage() {
   const { show } = useSnackbar();
+  const { user, initializing } = useAuth();
+  const router = useRouter();
+  const isSuperuser = user?.roleuser?.toLowerCase() === "superuser";
+
+  useEffect(() => {
+    if (!initializing && (!user || !isSuperuser)) router.replace("/regist");
+  }, [initializing, user, isSuperuser, router]);
+
   const [tab, setTab] = useState("model");
   const entity = useMemo(() => ENTITIES.find((e) => e.key === tab) ?? ENTITIES[0], [tab]);
 
@@ -418,6 +428,10 @@ export default function MasterPage() {
 
   // Judul dialog
   const dialogTitle = editing ? `Edit ${entity.label}` : `Tambah ${entity.label}`;
+
+  if (initializing || !user || !isSuperuser) {
+    return <div className="flex min-h-48 items-center justify-center text-sm text-on-surface-variant">Memeriksa akses…</div>;
+  }
 
   return (
     <div className="flex flex-col gap-6">
