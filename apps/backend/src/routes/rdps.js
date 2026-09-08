@@ -8,6 +8,7 @@ const requirePpcPin = require("../../middlewares/requirePpcPin");
 const { assertCanAccessRegistration } = require("../services/registration-access");
 const { findBomlist, loadTypedBom, registrationSpec } = require("../services/registration");
 const { definition, fieldsForCategory, fieldsForUnit, scanDelegate, typedData, validatePayload, assertPrefixes } = require("../services/category-specs");
+const jakartaTime = (value) => value ? new Date(value).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }) : "";
 const { unitFromSubline } = require("../rules/unit");
 const AppError = require("../../lib/AppError");
 
@@ -71,7 +72,7 @@ router.get("/history.xlsx", async (req, res) => {
     { header: "TIME", key: "timestamps", width: 22 },
     ...keys.map((key) => ({ header: key.toUpperCase(), key, width: 26 })),
   ];
-  for (const row of rows) sheet.addRow({ ...row, timestamps: row.timestamps ? new Date(row.timestamps).toLocaleString("id-ID") : "" });
+  for (const row of rows) sheet.addRow({ ...row, timestamps: jakartaTime(row.timestamps) });
   sheet.getRow(1).font = { bold: true };
   sheet.views = [{ state: "frozen", ySplit: 1 }];
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");

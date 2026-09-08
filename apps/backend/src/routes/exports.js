@@ -5,6 +5,8 @@ const prisma = require("../../lib/prisma");
 const { hasPermission } = require("../services/permissions");
 const ExcelJS = require("exceljs");
 
+const jakartaTime = (value) => value ? new Date(value).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" }) : "";
+
 router.get("/total-po-scan", async (req, res) => {
   const { page = 1, limit = 10, keyword = "" } = req.query;
   const skip = (Number(page) - 1) * Number(limit);
@@ -111,7 +113,7 @@ router.get("/data-export.xlsx", async (req, res) => {
     { header: "Model", key: "model", width: 18 }, { header: "Batch", key: "order_number", width: 18 },
     { header: "PO", key: "po_number", width: 18 }, { header: "Line", key: "subline", width: 28 },
   ];
-  for (const row of data) sheet.addRow({ ...row, product_category: ["wm", "washing"].includes(row.product_category) ? "WM" : "AC" });
+  for (const row of data) sheet.addRow({ ...row, timestamps: jakartaTime(row.timestamps), product_category: ["wm", "washing"].includes(row.product_category) ? "WM" : "AC" });
   sheet.getRow(1).font = { bold: true };
   sheet.views = [{ state: "frozen", ySplit: 1 }];
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
