@@ -836,3 +836,48 @@ test("TDD/SEQ: SN harus di-scan INPUT dulu sebelum OUTPUT line yang sama", async
   assert.strictEqual(outScan.status, 201, "scan output setelah input harus sukses");
   track("recordscan", outScan.data.data?.id);
 });
+
+test("TDD/SEQ: packing input wajib melewati assy input dan output", async () => {
+  const ord = "ORDPACK-" + uniq;
+  const sn = "PACK-" + uniq + "0001";
+  const po = "PO-PACK-" + uniq;
+  const tokenIn = token("superuser", "LINE IDU ASSY INPUT");
+  const tokenOut = token("superuser", "LINE IDU ASSY OUTPUT");
+  const tokenPacking = token("superuser", "LINE IDU PACKING INPUT");
+
+  const rb = await api("POST", "/bomlist/post", { model: MODEL_SHORT, order_number: ord, sn });
+  track("bomlist", rb.data?.data?.id);
+
+  const mkRegist = async (t, section) => {
+    const r = await api("POST", "/registscan/post", {
+      model: MODEL_FULL, order_number: ord, po_number: po, shift: "1", plan: 1, sn,
+    }, t);
+    assert.strictEqual(r.status, 201, section + " regist harus dibuat");
+    const rid = r.data.result.id;
+    track("registscan", rid);
+    return rid;
+  };
+  const ridIn = await mkRegist(tokenIn, "assy input");
+  const ridOut = await mkRegist(tokenOut, "assy output");
+  const ridPacking = await mkRegist(tokenPacking, "packing input");
+
+  let r = await api("POST", "/rdps/post", { id_regist: ridPacking, sn }, tokenPacking);
+  assert.strictEqual(r.status, 400, "packing sebelum assy harus ditolak");
+  assert.match(JSON.stringify(r.data), /ASSY INPUT/);
+
+  r = await api("POST", "/rdps/post", { id_regist: ridIn, sn }, tokenIn);
+  assert.strictEqual(r.status, 201);
+  track("recordscan", r.data.data?.id);
+
+  r = await api("POST", "/rdps/post", { id_regist: ridPacking, sn }, tokenPacking);
+  assert.strictEqual(r.status, 400, "packing sebelum assy output harus ditolak");
+  assert.match(JSON.stringify(r.data), /ASSY OUTPUT/);
+
+  r = await api("POST", "/rdps/post", { id_regist: ridOut, sn }, tokenOut);
+  assert.strictEqual(r.status, 201);
+  track("recordscan", r.data.data?.id);
+
+  r = await api("POST", "/rdps/post", { id_regist: ridPacking, sn }, tokenPacking);
+  assert.strictEqual(r.status, 201, "packing setelah assy input dan output harus sukses");
+  track("recordscan", r.data.data?.id);
+});

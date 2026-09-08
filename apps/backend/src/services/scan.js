@@ -61,6 +61,17 @@ async function assertAcStageOrder(tx, registration, payload) {
     const input = line.replace(/OUTPUT$/, "INPUT").trim();
     if (!rows.some((row) => row.subline.toUpperCase() === input)) throw new AppError(`unit belum di-scan di ${input} - scan input dulu sebelum output`, 400, "ORDER_VIOLATION");
   }
+  if (line.includes("PACKING")) {
+    const unit = line.includes("IDU") ? "IDU" : line.includes("ODU") ? "ODU" : null;
+    const assemblyStages = unit
+      ? [`LINE ${unit} ASSY INPUT`, `LINE ${unit} ASSY OUTPUT`]
+      : [];
+    for (const stage of assemblyStages) {
+      if (!rows.some((row) => row.subline.toUpperCase() === stage)) {
+        throw new AppError(`unit belum melalui ${stage} sebelum packing`, 400, "ORDER_VIOLATION");
+      }
+    }
+  }
   if (line.includes("PACKING OUTPUT")) {
     const batchStages = await tx.registscan.findMany({ where: { model: registration.model, order_number: registration.order_number, po_number: registration.po_number, product_category: "ac" }, select: { subline: true } });
     for (const stage of REQUIRED_AC_STAGES) {
