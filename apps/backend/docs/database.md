@@ -129,3 +129,25 @@ missing quantities, ambiguous master data, unknown stages, missing physical
 lines, and missing typed specifications before committing. Its JSON result
 includes target-table counts from before and after the transaction for
 reconciliation. Re-running it does not create duplicate normalized rows.
+
+## Phase 4 Production Unit and Unit Scan backfill
+
+Run Phase 4 only after Phase 3 has linked every Registration to its Production
+Order and route step:
+
+```bash
+ALLOW_TEST_PHASE4_BACKFILL=WRITE_TEST_PHASE4_BACKFILL \
+npm run db:backfill:phase4
+```
+
+The command reads legacy AC and WM scans in timestamp/ID order, creates one
+Production Unit per normalized main serial, assigns component serials by
+Component Type, and creates one Unit Scan per route step. Legacy source table and
+row IDs remain on every normalized event for reconciliation.
+
+No normalized rows are written when conflicts exist. Blank serials, missing
+Phase 3 links, cross-order main serials, conflicting component ownership, changed
+components on one unit, Production Units above the order quantity, and repeated
+route-step events are written idempotently to `migration_quarantine`; the command
+exits with status `2`. Production writes remain intentionally unsupported until
+copied-data reconciliation and deployment approval are complete.
