@@ -115,6 +115,12 @@ test("NORMALIZED SCAN: endpoint writes normalized events while preserving respon
     registration = registrationResponse.data.result;
     assert.strictEqual(registration.bomlist_id, order.id);
     assert.strictEqual(registration.route_step_id, orderStep.id);
+    assert.strictEqual(
+      await prisma.ac_registration_spec.findUnique({
+        where: { id_regist: registration.id },
+      }),
+      null,
+    );
 
     let response = await api("POST", "/rdps/post", {
       id_regist: registration.id,
@@ -124,6 +130,10 @@ test("NORMALIZED SCAN: endpoint writes normalized events while preserving respon
     assert.strictEqual(response.data.data.id_regist, registration.id);
     assert.strictEqual(response.data.unit.serial_number, serial);
     firstScanId = response.data.data.id;
+    assert.strictEqual(
+      await prisma.recordscan_ac.count({ where: { id_regist: registration.id } }),
+      0,
+    );
 
     response = await api("POST", "/rdps/post", {
       id_regist: registration.id,
@@ -262,6 +272,97 @@ test("NORMALIZED SCAN: endpoint writes normalized events while preserving respon
     }
     if (dailyPin) await prisma.pin.delete({ where: { id: dailyPin.id } });
     if (auditUser) await prisma.users.delete({ where: { id: auditUser.id } });
+  }
+});
+
+test("COMPONENT SCAN: route configuration allows PCB scans without a main serial", async () => {
+  const stage = `LINE COMPONENT ${uniq}`.toUpperCase();
+  const orderNumber = `COMP-${uniq}`.toUpperCase();
+  const componentSerial = `PCB-${uniq}`.toUpperCase();
+  const model = await prisma.model.findFirst({ where: { model: MODEL_SHORT } });
+  const process = await prisma.processes.findUnique({ where: { code: "assembly" } });
+  const pcbType = await prisma.component_types.findUnique({ where: { code: "pcb_idu" } });
+  let order;
+  let line;
+  let template;
+  let orderStep;
+  let registration;
+  try {
+    line = await prisma.line.create({ data: { line: stage } });
+    order = await prisma.bomlist.create({
+      data: {
+        model: MODEL_SHORT,
+        model_id: model.id,
+        order_number: orderNumber,
+        order_quantity: 1,
+        product_category: "ac",
+      },
+    });
+    template = await prisma.model_route_steps.create({
+      data: {
+        model_id: model.id,
+        process_id: process.id,
+        code: `component-${uniq}`,
+        name: stage,
+        sequence: 901,
+        requires_main_serial: false,
+      },
+    });
+    orderStep = await prisma.bomlist_route_steps.create({
+      data: {
+        bomlist_id: order.id,
+        process_id: process.id,
+        template_step_id: template.id,
+        code: `component-${uniq}`,
+        name: stage,
+        sequence: 901,
+        requires_main_serial: false,
+      },
+    });
+    await prisma.bomlist_components.create({
+      data: {
+        bomlist_id: order.id,
+        component_type_id: pcbType.id,
+        prefix: "PCB-",
+        is_required: true,
+      },
+    });
+    const createdRegistration = await api("POST", "/registscan/post", {
+      model: MODEL_FULL,
+      order_number: orderNumber,
+      po_number: `PO-${uniq}`,
+      subline: stage,
+      shift: "1",
+      plan: 1,
+      pcb_idu: componentSerial,
+    });
+    assert.strictEqual(createdRegistration.status, 201);
+    registration = createdRegistration.data.result;
+
+    const scan = await api("POST", "/rdps/post", {
+      id_regist: registration.id,
+      pcb_idu: componentSerial,
+    });
+    assert.strictEqual(scan.status, 201);
+    assert.strictEqual(scan.data.unit, null);
+    assert.strictEqual(scan.data.data.sn, null);
+    assert.strictEqual(scan.data.data.pcb_idu, componentSerial);
+
+    const event = await prisma.recordscan.findUnique({
+      where: { id: scan.data.data.id },
+      include: { components: true },
+    });
+    assert.strictEqual(event.production_unit_id, null);
+    assert.strictEqual(event.components[0].serial_number, componentSerial);
+  } finally {
+    if (registration) {
+      await prisma.recordscan.deleteMany({ where: { id_regist: registration.id } });
+      await prisma.registscan.delete({ where: { id: registration.id } });
+    }
+    if (orderStep) await prisma.bomlist_route_steps.delete({ where: { id: orderStep.id } });
+    if (template) await prisma.model_route_steps.delete({ where: { id: template.id } });
+    if (order) await prisma.bomlist.delete({ where: { id: order.id } });
+    if (line) await prisma.line.delete({ where: { id: line.id } });
   }
 });
 

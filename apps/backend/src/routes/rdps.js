@@ -10,7 +10,9 @@ const {
 } = require("../services/registration-access");
 const {
   findBomlist,
+  loadNormalizedBom,
   loadTypedBom,
+  normalizedFields,
   registrationSpec,
 } = require("../services/registration");
 const {
@@ -56,17 +58,35 @@ async function registrationForRequest(req) {
 
 router.get("/scan", async (req, res) => {
   const registration = await registrationForRequest(req);
-  const { bom, category, spec } = await loadTypedBom(
+  const bom = await findBomlist(
     prisma,
-    await findBomlist(prisma, registration.model, registration.order_number),
+    registration.model,
+    registration.order_number,
   );
-  if (category !== registration.product_category)
+  const normalizedBom = registration.bomlist_id
+    ? await loadNormalizedBom(prisma, bom)
+    : null;
+  let category = registration.product_category;
+  let fields;
+  let scans;
+  if (normalizedBom) {
+    const configuredRules = await prisma.registscan_components.findMany({
+      where: { id_regist: registration.id },
+    });
+    fields = normalizedFields(normalizedBom.rules, configuredRules);
+  } else {
+    const typed = await loadTypedBom(prisma, bom);
+    category = typed.category;
+    fields = fieldsForCategory(category, typed.spec);
+    scans = scanDelegate(category, prisma);
+  }
+  if (category !== registration.product_category) {
     throw new AppError(
       "Kategori BOM tidak cocok dengan registrasi",
       400,
       "CATEGORY_MISMATCH",
     );
-  const scans = scanDelegate(category, prisma);
+  }
   const [normalizedRows, reference] = await Promise.all([
     registration.bomlist_id
       ? normalizedScanRows(prisma, registration.id, category)
@@ -82,7 +102,6 @@ router.get("/scan", async (req, res) => {
         where: { id_regist: registration.id },
         orderBy: { timestamps: "desc" },
       });
-  const fields = fieldsForCategory(category, spec);
   res.status(200).json({
     validation: { ...registration, ...(reference || {}) },
     total,
@@ -107,9 +126,15 @@ router.get("/history", async (req, res) => {
     ? Math.min(Math.max(Number(req.query.limit) || 10, 1), 100)
     : null;
   const keyword = String(req.query.keyword || "").trim();
-  const fields = definition(registration.product_category).fields.map(
-    ([key]) => key,
-  );
+  const fields = registration.bomlist_id
+    ? [
+        "sn",
+        ...(await prisma.registscan_components.findMany({
+          where: { id_regist: registration.id },
+          include: { component_type: true },
+        })).map((rule) => rule.component_type.code),
+      ]
+    : definition(registration.product_category).fields.map(([key]) => key);
   const where = {
     id_regist: registration.id,
     ...(keyword
@@ -156,9 +181,15 @@ router.get("/history", async (req, res) => {
 router.get("/history.xlsx", async (req, res) => {
   const registration = await registrationForRequest(req);
   const keyword = String(req.query.keyword || "").trim();
-  const keys = definition(registration.product_category).fields.map(
-    ([key]) => key,
-  );
+  const keys = registration.bomlist_id
+    ? [
+        "sn",
+        ...(await prisma.registscan_components.findMany({
+          where: { id_regist: registration.id },
+          include: { component_type: true },
+        })).map((rule) => rule.component_type.code),
+      ]
+    : definition(registration.product_category).fields.map(([key]) => key);
   const where = {
     id_regist: registration.id,
     ...(keyword

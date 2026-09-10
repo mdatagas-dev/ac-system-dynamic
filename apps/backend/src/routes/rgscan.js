@@ -17,6 +17,7 @@ const {
   referenceChanges,
   requireReason,
   structuralChanges,
+  updateComponentSnapshots,
 } = require("../services/normalized-registration");
 
 const baseSelect = { id: true, model: true, order_number: true, po_number: true, subline: true, userid: true, shift: true, plan: true, timestamps: true, product_category: true };
@@ -105,14 +106,15 @@ router.post("/post", requirePermission("registscan:write"), async (req, res) => 
       await tx.$queryRaw`WITH lock AS (SELECT pg_advisory_xact_lock(hashtextextended(${userid}, 0))) SELECT 1 FROM lock`;
       await assertNoOpenRegistration(tx, userid);
     }
-    const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload, db: tx });
+    const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload, subline, db: tx });
     const normalizedData = await normalizedRegistrationData(tx, resolved.bom, subline);
     const registration = await tx.registscan.create({
       data: { model: String(payload.model).trim(), order_number: String(payload.order_number).trim(), po_number: String(payload.po_number).trim(), subline, userid, shift: String(payload.shift), plan, product_category: resolved.category, ...(normalizedData || {}) },
     });
-    await createRegistrationSpec(tx, resolved.category, registration.id, payload);
-    if (normalizedData) {
+    if (resolved.normalized) {
       await createComponentSnapshots(tx, registration.id, resolved.bom.id, payload);
+    } else {
+      await createRegistrationSpec(tx, resolved.category, registration.id, payload);
     }
     return registration;
   });
@@ -126,7 +128,7 @@ router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) 
   });
   assertCanAccessRegistration(req.user, existing);
   const { payload, subline, plan } = registrationInput(req, false);
-  const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload });
+  const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload, subline });
   if (resolved.category !== existing.product_category) throw new AppError("Kategori registrasi tidak dapat diubah", 400, "CATEGORY_CHANGE_FORBIDDEN");
   const result = await prisma.$transaction(async (tx) => {
     let normalizedData = {};
@@ -144,8 +146,17 @@ router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) 
       }
       normalizedData = { bomlist_id: resolved.bom.id, line_id: line.id, route_step_id: routeStep.id };
       protectedFields = structuralChanges(existing, normalizedData);
-      const currentSpec = existing.product_category === "ac" ? existing.ac_spec : existing.wm_spec;
-      const keys = definition(existing.product_category).fields.map(([key]) => key);
+      const currentSpec = await registrationSpec(
+        tx,
+        existing.product_category,
+        existing.id,
+      );
+      const keys = resolved.normalized
+        ? [...new Set([
+            ...Object.keys(currentSpec || {}),
+            ...resolved.rules.map((rule) => rule.component_type.code),
+          ])]
+        : definition(existing.product_category).fields.map(([key]) => key);
       protectedFields.push(...referenceChanges(currentSpec, payload, keys));
       if (activeScans > 0 && protectedFields.length > 0) {
         const pin = await authorizePin(tx, req.headers["x-pin"]);
@@ -164,7 +175,11 @@ router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) 
       }
     }
     const registration = await tx.registscan.update({ where: { id: existing.id }, data: { model: String(payload.model).trim(), order_number: String(payload.order_number).trim(), po_number: String(payload.po_number).trim(), subline, shift: String(payload.shift), plan, ...normalizedData } });
-    await updateRegistrationSpec(tx, resolved.category, existing.id, payload);
+    if (resolved.normalized) {
+      await updateComponentSnapshots(tx, existing.id, resolved.bom.id, payload);
+    } else {
+      await updateRegistrationSpec(tx, resolved.category, existing.id, payload);
+    }
     return registration;
   });
   res.status(200).json({ message: "data successfully changed", result });

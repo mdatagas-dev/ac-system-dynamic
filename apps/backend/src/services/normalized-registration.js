@@ -129,19 +129,34 @@ async function createComponentSnapshots(db, registrationId, bomId, payload) {
       "NORMALIZED_LINK_MISSING",
     );
   }
+  const configuredRules = rules.filter((rule) =>
+    normalize(payload[rule.component_type.code]),
+  );
+  if (!configuredRules.length) {
+    throw new AppError(
+      "Minimal satu komponen scan wajib diisi",
+      400,
+      "MISSING_REQUIRED",
+    );
+  }
   await db.registscan_components.createMany({
-    data: rules.map((rule) => {
+    data: configuredRules.map((rule) => {
       const reference = normalize(payload[rule.component_type.code]);
       return {
         id_regist: registrationId,
         component_type_id: rule.component_type_id,
         reference_value: reference,
         expected_length: reference?.length || null,
-        is_required: rule.is_required,
+        is_required: true,
         prefix_snapshot: rule.prefix,
       };
     }),
   });
+}
+
+async function updateComponentSnapshots(db, registrationId, bomId, payload) {
+  await db.registscan_components.deleteMany({ where: { id_regist: registrationId } });
+  await createComponentSnapshots(db, registrationId, bomId, payload);
 }
 
 module.exports = {
@@ -151,6 +166,7 @@ module.exports = {
   referenceChanges,
   requireReason,
   createComponentSnapshots,
+  updateComponentSnapshots,
   normalizedRegistrationData,
   structuralChanges,
 };

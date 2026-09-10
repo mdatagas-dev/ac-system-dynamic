@@ -84,6 +84,7 @@ function legacyScanShape(event, category) {
     ...Object.fromEntries(
       RESPONSE_FIELDS[category].map((code) => [code, componentValues[code] || null]),
     ),
+    ...componentValues,
     timestamps: event.timestamps,
   };
 }
@@ -185,6 +186,20 @@ async function createNormalizedScan(tx, {
 }) {
   const requiresMainSerial = registration.route_step.requires_main_serial;
   const serialNumber = normalize(payload.sn);
+  const allowedFields = new Set([
+    "id_regist",
+    ...registration.component_rules.map((rule) => rule.component_type.code),
+  ]);
+  const unknownFields = Object.keys(payload).filter(
+    (key) => present(payload[key]) && !allowedFields.has(key),
+  );
+  if (unknownFields.length) {
+    throw new AppError(
+      `Field tidak dikenal kategori: ${unknownFields.join(", ")}`,
+      400,
+      "UNKNOWN_FIELD",
+    );
+  }
   if (requiresMainSerial && !serialNumber) {
     throw new AppError("Wajib diisi: Serial Number", 400, "MISSING_REQUIRED");
   }
@@ -301,7 +316,7 @@ async function editNormalizedUnit(tx, {
     "id_regist",
     "reason",
     "sn",
-    ...RESPONSE_FIELDS[category],
+    ...registration.component_rules.map((rule) => rule.component_type.code),
   ]);
   const unknownFields = Object.keys(payload).filter(
     (key) => present(payload[key]) && !allowedFields.has(key),
@@ -437,6 +452,7 @@ async function editNormalizedUnit(tx, {
   }
 
   const compatibilityData = {
+    ...merged,
     sn: nextSerial,
     ...Object.fromEntries(
       RESPONSE_FIELDS[category].map((code) => [code, merged[code] || null]),
