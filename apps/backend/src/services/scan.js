@@ -3,6 +3,7 @@ const { assertCanAccessRegistration } = require("./registration-access");
 const { findBomlist, loadTypedBom, registrationSpec } = require("./registration");
 const { assertPrefixes, validatePayload, typedData, scanDelegate } = require("./category-specs");
 const AppError = require("../../lib/AppError");
+const { createNormalizedScan, normalizedReady } = require("./normalized-scan");
 
 const REQUIRED_AC_STAGES = [
   "LINE IDU ASSY INPUT", "LINE IDU ASSY OUTPUT", "LINE ODU ASSY INPUT", "LINE ODU ASSY OUTPUT",
@@ -112,21 +113,45 @@ async function assertStageOrder(tx, registration, payload) {
 
 async function createScan(tx, { user, id_regist, payload }) {
   await lockRegistration(tx, id_regist);
-  const registration = await tx.registscan.findUnique({ where: { id: id_regist } });
+  const registration = await tx.registscan.findUnique({
+    where: { id: id_regist },
+    include: {
+      order: true,
+      route_step: true,
+      component_rules: { include: { component_type: true } },
+    },
+  });
   assertCanAccessRegistration(user, registration);
   const { category, spec: bomSpec } = await loadTypedBom(tx, await findBomlist(tx, registration.model, registration.order_number));
   if (category !== registration.product_category) throw new AppError("Kategori BOM tidak cocok dengan registrasi", 400, "CATEGORY_MISMATCH");
   const fields = validatePayload(category, bomSpec, payload, { skipPrefix: true });
   const reference = await registrationSpec(tx, category, registration.id);
-  assertLengths(reference, payload, fields);
-  assertAccuracy(reference, payload, fields);
-  await assertStageOrder(tx, registration, payload);
-  await assertNoDuplicate(tx, category, registration.id, payload, fields);
-  assertPrefixes(fields, payload);
-  const count = await scanDelegate(category, tx).count({ where: { id_regist: registration.id } });
-  if (registration.plan && count >= registration.plan) throw new AppError("Target plan registrasi sudah tercapai", 400, "PLAN_REACHED");
-  const created = await scanDelegate(category, tx).create({ data: { id_regist: registration.id, ...typedData(category, payload) } });
-  return { created, brand: null, po: registration.po_number, odf: registration.order_number, model: registration.model, unit: {} };
+  const legacyData = typedData(category, payload);
+  let result;
+  if (normalizedReady(registration)) {
+    result = await createNormalizedScan(tx, {
+      registration,
+      user,
+      payload,
+      legacyDelegate: scanDelegate(category, tx),
+      legacyData,
+    });
+  } else {
+    assertLengths(reference, payload, fields);
+    assertAccuracy(reference, payload, fields);
+    await assertStageOrder(tx, registration, payload);
+    await assertNoDuplicate(tx, category, registration.id, payload, fields);
+    assertPrefixes(fields, payload);
+    const count = await scanDelegate(category, tx).count({ where: { id_regist: registration.id } });
+    if (registration.plan && count >= registration.plan) throw new AppError("Target plan registrasi sudah tercapai", 400, "PLAN_REACHED");
+    result = {
+      created: await scanDelegate(category, tx).create({
+        data: { id_regist: registration.id, ...legacyData },
+      }),
+      unit: {},
+    };
+  }
+  return { ...result, brand: null, po: registration.po_number, odf: registration.order_number, model: registration.model };
 }
 
 module.exports = { createScan, assertLengths, REQUIRED_AC_STAGES, REQUIRED_WM_STAGES };

@@ -151,3 +151,23 @@ components on one unit, Production Units above the order quantity, and repeated
 route-step events are written idempotently to `migration_quarantine`; the command
 exits with status `2`. Production writes remain intentionally unsupported until
 copied-data reconciliation and deployment approval are complete.
+
+## Phase 5 compatibility writes
+
+`POST /rdps/post` uses normalized validation when its Registration has completed
+Phase 3 links. The transaction locks the Registration and Production Order,
+serializes the main serial and component serials, and enforces:
+
+- the Registration plan;
+- the Production Order quantity;
+- Registration reference lengths and BOM prefix snapshots;
+- global main-serial ownership by Production Order;
+- component ownership by Component Type; and
+- completion of every earlier required route step.
+
+The same transaction writes the normalized Production Unit, component ownership,
+and Unit Scan plus the legacy `recordscan_ac` or `recordscan_wm` row. The legacy
+row keeps existing history, dashboard, export, and response contracts working.
+Registrations without normalized links continue through the legacy path during
+the rollout window. The normalized path intentionally omits fuzzy accuracy
+matching.

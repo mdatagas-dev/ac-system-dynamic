@@ -2,6 +2,7 @@
 const { test, before, after } = require("node:test");
 const assert = require("node:assert");
 const { api, token, track, waitForServer, cleanupAll, uniq } = require("../test-helpers");
+const prisma = require("../lib/prisma");
 let bomlistId, modelId, lineId, pinId, userId, registId, recordId;
 const TODAY = new Date().toISOString().split("T")[0];
 const MODEL_SHORT = "TDD-" + uniq;        // bomlist.model
@@ -24,6 +25,106 @@ let MASTER_CAT_ID = "";
 
 after(async () => {
   await cleanupAll();
+});
+
+test("NORMALIZED SCAN: endpoint dual-writes while preserving response shape", async () => {
+  const suffix = `norm-${uniq}`;
+  const serial = `NS-${uniq}`.toUpperCase();
+  const stage = `LINE NORMALIZED ${uniq}`.toUpperCase();
+  const orderNumber = `NORM-${uniq}`.toUpperCase();
+  const model = await prisma.model.findFirst({ where: { model: MODEL_SHORT } });
+  const process = await prisma.processes.findUnique({ where: { code: "assembly" } });
+  const snType = await prisma.component_types.findUnique({ where: { code: "sn" } });
+  let order;
+  let line;
+  let template;
+  let orderStep;
+  let registration;
+  let unitId;
+  try {
+    line = await prisma.line.create({ data: { line: stage } });
+    order = await prisma.bomlist.create({
+      data: {
+        model: MODEL_SHORT,
+        model_id: model.id,
+        order_number: orderNumber,
+        order_quantity: 1,
+        product_category: "ac",
+        ac_spec: { create: { sn_prefix: "NS-", sn_required: true } },
+      },
+    });
+    template = await prisma.model_route_steps.create({
+      data: {
+        model_id: model.id,
+        process_id: process.id,
+        code: suffix,
+        name: stage,
+        sequence: 900,
+      },
+    });
+    orderStep = await prisma.bomlist_route_steps.create({
+      data: {
+        bomlist_id: order.id,
+        process_id: process.id,
+        template_step_id: template.id,
+        code: suffix,
+        name: stage,
+        sequence: 900,
+      },
+    });
+    registration = await prisma.registscan.create({
+      data: {
+        model: MODEL_FULL,
+        order_number: orderNumber,
+        subline: stage,
+        userid: "normalized-test",
+        shift: "1",
+        plan: 1,
+        product_category: "ac",
+        bomlist_id: order.id,
+        line_id: line.id,
+        route_step_id: orderStep.id,
+        production_date: new Date(TODAY),
+        ac_spec: { create: { sn: serial } },
+        component_rules: {
+          create: {
+            component_type_id: snType.id,
+            reference_value: serial,
+            expected_length: serial.length,
+            is_required: true,
+            prefix_snapshot: "NS-",
+          },
+        },
+      },
+    });
+
+    let response = await api("POST", "/rdps/post", {
+      id_regist: registration.id,
+      sn: serial,
+    });
+    assert.strictEqual(response.status, 201);
+    assert.strictEqual(response.data.data.id_regist, registration.id);
+    assert.strictEqual(response.data.unit.serial_number, serial);
+    unitId = response.data.unit.id;
+
+    response = await api("POST", "/rdps/post", {
+      id_regist: registration.id,
+      sn: serial,
+    });
+    assert.strictEqual(response.status, 400);
+    assert.strictEqual(response.data.code, "PLAN_REACHED");
+  } finally {
+    if (registration) {
+      await prisma.recordscan.deleteMany({ where: { id_regist: registration.id } });
+      await prisma.recordscan_ac.deleteMany({ where: { id_regist: registration.id } });
+      await prisma.registscan.delete({ where: { id: registration.id } });
+    }
+    if (unitId) await prisma.production_units.delete({ where: { id: unitId } });
+    if (orderStep) await prisma.bomlist_route_steps.delete({ where: { id: orderStep.id } });
+    if (template) await prisma.model_route_steps.delete({ where: { id: template.id } });
+    if (order) await prisma.bomlist.delete({ where: { id: order.id } });
+    if (line) await prisma.line.delete({ where: { id: line.id } });
+  }
 });
 
 // ---------- AUTH & INFRA ----------
