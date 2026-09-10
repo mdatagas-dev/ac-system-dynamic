@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
 const path = require("path");
+const crypto = require("crypto");
 const dotenv = require("dotenv");
 
 const PRODUCTION_CONFIRMATION = "READ_ONLY_PRODUCTION_PREFLIGHT";
+const TEST_QUARANTINE_CONFIRMATION = "WRITE_TEST_QUARANTINE";
 
 const CHECKS = {
   duplicateOrderNumbers: "blocking",
@@ -46,6 +48,15 @@ function assertSafeDatabaseUrl(
   }
 }
 
+function assertTestQuarantineWriteAllowed(databaseUrl, confirmation) {
+  assertSafeDatabaseUrl(databaseUrl);
+  if (confirmation !== TEST_QUARANTINE_CONFIRMATION) {
+    throw new Error(
+      `Quarantine write confirmation must be ${TEST_QUARANTINE_CONFIRMATION}`,
+    );
+  }
+}
+
 function buildPreflightReport(results = {}) {
   const checks = {};
   let blocking = 0;
@@ -70,10 +81,78 @@ function hasBlockingIssues(report) {
   return report.summary.blocking > 0;
 }
 
+function reasonCode(checkName) {
+  return checkName.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toUpperCase();
+}
+
+function fallbackSourceId(checkName, row) {
+  const digest = crypto
+    .createHash("sha256")
+    .update(JSON.stringify(row))
+    .digest("hex")
+    .slice(0, 32);
+  return `${checkName}:${digest}`;
+}
+
+function quarantineSource(checkName, row) {
+  if (checkName === "duplicateOrderNumbers") {
+    return {
+      source_table: "preflight_duplicate_order_numbers",
+      source_id: `order:${row.order_number}`,
+    };
+  }
+  if (checkName === "missingModels") {
+    return { source_table: "bomlist", source_id: String(row.id) };
+  }
+  if (checkName === "ambiguousRegistrations") {
+    return { source_table: "registscan", source_id: String(row.id) };
+  }
+  if (row.source_table && row.id) {
+    return { source_table: row.source_table, source_id: String(row.id) };
+  }
+  return {
+    source_table: `preflight_${reasonCode(checkName).toLowerCase()}`,
+    source_id: fallbackSourceId(checkName, row),
+  };
+}
+
+function jsonSafe(value) {
+  return JSON.parse(
+    JSON.stringify(value, (_key, item) =>
+      typeof item === "bigint" ? Number(item) : item,
+    ),
+  );
+}
+
+function quarantineEntries(report) {
+  const entries = [];
+  for (const [checkName, check] of Object.entries(report.checks)) {
+    if (check.severity !== "blocking") continue;
+    for (const row of check.rows) {
+      entries.push({
+        ...quarantineSource(checkName, row),
+        reason_code: reasonCode(checkName),
+        details: jsonSafe(row),
+      });
+    }
+  }
+  return entries;
+}
+
+async function persistQuarantineEntries(prisma, entries) {
+  if (entries.length === 0) return { attempted: 0, inserted: 0 };
+  const result = await prisma.migration_quarantine.createMany({
+    data: entries,
+    skipDuplicates: true,
+  });
+  return { attempted: entries.length, inserted: result.count };
+}
+
 async function collectPreflightData(tx) {
   const queries = {
     duplicateOrderNumbers: `
-      SELECT upper(trim(order_number)) AS order_number, count(*)::int AS count
+      SELECT upper(trim(order_number)) AS order_number, count(*)::int AS count,
+             array_agg(id ORDER BY id) AS ids
       FROM bomlist
       WHERE order_number IS NOT NULL AND trim(order_number) <> ''
       GROUP BY upper(trim(order_number))
@@ -249,9 +328,13 @@ if (require.main === module) {
 
 module.exports = {
   PRODUCTION_CONFIRMATION,
+  TEST_QUARANTINE_CONFIRMATION,
   assertSafeDatabaseUrl,
+  assertTestQuarantineWriteAllowed,
   buildPreflightReport,
   collectPreflightData,
   hasBlockingIssues,
+  persistQuarantineEntries,
+  quarantineEntries,
   runPreflight,
 };

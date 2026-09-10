@@ -86,3 +86,17 @@ DATABASE_URL="postgresql://engineering@localhost:5433/ac_system_test?sslmode=dis
 Script keluar dengan status `2` bila konflik blocking ditemukan. Pemeriksaan
 database produksi dinonaktifkan secara default dan hanya boleh dilakukan sebagai
 operasi read-only yang direncanakan setelah backup dan persetujuan deployment.
+
+Temuan blocking dapat disalin secara idempotent ke `migration_quarantine` pada
+database test dengan konfirmasi eksplisit:
+
+```bash
+DATABASE_URL="postgresql://engineering@localhost:5433/ac_system_test?sslmode=disable" \
+ALLOW_TEST_QUARANTINE=WRITE_TEST_QUARANTINE \
+npm run db:quarantine
+```
+
+Peringatan seperti jumlah scan yang melebihi plan tetap report-only. Perintah
+quarantine menolak seluruh database yang namanya tidak mengandung `test`; write
+ke produksi baru boleh ditambahkan pada deployment phase setelah backup dan
+review hasil preflight.
