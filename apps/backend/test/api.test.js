@@ -835,20 +835,13 @@ test("PPC: registrasi terbuka memblokir registrasi baru, edit tidak butuh PIN", 
   track("registscan", allowed.data.result.id);
 });
 
-// ---------- LOGIN RATE LIMIT (lockout per akun; self-clean agar tak ganggu test lain) ----------
-test("AUTH/LOCKOUT: 5 gagal login -> 429 (rate limit)", async () => {
-  const u = "lock_" + uniq;
-  for (let i = 0; i < 5; i++) {
+// ---------- LOGIN FAILURE ----------
+test("AUTH: gagal login berulang tidak memicu rate limit", async () => {
+  const u = "failed_" + uniq;
+  for (let i = 0; i < 6; i++) {
     const r = await api("POST", "/auth/login", { username: u, password: "wrong" });
     assert.strictEqual(r.status, 401, "percobaan gagal ke-" + (i + 1));
   }
-  const locked = await api("POST", "/auth/login", { username: u, password: "wrong" });
-  assert.strictEqual(locked.status, 429);
-  assert.match(JSON.stringify(locked.data), /Terlalu banyak percobaan/);
-  // bersihkan counter supaya test lain (yang mungkin jalan paralel) tak ikut terkunci
-  const redis = require("../src/config/redis");
-  const keys = await redis.keys("login_fail:*");
-  if (keys.length) await redis.del(keys);
 });
 
 // ---------- TDD SLICE: INPUT-BEFORE-OUTPUT ----------

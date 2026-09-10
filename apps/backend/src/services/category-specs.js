@@ -3,10 +3,10 @@ const AppError = require("../../lib/AppError");
 const AC_FIELDS = [
   ["sn", "Serial Number", null, true],
   ["sn_carton", "SN Carton", null, false],
-  ["pcb_idu", "PCB IDU", "IDU", false],
-  ["pcb_odu", "PCB ODU", "ODU", false],
-  ["sn_motor", "SN Motor", "ODU", false],
-  ["sn_accessories", "SN Accessories", "IDU", false],
+  ["pcb_idu", "PCB IDU", null, false],
+  ["pcb_odu", "PCB ODU", null, false],
+  ["sn_motor", "SN Motor", null, false],
+  ["sn_accessories", "SN Accessories", null, false],
 ];
 const WM_FIELDS = [
   ["sn", "Serial Number", null, true],
@@ -32,16 +32,11 @@ function definition(category) {
 
 function fieldsForCategory(category, bomSpec) {
   const keyCategory = categoryKey(category);
-  return definition(keyCategory).fields.map(([key, label, defaultUnit, defaultRequired]) => {
-    const unit = keyCategory === "ac" ? (bomSpec?.[`${key}_unit`] ?? defaultUnit) : defaultUnit;
+  return definition(keyCategory).fields.map(([key, label, , defaultRequired]) => {
     const prefix = bomSpec?.[`${key}_prefix`] ?? "";
     const required = bomSpec?.[`${key}_required`] ?? defaultRequired;
-    return { key, label, unit, prefix, required: Boolean(required && prefix) };
+    return { key, label, unit: null, prefix, required: Boolean(required && prefix) };
   });
-}
-
-function fieldsForUnit(fields, currentUnit) {
-  return fields.filter((field) => !field.unit || field.unit === currentUnit);
 }
 
 function present(value) {
@@ -58,12 +53,10 @@ function parseBoolean(value, fallback) {
   return Boolean(value);
 }
 
-function validatePayload(category, bomSpec, payload, currentUnit, { skipPrefix = false } = {}) {
-  const allFields = fieldsForCategory(category, bomSpec);
-  const fields = fieldsForUnit(allFields, currentUnit);
-  // A registration can carry references for the other AC unit, even though the
-  // current line validates only its own fields.
-  const allowed = new Set(allFields.map((field) => field.key));
+function validatePayload(category, bomSpec, payload, { skipPrefix = false } = {}) {
+  const fields = fieldsForCategory(category, bomSpec);
+  // A universal BOM validates the same field set on every production line.
+  const allowed = new Set(fields.map((field) => field.key));
   for (const field of fields) {
     const value = payload[field.key];
     if (field.required && !present(value)) throw new AppError(`Wajib diisi: ${field.label}`, 400, "MISSING_REQUIRED");
@@ -100,10 +93,10 @@ function typedData(category, payload, { partial = false } = {}) {
 function bomSpecData(category, payload) {
   const keyCategory = categoryKey(category);
   const data = {};
-  for (const [key, , defaultUnit, defaultRequired] of definition(keyCategory).fields) {
+  for (const [key, , , defaultRequired] of definition(keyCategory).fields) {
     data[`${key}_prefix`] = normalize(payload[key]);
     data[`${key}_required`] = parseBoolean(payload[`${key}_required`], defaultRequired);
-    if (keyCategory === "ac") data[`${key}_unit`] = payload[`${key}_unit`] ?? defaultUnit;
+    if (keyCategory === "ac") data[`${key}_unit`] = null;
   }
   return data;
 }
@@ -113,6 +106,6 @@ function scanDelegate(category, db) {
 }
 
 module.exports = {
-  categoryKey, definition, fieldsForCategory, fieldsForUnit, validatePayload, assertPrefixes,
+  categoryKey, definition, fieldsForCategory, validatePayload, assertPrefixes,
   typedData, bomSpecData, scanDelegate, normalize, present,
 };

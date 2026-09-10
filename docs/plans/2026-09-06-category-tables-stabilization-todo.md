@@ -10,7 +10,7 @@ Finish and stabilize the AC/WM category-table migration before production rollou
 - AC fields: `sn`, `sn_odu`, `sn_carton`, `pcb_idu`, `sn_box`, `sn_motor`, `sn_accessories`.
 - Provisional WM fields: `sn`, `sn_drum`, `sn_pump`.
 - Canonical washing-machine slug: `wm`.
-- Preserve current BOM prefix, required-field, unit, accuracy, duplicate, and AC stage-order rules.
+- Preserve current BOM prefix, required-field, accuracy, duplicate, and AC stage-order rules.
 - Do not drop legacy tables or JSONB during stabilization.
 - Do not run migration or E2E tests against `ac_production`.
 - Do not add offline mode, workflow engines, or generic plugin systems.
@@ -40,15 +40,14 @@ Finish and stabilize the AC/WM category-table migration before production rollou
 
 **Goal:** ensure AC/WM forms and validation use the correct fields.
 
-- [x] Split field construction from unit filtering:
+- [x] Use one universal BOM field set for every AC unit:
   - [x] `fieldsForCategory(category, spec)` returns every category field.
-  - [x] `fieldsForUnit(fields, unit)` filters only when processing a specific line.
+  - [x] IDU and ODU no longer filter the BOM field set.
 - [x] Return all category field metadata from `/bomlist`.
-- [x] Return line-relevant fields from `/rdps/scan`.
-- [ ] Verify IDU receives `sn`, `pcb_idu`, `sn_box`, and applicable shared fields.
-- [ ] Verify ODU receives `sn`, `sn_odu`, `sn_motor`, and applicable shared fields.
+- [x] Return the universal BOM field set from `/rdps/scan`.
+- [ ] Verify IDU and ODU receive every configured AC BOM field.
 - [ ] Verify WM receives only `sn`, `sn_drum`, and `sn_pump`.
-- [ ] Backfill AC `required` and `unit` settings from `product_categories.fields`.
+- [ ] Backfill AC `required` settings from `product_categories.fields`.
 - [ ] Preserve per-BOM prefix values during backfill.
 - [ ] Decide one source of truth for field metadata:
   - [ ] Keep typed BOM specification columns as the source of truth.
@@ -59,9 +58,9 @@ Finish and stabilize the AC/WM category-table migration before production rollou
 ### Tests first
 
 - [ ] Test all AC fields are returned by the BOM endpoint.
-- [ ] Test AC fields are filtered correctly for IDU and ODU scan endpoints.
+- [ ] Test AC endpoints expose the same BOM field set for IDU and ODU.
 - [ ] Test WM returns exactly its three provisional fields.
-- [ ] Test migrated required/unit metadata matches legacy configuration.
+- [ ] Test migrated required metadata matches legacy configuration.
 - [ ] Test unsupported categories fail clearly.
 
 ### Exit gate
@@ -212,7 +211,7 @@ Finish and stabilize the AC/WM category-table migration before production rollou
   6. [ ] Category-specific reference values
 - [ ] Use a select for shift rather than free text.
 - [ ] Keep line/subline derived from the authenticated operator.
-- [ ] Show only category- and line-relevant reference fields.
+- [ ] Show all category reference fields from the universal BOM.
 - [ ] Navigate directly to scan after successful registration.
 - [ ] Hide destructive/admin actions from PPC users unless operationally required.
 - [ ] Reduce crowded row actions to:
@@ -304,7 +303,7 @@ Finish and stabilize the AC/WM category-table migration before production rollou
 ## Definition of done
 
 - [ ] AC and WM scans use their typed tables.
-- [ ] Required/unit/prefix behavior matches the previous production behavior.
+- [ ] Required/prefix behavior matches the previous production behavior.
 - [ ] Registration edit does not erase reference values.
 - [ ] Dashboard, history, and exports support both categories.
 - [ ] No test connects to production.

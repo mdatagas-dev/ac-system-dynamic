@@ -1,4 +1,3 @@
-const { unitFromSubline } = require("../rules/unit");
 const { accuracyPercent, MIN_ACCURACY_PERCENT } = require("../rules/accuracy");
 const { assertCanAccessRegistration } = require("./registration-access");
 const { findBomlist, loadTypedBom, registrationSpec } = require("./registration");
@@ -117,7 +116,7 @@ async function createScan(tx, { user, id_regist, payload }) {
   assertCanAccessRegistration(user, registration);
   const { category, spec: bomSpec } = await loadTypedBom(tx, await findBomlist(tx, registration.model, registration.order_number));
   if (category !== registration.product_category) throw new AppError("Kategori BOM tidak cocok dengan registrasi", 400, "CATEGORY_MISMATCH");
-  const fields = validatePayload(category, bomSpec, payload, unitFromSubline(registration.subline), { skipPrefix: true });
+  const fields = validatePayload(category, bomSpec, payload, { skipPrefix: true });
   const reference = await registrationSpec(tx, category, registration.id);
   assertLengths(reference, payload, fields);
   assertAccuracy(reference, payload, fields);

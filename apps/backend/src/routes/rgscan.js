@@ -89,7 +89,7 @@ router.post("/post", requirePermission("registscan:write"), async (req, res) => 
       await tx.$queryRaw`WITH lock AS (SELECT pg_advisory_xact_lock(hashtextextended(${userid}, 0))) SELECT 1 FROM lock`;
       await assertNoOpenRegistration(tx, userid);
     }
-    const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload, subline, db: tx });
+    const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload, db: tx });
     const registration = await tx.registscan.create({
       data: { model: String(payload.model).trim(), order_number: String(payload.order_number).trim(), po_number: String(payload.po_number).trim(), subline, userid, shift: String(payload.shift), plan, product_category: resolved.category },
     });
@@ -103,7 +103,7 @@ router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) 
   const existing = await prisma.registscan.findUnique({ where: { id: req.params.id }, select: baseSelect });
   assertCanAccessRegistration(req.user, existing);
   const { payload, subline, plan } = registrationInput(req, false);
-  const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload, subline });
+  const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload });
   if (resolved.category !== existing.product_category) throw new AppError("Kategori registrasi tidak dapat diubah", 400, "CATEGORY_CHANGE_FORBIDDEN");
   const result = await prisma.$transaction(async (tx) => {
     const registration = await tx.registscan.update({ where: { id: existing.id }, data: { model: String(payload.model).trim(), order_number: String(payload.order_number).trim(), po_number: String(payload.po_number).trim(), subline, shift: String(payload.shift), plan } });

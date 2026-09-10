@@ -150,12 +150,12 @@ const EMPTY_FORM: Record<string, unknown> = {};
 
 const BOM_FIELDS = {
   ac: [
-    { key: "sn", label: "Serial Number", scope: "IDU & ODU" },
-    { key: "sn_carton", label: "SN Carton", scope: "IDU & ODU" },
-    { key: "sn_accessories", label: "SN Accessories", scope: "IDU" },
-    { key: "pcb_idu", label: "PCB IDU", scope: "IDU" },
-    { key: "pcb_odu", label: "PCB ODU", scope: "ODU" },
-    { key: "sn_motor", label: "SN Motor", scope: "ODU" },
+    { key: "sn", label: "Serial Number", scope: "Universal" },
+    { key: "sn_carton", label: "SN Carton", scope: "Universal" },
+    { key: "sn_accessories", label: "SN Accessories", scope: "Universal" },
+    { key: "pcb_idu", label: "PCB IDU", scope: "Universal" },
+    { key: "pcb_odu", label: "PCB ODU", scope: "Universal" },
+    { key: "sn_motor", label: "SN Motor", scope: "Universal" },
   ],
   wm: [
     { key: "sn", label: "Serial Number", scope: "Washing Machine" },

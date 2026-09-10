@@ -13,14 +13,17 @@ Legacy `ai` and `an` map to `ac` for compatibility.
 
 ## AC fields
 
+All AC BOM fields are universal. A single BOM rule applies to both IDU and ODU
+lines; the production line still determines the scan stage order.
+
 | Scope | Field |
 | --- | --- |
-| Shared IDU/ODU | Serial Number (`sn`) |
-| Shared IDU/ODU | SN Carton (`sn_carton`) |
-| IDU | SN Accessories (`sn_accessories`) |
-| IDU | PCB IDU (`pcb_idu`) |
-| ODU | PCB ODU (`pcb_odu`) |
-| ODU | SN Motor (`sn_motor`) |
+| Universal | Serial Number (`sn`) |
+| Universal | SN Carton (`sn_carton`) |
+| Universal | SN Accessories (`sn_accessories`) |
+| Universal | PCB IDU (`pcb_idu`) |
+| Universal | PCB ODU (`pcb_odu`) |
+| Universal | SN Motor (`sn_motor`) |
 
 `sn_odu` and `sn_box` are not offered for new BOM rules. Legacy data remains readable.
 

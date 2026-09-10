@@ -8,8 +8,6 @@ const AppError = require("../../lib/AppError");
 
 // Durasi session dalam detik (default 8 jam), bisa di-override lewat env SESSION_TTL
 const SESSION_TTL = Number(process.env.SESSION_TTL) || 8 * 60 * 60;
-const MAX_ATTEMPTS = 5;
-const LOCKOUT_TTL = 10 * 60;
 
 // Baca satu cookie dari header "Cookie" (tanpa dependensi eksternal)
 const parseCookie = (header, name) => {
@@ -23,10 +21,9 @@ const parseCookie = (header, name) => {
 
 // POST /auth/login — alur:
 // 1. validasi body (username + password wajib)
-// 2. cek rate limit per IP di Redis (5x gagal -> lockout 10 menit)
-// 3. cari user di PostgreSQL + bcrypt.compare
-// 4. sukses: buat session_id random -> simpan user payload di Redis session:<id>
-// 5. Set-Cookie session_id (HttpOnly, SameSite=Lax, Secure di production)
+// 2. cari user di PostgreSQL + bcrypt.compare
+// 3. sukses: buat session_id random -> simpan user payload di Redis session:<id>
+// 4. Set-Cookie session_id (HttpOnly, SameSite=Lax, Secure di production)
 router.post("/login", async (req, res) => {
   const { username, password } = req.body || {};
 
@@ -34,28 +31,16 @@ router.post("/login", async (req, res) => {
     throw new AppError("Username dan password wajib diisi", 400, "VALIDATION");
   }
 
-  // Key Redis untuk menghitung percobaan gagal per IP
-  const failKey = `login_fail:${req.ip}`;
-  const fails = Number(await redis.get(failKey)) || 0;
-  if (fails >= MAX_ATTEMPTS) {
-    throw new AppError("Terlalu banyak percobaan, coba lagi nanti", 429, "RATE_LIMITED");
-  }
-
   // Cari user berdasarkan username di tabel users
   const findUser = await prisma.users.findFirst({
     where: { username: username.trim() },
   });
 
-  // User tidak ada / hash kosong -> anggap gagal, naikkan counter, 401
+  // User tidak ada / hash kosong -> anggap gagal, 401
   // (pesan sama untuk user-tidak-ada dan password-salah, biar tak bocorkan info)
   if (!findUser || !findUser.hash || !(await bcrypt.compare(password, findUser.hash))) {
-    await redis.incr(failKey);
-    await redis.expire(failKey, LOCKOUT_TTL);
     throw new AppError("Username atau password salah", 401, "AUTH_FAILED");
   }
-
-  // Login berhasil -> reset counter gagal
-  await redis.del(failKey);
 
   // Buat session id acak (32 byte hex) sebagai identitas session
   const sessionId = crypto.randomBytes(32).toString("hex");

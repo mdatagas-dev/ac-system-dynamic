@@ -14,7 +14,7 @@ const workflow = [
 ];
 
 const validations = [
-  ["BOM", "Field yang diwajibkan BOM harus diisi dan prefix material harus sesuai."],
+  ["BOM", "Satu BOM universal berlaku untuk IDU dan ODU; field wajib dan prefix material harus sesuai."],
   ["Kualitas data", "Panjang dan kemiripan nilai scan dibandingkan dengan referensi registrasi."],
   ["Urutan", "INPUT harus lebih dulu daripada OUTPUT. Packing mengikuti ASSY yang terdaftar."],
   ["Duplikasi", "Scan material yang sama pada satu registrasi tidak dapat dicatat dua kali."],

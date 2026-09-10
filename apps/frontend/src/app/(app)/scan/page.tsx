@@ -8,7 +8,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useRouter, useSearchParams } from "next/navigation";
 import { http } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { bomFields, bomFieldsForUnit, unitFromSubline } from "@/lib/bom";
+import { bomFields, unitFromSubline } from "@/lib/bom";
 import { Card } from "@/components/vm3/Card";
 import { Dialog } from "@/components/vm3/Dialog";
 import { Button } from "@/components/vm3/Button";
@@ -146,12 +146,10 @@ function ScanContent() {
 
   const orderedFields = useMemo(() => {
     const all = bomFields(scanSummary?.bomlist?.[0]);
-    const unit = unitFromSubline(scanSummary?.validation?.subline ?? null);
-    const forUnit = bomFieldsForUnit(all, unit);
     // operator hanya scan field yang diisi saat registrasi batch ini —
     // field kosong di registrasi berarti bukan bagian dari alur line mereka
     const registration = scanSummary?.validation as unknown as Record<string, unknown> | null | undefined;
-    return forUnit.filter((field) => String(registration?.[field.key] ?? "").trim() !== "");
+    return all.filter((field) => String(registration?.[field.key] ?? "").trim() !== "");
   }, [scanSummary?.bomlist, scanSummary?.validation]);
 
   const fieldKeys = orderedFields.map((field) => field.key).join("|");

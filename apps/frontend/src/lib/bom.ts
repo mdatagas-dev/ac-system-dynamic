@@ -1,5 +1,5 @@
 // Satu sumber kebenaran untuk "bagaimana field form diturunkan dari baris BOM (bomlist)".
-// Struktur field datang dari template kategori (row.fields dari server); label/unit dari
+// Struktur field datang dari template kategori (row.fields dari server); label dari
 // template, prefix dari kolom baris. Dipakai halaman regist & scan + master (BOM editor).
 
 export interface BomRuleField {
@@ -7,8 +7,6 @@ export interface BomRuleField {
   label: string;
   prefix: string;
   required: boolean;
-  /** Unit AC (ODU/IDU) dari template — null = berlaku semua line. */
-  unit: string | null;
 }
 
 export interface BomRule {
@@ -26,7 +24,7 @@ export interface BomRule {
   sn_drum?: string | null;
   sn_pump?: string | null;
   /** Typed category metadata returned by the backend. */
-  fields?: Array<{ key: string; label?: string; prefix?: string; required?: boolean; unit?: string | null }> | null;
+  fields?: Array<{ key: string; label?: string; prefix?: string; required?: boolean }> | null;
 }
 
 const FIXED_LABELS: Record<string, string> = {
@@ -50,7 +48,7 @@ export function bomFields(row: BomRule | Record<string, unknown> | null | undefi
   const r = row as Record<string, unknown>;
   const fields: BomRuleField[] = [];
 
-  const template = Array.isArray(r.fields) ? (r.fields as Array<{ key: string; label?: string; prefix?: string; required?: boolean; unit?: string | null }>) : [];
+  const template = Array.isArray(r.fields) ? (r.fields as Array<{ key: string; label?: string; prefix?: string; required?: boolean }>) : [];
   for (const t of template) {
     // Typed endpoints include prefix in field metadata. The fallback keeps the
     // reader compatible with legacy BOM responses during cutover.
@@ -61,7 +59,6 @@ export function bomFields(row: BomRule | Record<string, unknown> | null | undefi
       label: t.label || FIXED_LABELS[t.key] || t.key,
       prefix,
       required: t.required === true && prefix !== "",
-      unit: t.unit ?? null,
     });
   }
   return fields;
@@ -73,9 +70,4 @@ export function unitFromSubline(subline: string | null | undefined): string | nu
   if (s.includes("ODU")) return "ODU";
   if (s.includes("IDU")) return "IDU";
   return null;
-}
-
-/** Field yang tampil untuk unit tertentu: field tanpa unit + field unit yang cocok. */
-export function bomFieldsForUnit(fields: BomRuleField[], unit: string | null): BomRuleField[] {
-  return fields.filter((f) => !f.unit || f.unit === unit);
 }

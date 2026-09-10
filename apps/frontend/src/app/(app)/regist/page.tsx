@@ -18,7 +18,7 @@ import { IconButton } from "@/components/vm3/IconButton";
 import { Combobox } from "@/components/vm3/Combobox";
 import { useSnackbar } from "@/components/vm3/Snackbar";
 import { useAuth } from "@/lib/auth";
-import { bomFields, bomFieldsForUnit, unitFromSubline, type BomRule } from "@/lib/bom";
+import { bomFields, type BomRule } from "@/lib/bom";
 
 interface Line {
   id: string;
@@ -67,16 +67,6 @@ const EMPTY: Record<string, string> = {
 
 interface PostResult {
   result?: { id: string };
-}
-
-// True bila rule cocok dengan unit operator: template tanpa field ber-unit
-// berlaku untuk kedua unit (IDU+ODU); bila ada unit, rule milik unit itu.
-function bomlistForUnit(rule: BomRule | undefined, unit: string | null): boolean {
-  if (!rule) return false;
-  const fields = Array.isArray(rule.fields) ? rule.fields : [];
-  const units = new Set(fields.map((f) => f.unit).filter(Boolean));
-  if (units.size === 0) return true;
-  return unit != null && units.has(unit);
 }
 
 export default function RegistPage() {
@@ -210,14 +200,11 @@ export default function RegistPage() {
         .get<{ data: BomRule[] }>(`/bomlist?keyword=${encodeURIComponent(order)}`)
         .then((res) => {
           if (cancelled) return;
-          // BOM rule bisa lebih dari satu per model+order (baris ODU & IDU terpisah).
-          // Operator di line tertentu hanya boleh memakai rule yang unitnya cocok.
+          // Satu BOM rule berlaku universal untuk semua unit dan line.
           const candidates = (res.data ?? []).filter(
             (b) => b.order_number === order && model.startsWith(b.model),
           );
-          const opUnit = unitFromSubline(form.subline);
-          const hit =
-            candidates.find((b) => bomlistForUnit(b, opUnit)) ?? candidates[0];
+          const hit = candidates[0];
           if (hit) {
             setBomRule(hit);
           } else {
@@ -241,11 +228,8 @@ export default function RegistPage() {
     };
   }, [form.model, form.order_number, form.subline]);
 
-  // field form = template BOM difilter sesuai line yang dipilih operator
-  const fields = useMemo(
-    () => bomFieldsForUnit(bomFields(bomRule), unitFromSubline(form.subline)),
-    [bomRule, form.subline],
-  );
+  // Satu template BOM dipakai oleh semua unit.
+  const fields = useMemo(() => bomFields(bomRule), [bomRule]);
   const requiredKeys = useMemo(
     () => fields.filter((f) => f.required).map((f) => f.key),
     [fields],

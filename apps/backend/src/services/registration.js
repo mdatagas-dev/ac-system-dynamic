@@ -1,7 +1,6 @@
 const prisma = require("../../lib/prisma");
 const { stripBrandSuffix } = require("../rules/model-code");
 const { categoryKey, definition, fieldsForCategory, validatePayload, typedData } = require("./category-specs");
-const { unitFromSubline } = require("../rules/unit");
 const AppError = require("../../lib/AppError");
 
 async function findBomlist(db, model, orderNumber) {
@@ -21,9 +20,9 @@ async function loadTypedBom(db, bom) {
   return { bom, category, spec };
 }
 
-async function resolveBomRule({ model, order_number, payload, subline, db = prisma }) {
+async function resolveBomRule({ model, order_number, payload, db = prisma }) {
   const typed = await loadTypedBom(db, await findBomlist(db, model, order_number));
-  const fields = validatePayload(typed.category, typed.spec, payload, unitFromSubline(subline));
+  const fields = validatePayload(typed.category, typed.spec, payload);
   return { ...typed, fields };
 }
 

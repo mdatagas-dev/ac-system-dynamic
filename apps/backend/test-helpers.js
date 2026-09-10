@@ -100,13 +100,6 @@ async function cleanupAll() {
       /* abaikan */
     }
   }
-  // bersihkan counter lockout login biar tak bocor antar-run
-  try {
-    const keys = await redis.keys("login_fail:*");
-    if (keys.length) await redis.del(keys);
-  } catch {
-    /* abaikan */
-  }
 }
 
 module.exports = { api, token, track, waitForServer, cleanupAll, uniq };

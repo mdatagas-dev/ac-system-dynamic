@@ -16,7 +16,6 @@ const {
 const {
   definition,
   fieldsForCategory,
-  fieldsForUnit,
   scanDelegate,
   typedData,
   validatePayload,
@@ -26,7 +25,6 @@ const jakartaTime = (value) =>
   value
     ? new Date(value).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })
     : "";
-const { unitFromSubline } = require("../rules/unit");
 const AppError = require("../../lib/AppError");
 
 async function registrationForRequest(req) {
@@ -60,10 +58,7 @@ router.get("/scan", async (req, res) => {
     }),
     registrationSpec(prisma, category, registration.id),
   ]);
-  const fields = fieldsForUnit(
-    fieldsForCategory(category, spec),
-    unitFromSubline(registration.subline),
-  );
+  const fields = fieldsForCategory(category, spec);
   res.status(200).json({
     validation: { ...registration, ...(reference || {}) },
     total,
@@ -239,7 +234,6 @@ router.put(
       category,
       spec,
       req.body || {},
-      unitFromSubline(registration.subline),
       { skipPrefix: true },
     );
     const data = typedData(category, req.body || {}, { partial: true });
@@ -247,10 +241,7 @@ router.put(
     assertLengths(
       await registrationSpec(prisma, category, registration.id),
       data,
-      fieldsForUnit(
-        fieldsForCategory(category, spec),
-        unitFromSubline(registration.subline),
-      ),
+      fieldsForCategory(category, spec),
     );
     // Editing cannot silently introduce duplicate values in this registration.
     for (const [key, value] of Object.entries(data)) {
@@ -269,13 +260,7 @@ router.put(
           "DOUBLE_SCAN",
         );
     }
-    assertPrefixes(
-      fieldsForUnit(
-        fieldsForCategory(category, spec),
-        unitFromSubline(registration.subline),
-      ),
-      data,
-    );
+    assertPrefixes(fieldsForCategory(category, spec), data);
     const result = await scans.update({ where: { id: recordId }, data });
     res.status(200).json({ message: "data update successful", data: result });
   },
