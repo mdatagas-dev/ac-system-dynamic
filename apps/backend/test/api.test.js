@@ -366,6 +366,59 @@ test("COMPONENT SCAN: route configuration allows PCB scans without a main serial
   }
 });
 
+test("NORMALIZED BOM: creation snapshots model component and route templates", async () => {
+  const orderNumber = `ORDER-TEMPLATE-${uniq}`.toUpperCase();
+  const model = await prisma.model.findFirst({ where: { model: MODEL_SHORT } });
+  const process = await prisma.processes.findUnique({ where: { code: "assembly" } });
+  const snType = await prisma.component_types.findUnique({ where: { code: "sn" } });
+  let componentTemplate;
+  let routeTemplate;
+  let order;
+  try {
+    componentTemplate = await prisma.model_bom_templates.create({
+      data: {
+        model_id: model.id,
+        component_type_id: snType.id,
+        prefix: "MODEL-",
+        is_required: true,
+      },
+    });
+    routeTemplate = await prisma.model_route_steps.create({
+      data: {
+        model_id: model.id,
+        process_id: process.id,
+        code: `snapshot-${uniq}`,
+        name: `LINE SNAPSHOT ${uniq}`.toUpperCase(),
+        sequence: 902,
+      },
+    });
+    const response = await api("POST", "/bomlist/post", {
+      model: MODEL_SHORT,
+      order_number: orderNumber,
+      po_number: `PO-${uniq}`,
+      order_quantity: 25,
+      sn: "ORDER-",
+    });
+    assert.strictEqual(response.status, 200);
+    order = response.data.data;
+    assert.strictEqual(order.model_id, model.id);
+    assert.strictEqual(order.order_quantity, 25);
+    assert.strictEqual(order.fields[0].prefix, "ORDER-");
+    assert.strictEqual(
+      await prisma.ac_bom_spec.findUnique({ where: { bom_id: order.id } }),
+      null,
+    );
+    assert.strictEqual(
+      await prisma.bomlist_route_steps.count({ where: { bomlist_id: order.id } }),
+      1,
+    );
+  } finally {
+    if (order) await prisma.bomlist.delete({ where: { id: order.id } });
+    if (routeTemplate) await prisma.model_route_steps.delete({ where: { id: routeTemplate.id } });
+    if (componentTemplate) await prisma.model_bom_templates.delete({ where: { id: componentTemplate.id } });
+  }
+});
+
 // ---------- AUTH & INFRA ----------
 test("AUTH: tanpa token -> 401", async () => {
   const r = await api("GET", "/pin", undefined, "bad-token-xyz");

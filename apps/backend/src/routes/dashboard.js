@@ -4,6 +4,7 @@ const express = require("express");
 const router = express.Router();
 const prisma = require("../../lib/prisma");
 const redis = require("../config/redis");
+const { SCAN_REPORT_SOURCE } = require("../services/reporting");
 
 function formatDateLocal(date) {
   const year = date.getFullYear();
@@ -108,55 +109,55 @@ router.get("/dashboard", async (req, res) => {
   let subline;
   let whereClause;
   if (hour >= 7 && hour < 16) {
-    subline = await prisma.$queryRaw`
+    subline = await prisma.$queryRawUnsafe(`
     SELECT 
       rgs.subline
       FROM registscan AS rgs
-      JOIN recordscan_all AS rcs
-      ON rgs.id = rcs.id_regist::uuid
+      JOIN (${SCAN_REPORT_SOURCE}) AS rcs
+      ON rgs.id = rcs.id_regist
     WHERE 
       rgs.shift = '1'
-      AND rgs.timestamps::date = ${todayStr}::date
+      AND rgs.timestamps::date = $1::date
     GROUP BY rgs.subline
-      `;
+      `, todayStr);
     whereClause = whereClause1;
     dateParams.push(todayStr);
   } else if (hour >= 16) {
-    subline = await prisma.$queryRaw`
+    subline = await prisma.$queryRawUnsafe(`
     SELECT 
       rgs.subline
       FROM registscan AS rgs
-      JOIN recordscan_all AS rcs
-      ON rgs.id = rcs.id_regist::uuid
+      JOIN (${SCAN_REPORT_SOURCE}) AS rcs
+      ON rgs.id = rcs.id_regist
     WHERE 
     (
       rgs.shift = '1' OR rgs.shift = '2'
     )
-    AND rgs.timestamps::date = ${todayStr}::date
+    AND rgs.timestamps::date = $1::date
     GROUP BY rgs.subline
-    `;
+    `, todayStr);
     whereClause = whereClause2;
     dateParams.push(todayStr);
   } else {
-    subline = await prisma.$queryRaw`
+    subline = await prisma.$queryRawUnsafe(`
     SELECT 
       rgs.subline
       FROM registscan AS rgs
-      JOIN recordscan_all AS rcs
-      ON rgs.id = rcs.id_regist::uuid
+      JOIN (${SCAN_REPORT_SOURCE}) AS rcs
+      ON rgs.id = rcs.id_regist
     WHERE 
     ( 
       rgs.shift = '2'
-      AND rgs.timestamps::date = ${todayStr}::date
+      AND rgs.timestamps::date = $1::date
     )
     OR 
     (
       rgs.shift = '2' 
-      AND rgs.timestamps::date = ${yesterdayStr}::date 
+      AND rgs.timestamps::date = $2::date
       AND EXTRACT(HOUR FROM rcs.timestamps AT TIME ZONE 'Asia/Jakarta') >= 16
     )
     GROUP BY rgs.subline
-      `;
+      `, todayStr, yesterdayStr);
     whereClause = whereClause3;
     dateParams.push(todayStr, yesterdayStr);
   }
@@ -170,8 +171,8 @@ router.get("/dashboard", async (req, res) => {
           DATE_TRUNC('hour', rcs.timestamps) AS jam,
           COUNT(*)::INT AS total
       FROM registscan AS rgs
-      JOIN recordscan_all AS rcs
-          ON rgs.id = rcs.id_regist::uuid
+      JOIN (${SCAN_REPORT_SOURCE}) AS rcs
+          ON rgs.id = rcs.id_regist
       JOIN model AS mdl
         ON rgs.model ILIKE mdl.model || '%'
       JOIN line AS aln
