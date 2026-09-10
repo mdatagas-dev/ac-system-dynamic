@@ -45,6 +45,19 @@ The operator workflow remains centered on Regist. Normal edits happen in the reg
 `recordscan`
 : One Unit Scan event at the route step represented by its Registration. Important columns are `registscan_id`, `production_unit_id`, scanning user and timestamp, plus soft-delete metadata. A unit may have one active event per order route step.
 
+Component-only Route Steps use the same event table with a nullable
+`production_unit_id`. The route snapshot declares whether a main serial is
+required. An event without a Production Unit must contain at least one scanned
+component. It counts against the Registration plan but not Production Order
+quantity and skips unit-route progression.
+
+`recordscan_components`
+: Component serial snapshots belonging to one Unit Scan event. A Registration
+may require any subset of its Production Order BOM components, so component-only,
+unit-only, and combined events share one history model. A component serial may
+appear only once at the same Route Step for its Component Type and remains
+reserved after event soft deletion.
+
 ### New normalized supporting tables
 
 `component_types`

@@ -72,6 +72,12 @@ audit_events records protected mutations without owning domain rows.
 - Copy the route-step relation onto the event so historical uniqueness does not depend on later Registration edits.
 - Enforce one active event per `(production_unit_id, bomlist_route_step_id)` with a PostgreSQL partial unique index.
 - Store scanner user and timestamp plus soft-delete metadata.
+- Allow `production_unit_id` to be null when the order Route Step does not
+  require a main serial.
+- Store scanned component values in `recordscan_components`, unique by event and
+  Component Type and by Component Type/serial/Route Step.
+- Component-only events enforce Registration plan, length, prefix, and component
+  uniqueness but skip Production Order quantity and unit-route progression.
 
 ### Components
 

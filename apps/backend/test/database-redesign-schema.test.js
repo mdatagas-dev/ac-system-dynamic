@@ -13,6 +13,7 @@ const expectedModels = [
   "production_units",
   "production_unit_components",
   "recordscan",
+  "recordscan_components",
   "audit_events",
   "migration_quarantine",
 ];
@@ -22,6 +23,20 @@ test("redesign models are exposed by the generated Prisma client", () => {
   for (const name of expectedModels) {
     assert.equal(names.has(name), true, `missing Prisma model ${name}`);
   }
+});
+
+test("component-only scan events use route-derived main serial requirements", () => {
+  const models = new Map(
+    Prisma.dmmf.datamodel.models.map((model) => [model.name, model]),
+  );
+  const field = (model, name) =>
+    models.get(model).fields.find((candidate) => candidate.name === name);
+
+  assert.equal(field("model_route_steps", "requires_main_serial").hasDefaultValue, true);
+  assert.equal(field("bomlist_route_steps", "requires_main_serial").hasDefaultValue, true);
+  assert.equal(field("recordscan", "production_unit_id").isRequired, false);
+  assert.equal(field("recordscan_components", "recordscan_id").isRequired, true);
+  assert.equal(field("recordscan_components", "serial_number").isRequired, true);
 });
 
 test("legacy AC and WM tables remain during the additive phase", () => {

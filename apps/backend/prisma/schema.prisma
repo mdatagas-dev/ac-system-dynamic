@@ -266,6 +266,7 @@ model component_types {
   bom_rules          bomlist_components[]
   registration_rules registscan_components[]
   unit_components    production_unit_components[]
+  scan_components    recordscan_components[]
 
   @@index([category_id])
   @@index([is_active])
@@ -294,16 +295,17 @@ model processes {
 }
 
 model model_route_steps {
-  id          String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  model_id    String                @db.Uuid
-  process_id  String                @db.Uuid
-  code        String                @db.VarChar(100)
-  name        String                @db.VarChar(255)
-  sequence    Int
-  is_required Boolean               @default(true)
-  model       model                 @relation(fields: [model_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  process     processes             @relation(fields: [process_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  order_steps bomlist_route_steps[]
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  model_id             String                @db.Uuid
+  process_id           String                @db.Uuid
+  code                 String                @db.VarChar(100)
+  name                 String                @db.VarChar(255)
+  sequence             Int
+  is_required          Boolean               @default(true)
+  requires_main_serial Boolean               @default(true)
+  model                model                 @relation(fields: [model_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  process              processes             @relation(fields: [process_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order_steps          bomlist_route_steps[]
 
   @@unique([model_id, code])
   @@unique([model_id, sequence])
@@ -324,19 +326,21 @@ model bomlist_components {
 }
 
 model bomlist_route_steps {
-  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  bomlist_id       String             @db.Uuid
-  process_id       String             @db.Uuid
-  template_step_id String?            @db.Uuid
-  code             String             @db.VarChar(100)
-  name             String             @db.VarChar(255)
-  sequence         Int
-  is_required      Boolean            @default(true)
-  bom              bomlist            @relation(fields: [bomlist_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  process          processes          @relation(fields: [process_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  template_step    model_route_steps? @relation(fields: [template_step_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  registrations    registscan[]
-  scan_events      recordscan[]
+  id                   String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bomlist_id           String                  @db.Uuid
+  process_id           String                  @db.Uuid
+  template_step_id     String?                 @db.Uuid
+  code                 String                  @db.VarChar(100)
+  name                 String                  @db.VarChar(255)
+  sequence             Int
+  is_required          Boolean                 @default(true)
+  requires_main_serial Boolean                 @default(true)
+  bom                  bomlist                 @relation(fields: [bomlist_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  process              processes               @relation(fields: [process_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  template_step        model_route_steps?      @relation(fields: [template_step_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  registrations        registscan[]
+  scan_events          recordscan[]
+  scan_components      recordscan_components[]
 
   @@unique([bomlist_id, code])
   @@unique([bomlist_id, sequence])
@@ -389,28 +393,46 @@ model production_unit_components {
 }
 
 model recordscan {
-  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  id_regist           String              @db.Uuid
-  production_unit_id  String              @db.Uuid
-  route_step_id       String              @db.Uuid
-  scanned_by          String?             @db.Uuid
-  timestamps          DateTime            @default(now()) @db.Timestamptz(6)
-  deleted_at          DateTime?           @db.Timestamptz(6)
-  deleted_by          String?             @db.Uuid
-  delete_reason       String?             @db.VarChar(500)
-  legacy_source_table String?             @db.VarChar(64)
-  legacy_source_id    String?             @db.Uuid
-  registration        registscan          @relation(fields: [id_regist], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  production_unit     production_units    @relation(fields: [production_unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  route_step          bomlist_route_steps @relation(fields: [route_step_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  scanned_by_user     users?              @relation("recordscan_scanned_by", fields: [scanned_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  deleted_by_user     users?              @relation("recordscan_deleted_by", fields: [deleted_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                  String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_regist           String                  @db.Uuid
+  production_unit_id  String?                 @db.Uuid
+  route_step_id       String                  @db.Uuid
+  scanned_by          String?                 @db.Uuid
+  timestamps          DateTime                @default(now()) @db.Timestamptz(6)
+  deleted_at          DateTime?               @db.Timestamptz(6)
+  deleted_by          String?                 @db.Uuid
+  delete_reason       String?                 @db.VarChar(500)
+  legacy_source_table String?                 @db.VarChar(64)
+  legacy_source_id    String?                 @db.Uuid
+  registration        registscan              @relation(fields: [id_regist], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  production_unit     production_units?       @relation(fields: [production_unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  route_step          bomlist_route_steps     @relation(fields: [route_step_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  scanned_by_user     users?                  @relation("recordscan_scanned_by", fields: [scanned_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  deleted_by_user     users?                  @relation("recordscan_deleted_by", fields: [deleted_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  components          recordscan_components[]
 
   @@unique([legacy_source_table, legacy_source_id])
   @@index([id_regist, timestamps])
   @@index([production_unit_id])
   @@index([route_step_id])
   @@index([deleted_at])
+}
+
+model recordscan_components {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recordscan_id     String              @db.Uuid
+  component_type_id String              @db.Uuid
+  route_step_id     String              @db.Uuid
+  serial_number     String              @db.VarChar(255)
+  created_at        DateTime            @default(now()) @db.Timestamptz(6)
+  scan_event        recordscan          @relation(fields: [recordscan_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  component_type    component_types     @relation(fields: [component_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  route_step        bomlist_route_steps @relation(fields: [route_step_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([recordscan_id, component_type_id])
+  @@unique([component_type_id, serial_number, route_step_id])
+  @@index([serial_number])
+  @@index([route_step_id])
 }
 
 model audit_events {

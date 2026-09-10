@@ -219,6 +219,26 @@ quantity, serial/component values match their legacy source rows, and every
 quarantine entry has an explicit resolution. It refuses database names that do
 not contain `test`.
 
+## Component-only scan schema
+
+Route templates and Production Order route snapshots now include
+`requires_main_serial`. Existing routes default to `true`. A route such as
+`WM ASSY PCB` can set it to `false`, allowing its Unit Scan event to have no
+`production_unit_id`.
+
+Scanned component values belong to `recordscan_components`. Each event may hold
+any Component Types snapshotted by its Registration. Component serials are
+unique per Component Type and Route Step, remain reserved after soft deletion,
+and can exist without a Production Unit. Component-only events count against
+the Registration plan only; Production Order quantity and unit-route progression
+apply only when the route requires a main serial.
+
+Migration `20260911023000_component_only_scan_events` is additive. It does not
+change existing routes or events because `requires_main_serial` defaults to
+`true` and all existing normalized events retain their Production Unit relation.
+Backend write support is a later phase; applying this migration alone does not
+enable component-only API payloads.
+
 Prove the complete migration history against a newly created temporary database:
 
 ```bash
