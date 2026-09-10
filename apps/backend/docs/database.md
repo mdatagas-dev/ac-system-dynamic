@@ -216,3 +216,15 @@ counts match, every legacy row has a normalized event, normalized links are
 complete, Production Unit totals remain within order quantity, component values
 match their legacy source rows, and every quarantine entry has an explicit
 resolution. It refuses database names that do not contain `test`.
+
+Prove the complete migration history against a newly created temporary database:
+
+```bash
+ALLOW_CLEAN_MIGRATION_VERIFY=VERIFY_CLEAN_TEST_MIGRATIONS \
+npm run db:verify:migrations
+```
+
+The verifier requires the configured base database name to contain `test`, gives
+the temporary database a generated `ac_system_test_clean_*` name, applies every
+migration, checks for drift against `schema.prisma`, and drops only that exact
+temporary database in a `finally` block.

@@ -21,12 +21,13 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
-    "test": "node --test --test-force-exit test/rules.test.js test/preflight.test.js test/database-redesign-schema.test.js test/database-redesign-backfill.test.js test/database-redesign-scan-backfill.test.js test/database-redesign-reconcile.test.js test/normalized-scan.test.js test/normalized-registration.test.js test/api.test.js",
+    "test": "node --test --test-force-exit test/rules.test.js test/preflight.test.js test/database-redesign-schema.test.js test/database-redesign-backfill.test.js test/database-redesign-scan-backfill.test.js test/database-redesign-reconcile.test.js test/database-redesign-verify-migrations.test.js test/normalized-scan.test.js test/normalized-registration.test.js test/api.test.js",
     "db:preflight": "node scripts/database-redesign-preflight.js",
     "db:quarantine": "node scripts/database-redesign-quarantine.js",
     "db:backfill:phase3": "node scripts/database-redesign-backfill.js",
     "db:backfill:phase4": "node scripts/database-redesign-scan-backfill.js",
-    "db:reconcile": "node scripts/database-redesign-reconcile.js"
+    "db:reconcile": "node scripts/database-redesign-reconcile.js",
+    "db:verify:migrations": "node scripts/database-redesign-verify-migrations.js"
   },
   "keywords": [],
   "author": "",
