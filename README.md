@@ -50,6 +50,10 @@ For the frontend, set `apps/frontend/.env`:
 NEXT_PUBLIC_API_URL=http://localhost:3010
 ```
 
+When the frontend is opened from another machine, use the backend host instead,
+for example `NEXT_PUBLIC_API_URL=http://192.128.69.69:3010`. If this variable
+is omitted, the browser uses port `3010` on the host used to open the frontend.
+
 Generate Prisma Client and apply migrations to the intended database:
 
 ```bash

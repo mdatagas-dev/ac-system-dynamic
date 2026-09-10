@@ -1,13 +1,17 @@
 /**
- * VM3 API Client — fetch ke backend AC (default http://localhost:3010).
+ * VM3 API Client — fetch ke backend AC (default port 3010 on current host).
  * Session auth via cookie HttpOnly (otomatis dikirim browser).
  * - Mode mock: bila NEXT_PUBLIC_MOCK=1, semua request dilayani data demo
  *   (lihat lib/mock-api.ts) — tidak ada fetch ke backend.
  */
 import { MOCK_ENABLED, mockRequest } from "./mock-api";
 
-export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3010";
+const defaultApiUrl =
+  typeof window !== "undefined"
+    ? `${window.location.protocol}//${window.location.hostname}:3010`
+    : "http://localhost:3010";
+
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? defaultApiUrl;
 
 export class ApiError extends Error {
   status: number;

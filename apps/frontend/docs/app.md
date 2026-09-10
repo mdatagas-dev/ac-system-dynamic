@@ -71,5 +71,5 @@ app/
 ## Env Frontend
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:3010   # wajib bila backend bukan localhost:3010
+NEXT_PUBLIC_API_URL=http://localhost:3010   # gunakan host backend untuk akses dari LAN
 ```
