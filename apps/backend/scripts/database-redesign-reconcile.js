@@ -36,6 +36,8 @@ function buildReconciliationReport(results = {}) {
     }));
   const checks = {
     scanCountParity,
+    scanGroupParity: results.scanGroupParity || [],
+    unitCountParity: results.unitCountParity || [],
     legacyWithoutEvent: results.legacyWithoutEvent || [],
     activeEventWithoutLegacy: results.activeEventWithoutLegacy || [],
     incompleteOrders: results.incompleteOrders || [],
@@ -82,6 +84,54 @@ async function collectReconciliationData(tx) {
       FROM recordscan
       WHERE deleted_at IS NULL AND legacy_source_table IS NOT NULL
       GROUP BY legacy_source_table ORDER BY legacy_source_table`,
+    scanGroupParity: `
+      WITH source AS (
+        SELECT 'ac'::text AS category, upper(trim(r.order_number)) AS order_number,
+               s.id_regist, upper(trim(r.subline)) AS route_name, count(*)::int AS count
+        FROM recordscan_ac s JOIN registscan r ON r.id = s.id_regist
+        GROUP BY r.order_number, s.id_regist, r.subline
+        UNION ALL
+        SELECT 'wm'::text, upper(trim(r.order_number)), s.id_regist,
+               upper(trim(r.subline)), count(*)::int
+        FROM recordscan_wm s JOIN registscan r ON r.id = s.id_regist
+        GROUP BY r.order_number, s.id_regist, r.subline
+      ), target AS (
+        SELECT r.product_category AS category, upper(trim(r.order_number)) AS order_number,
+               n.id_regist, upper(trim(step.name)) AS route_name, count(*)::int AS count
+        FROM recordscan n JOIN registscan r ON r.id = n.id_regist
+        JOIN bomlist_route_steps step ON step.id = n.route_step_id
+        WHERE n.deleted_at IS NULL AND n.legacy_source_table IS NOT NULL
+        GROUP BY r.product_category, r.order_number, n.id_regist, step.name
+      )
+      SELECT coalesce(s.category,t.category) AS category,
+             coalesce(s.order_number,t.order_number) AS order_number,
+             coalesce(s.id_regist,t.id_regist) AS id_regist,
+             coalesce(s.route_name,t.route_name) AS route_name,
+             coalesce(s.count,0) AS source_count, coalesce(t.count,0) AS target_count
+      FROM source s FULL JOIN target t USING (category,order_number,id_regist,route_name)
+      WHERE coalesce(s.count,0) <> coalesce(t.count,0)
+      ORDER BY category,order_number,id_regist,route_name`,
+    unitCountParity: `
+      WITH source AS (
+        SELECT order_number, count(DISTINCT serial_number)::int AS count FROM (
+          SELECT upper(trim(r.order_number)) AS order_number, upper(trim(s.sn)) AS serial_number
+          FROM recordscan_ac s JOIN registscan r ON r.id = s.id_regist
+          WHERE s.sn IS NOT NULL AND trim(s.sn) <> ''
+          UNION ALL
+          SELECT upper(trim(r.order_number)), upper(trim(s.sn))
+          FROM recordscan_wm s JOIN registscan r ON r.id = s.id_regist
+          WHERE s.sn IS NOT NULL AND trim(s.sn) <> ''
+        ) units GROUP BY order_number
+      ), target AS (
+        SELECT upper(trim(b.order_number)) AS order_number, count(u.id)::int AS count
+        FROM bomlist b JOIN production_units u ON u.bomlist_id = b.id
+        GROUP BY b.order_number
+      )
+      SELECT coalesce(s.order_number,t.order_number) AS order_number,
+             coalesce(s.count,0) AS source_count, coalesce(t.count,0) AS target_count
+      FROM source s FULL JOIN target t USING (order_number)
+      WHERE coalesce(s.count,0) <> coalesce(t.count,0)
+      ORDER BY order_number`,
     legacyWithoutEvent: `
       SELECT source_table, id FROM (
         SELECT 'recordscan_ac'::text AS source_table, a.id FROM recordscan_ac a

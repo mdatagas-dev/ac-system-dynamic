@@ -212,10 +212,12 @@ npm run db:reconcile
 ```
 
 The command fails with exit status `2` until legacy/normalized active scan
-counts match, every legacy row has a normalized event, normalized links are
-complete, Production Unit totals remain within order quantity, component values
-match their legacy source rows, and every quarantine entry has an explicit
-resolution. It refuses database names that do not contain `test`.
+counts match globally and per order/Registration/route, Production Unit counts
+match distinct source serials per order, every legacy row has a normalized event,
+normalized links are complete, Production Unit totals remain within order
+quantity, serial/component values match their legacy source rows, and every
+quarantine entry has an explicit resolution. It refuses database names that do
+not contain `test`.
 
 Prove the complete migration history against a newly created temporary database:
 

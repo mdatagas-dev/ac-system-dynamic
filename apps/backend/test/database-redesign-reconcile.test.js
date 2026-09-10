@@ -32,10 +32,11 @@ test("reconciliation reports count drift and unresolved rows as blocking", () =>
     targetCounts: [{ source_table: "recordscan_ac", count: 3 }],
     unresolvedQuarantine: [{ id: "q-1" }],
     legacyWithoutEvent: [{ source_table: "recordscan_ac", id: "s-1" }],
+    scanGroupParity: [{ id_regist: "r-1" }],
   });
   assert.equal(report.ready, false);
   assert.equal(report.checks.scanCountParity.length, 1);
-  assert.equal(report.summary.blocking, 3);
+  assert.equal(report.summary.blocking, 4);
   const compact = compactReport(report, 0);
   assert.deepEqual(compact.checks.unresolvedQuarantine, { count: 1, sample: [] });
 });
