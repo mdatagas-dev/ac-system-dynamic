@@ -243,3 +243,24 @@ This second guarded verifier creates a generated test database, migrates it from
 zero, inserts one legacy order/Registration/scan fixture, runs Phase 3 and Phase
 4 twice, requires identical second-run counts, requires a clean reconciliation
 report, and then removes only its generated database.
+
+Resolve reviewed quarantine rows using their exact IDs and a non-empty decision:
+
+```json
+[
+  {
+    "id": "00000000-0000-0000-0000-000000000001",
+    "resolution": "Mapped to the approved Product Model"
+  }
+]
+```
+
+```bash
+ALLOW_TEST_QUARANTINE_RESOLUTION=RESOLVE_TEST_QUARANTINE \
+QUARANTINE_RESOLUTIONS_FILE=/absolute/path/resolutions.json \
+npm run db:quarantine:resolve
+```
+
+The resolver is test-database-only, rejects duplicate IDs and blank decisions,
+is idempotent for an identical resolution, and refuses to overwrite a different
+resolution already recorded for the row.
