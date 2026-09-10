@@ -21,7 +21,7 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
-    "test": "node --test --test-force-exit test/rules.test.js test/preflight.test.js test/api.test.js",
+    "test": "node --test --test-force-exit test/rules.test.js test/preflight.test.js test/database-redesign-schema.test.js test/api.test.js",
     "db:preflight": "node scripts/database-redesign-preflight.js"
   },
   "keywords": [],
