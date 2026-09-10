@@ -201,3 +201,18 @@ isolated event rewrite. It requires the daily PIN and a reason, revalidates the
 Registration length and BOM prefix snapshots, enforces global unit/component
 ownership, updates the Production Unit and its components, synchronizes every
 surviving legacy compatibility row for that unit, and records an audit event.
+
+## Database reconciliation gate
+
+After Phase 3 and Phase 4 backfill, run the read-only database gate against the
+test copy:
+
+```bash
+npm run db:reconcile
+```
+
+The command fails with exit status `2` until legacy/normalized active scan
+counts match, every legacy row has a normalized event, normalized links are
+complete, Production Unit totals remain within order quantity, component values
+match their legacy source rows, and every quarantine entry has an explicit
+resolution. It refuses database names that do not contain `test`.
