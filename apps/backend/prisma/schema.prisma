@@ -15,8 +15,6 @@ model bomlist {
   model            String?               @db.VarChar(255)
   product_category String                @db.VarChar(50)
   is_active        Boolean               @default(true)
-  ac_spec          ac_bom_spec?
-  wm_spec          wm_bom_spec?
   model_id         String?               @db.Uuid
   po_number        String?               @db.VarChar(255)
   order_quantity   Int?
@@ -44,10 +42,6 @@ model registscan {
   plan             Int?
   po_number        String?                 @db.VarChar(255)
   product_category String                  @db.VarChar(50)
-  ac_spec          ac_registration_spec?
-  wm_spec          wm_registration_spec?
-  ac_scans         recordscan_ac[]
-  wm_scans         recordscan_wm[]
   bomlist_id       String?                 @db.Uuid
   line_id          String?                 @db.Uuid
   route_step_id    String?                 @db.Uuid
@@ -128,118 +122,6 @@ model product_categories {
   created_at      DateTime?         @default(now()) @db.Timestamp(6)
   model           model[]
   component_types component_types[]
-}
-
-// AC BOM values and field settings. Each BOM has at most one AC specification.
-model ac_bom_spec {
-  bom_id                  String  @id @db.Uuid
-  sn_prefix               String? @db.VarChar(255)
-  sn_required             Boolean @default(true)
-  sn_unit                 String? @db.VarChar(3)
-  sn_odu_prefix           String? @db.VarChar(255)
-  sn_odu_required         Boolean @default(false)
-  sn_odu_unit             String? @db.VarChar(3)
-  sn_carton_prefix        String? @db.VarChar(255)
-  sn_carton_required      Boolean @default(false)
-  sn_carton_unit          String? @db.VarChar(3)
-  pcb_idu_prefix          String? @db.VarChar(255)
-  pcb_idu_required        Boolean @default(false)
-  pcb_idu_unit            String? @db.VarChar(3)
-  pcb_odu_prefix          String? @db.VarChar(255)
-  pcb_odu_required        Boolean @default(false)
-  pcb_odu_unit            String? @db.VarChar(3)
-  sn_box_prefix           String? @db.VarChar(255)
-  sn_box_required         Boolean @default(false)
-  sn_box_unit             String? @db.VarChar(3)
-  sn_motor_prefix         String? @db.VarChar(255)
-  sn_motor_required       Boolean @default(false)
-  sn_motor_unit           String? @db.VarChar(3)
-  sn_accessories_prefix   String? @db.VarChar(255)
-  sn_accessories_required Boolean @default(false)
-  sn_accessories_unit     String? @db.VarChar(3)
-
-  bom bomlist @relation(fields: [bom_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-}
-
-// WM is intentionally provisional. Add typed columns through a migration as WM
-// engineering confirms additional components.
-model wm_bom_spec {
-  bom_id           String  @id @db.Uuid
-  sn_prefix        String? @db.VarChar(255)
-  sn_required      Boolean @default(true)
-  sn_drum_prefix   String? @db.VarChar(255)
-  sn_drum_required Boolean @default(true)
-  sn_pump_prefix   String? @db.VarChar(255)
-  sn_pump_required Boolean @default(false)
-
-  bom bomlist @relation(fields: [bom_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-}
-
-model ac_registration_spec {
-  id_regist      String  @id @db.Uuid
-  sn             String? @db.VarChar(255)
-  sn_odu         String? @db.VarChar(255)
-  sn_carton      String? @db.VarChar(255)
-  pcb_idu        String? @db.VarChar(255)
-  pcb_odu        String? @db.VarChar(255)
-  sn_box         String? @db.VarChar(255)
-  sn_motor       String? @db.VarChar(255)
-  sn_accessories String? @db.VarChar(255)
-
-  registration registscan @relation(fields: [id_regist], references: [id], onDelete: Cascade, onUpdate: NoAction)
-}
-
-model wm_registration_spec {
-  id_regist String  @id @db.Uuid
-  sn        String? @db.VarChar(255)
-  sn_drum   String? @db.VarChar(255)
-  sn_pump   String? @db.VarChar(255)
-
-  registration registscan @relation(fields: [id_regist], references: [id], onDelete: Cascade, onUpdate: NoAction)
-}
-
-model recordscan_ac {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  id_regist      String   @db.Uuid
-  sn             String?  @db.VarChar(255)
-  sn_odu         String?  @db.VarChar(255)
-  sn_carton      String?  @db.VarChar(255)
-  pcb_idu        String?  @db.VarChar(255)
-  pcb_odu        String?  @db.VarChar(255)
-  sn_box         String?  @db.VarChar(255)
-  sn_motor       String?  @db.VarChar(255)
-  sn_accessories String?  @db.VarChar(255)
-  timestamps     DateTime @default(now()) @db.Timestamptz(6)
-
-  registration registscan @relation(fields: [id_regist], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([id_regist])
-  @@index([sn])
-  @@index([sn_odu])
-  @@index([sn_carton])
-  @@index([pcb_idu])
-  @@index([pcb_odu])
-  @@index([sn_box])
-  @@index([sn_motor])
-  @@index([sn_accessories])
-  @@index([timestamps])
-}
-
-model recordscan_wm {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  id_regist  String   @db.Uuid
-  sn         String?  @db.VarChar(255)
-  sn_drum    String?  @db.VarChar(255)
-  sn_pump    String?  @db.VarChar(255)
-  timestamps DateTime @default(now()) @db.Timestamptz(6)
-
-  registration registscan @relation(fields: [id_regist], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([id_regist])
-  @@index([sn])
-  @@index([sn_drum])
-  @@index([sn_pump])
-  @@index([timestamps])
 }
 
 // Audit trail perubahan template kategori. Slug tidak memakai FK agar audit
@@ -402,8 +284,6 @@ model recordscan {
   deleted_at          DateTime?               @db.Timestamptz(6)
   deleted_by          String?                 @db.Uuid
   delete_reason       String?                 @db.VarChar(500)
-  legacy_source_table String?                 @db.VarChar(64)
-  legacy_source_id    String?                 @db.Uuid
   registration        registscan              @relation(fields: [id_regist], references: [id], onDelete: NoAction, onUpdate: NoAction)
   production_unit     production_units?       @relation(fields: [production_unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   route_step          bomlist_route_steps     @relation(fields: [route_step_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -411,7 +291,6 @@ model recordscan {
   deleted_by_user     users?                  @relation("recordscan_deleted_by", fields: [deleted_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   components          recordscan_components[]
 
-  @@unique([legacy_source_table, legacy_source_id])
   @@index([id_regist, timestamps])
   @@index([production_unit_id])
   @@index([route_step_id])

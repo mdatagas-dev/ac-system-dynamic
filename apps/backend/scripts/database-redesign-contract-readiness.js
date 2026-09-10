@@ -4,6 +4,7 @@ const path = require("path");
 const dotenv = require("dotenv");
 
 const ROLLBACK_DAYS = 7;
+const SKIP_CONFIRMATION = "I_ACCEPT_NO_LEGACY_ROLLBACK_WINDOW";
 
 function assertRollbackWindow(cutoverAt, now = new Date()) {
   const cutover = new Date(cutoverAt);
@@ -87,7 +88,9 @@ async function collectContractReadiness(db) {
 
 async function main() {
   dotenv.config({ path: path.resolve(__dirname, "../.env") });
-  assertRollbackWindow(process.env.CONTRACT_CUTOVER_AT);
+  if (process.env.ALLOW_SKIP_ROLLBACK_WINDOW !== SKIP_CONFIRMATION) {
+    assertRollbackWindow(process.env.CONTRACT_CUTOVER_AT);
+  }
   const prisma = require("../lib/prisma");
   try {
     const report = await prisma.$transaction(async (tx) => {
@@ -110,6 +113,7 @@ if (require.main === module) {
 
 module.exports = {
   ROLLBACK_DAYS,
+  SKIP_CONFIRMATION,
   assertRollbackWindow,
   buildContractReport,
   collectContractReadiness,

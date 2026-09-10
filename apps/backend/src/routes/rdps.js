@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const prisma = require("../../lib/prisma");
 const ExcelJS = require("exceljs");
-const { createScan, assertLengths } = require("../services/scan");
+const { createScan } = require("../services/scan");
 const requirePermission = require("../../middlewares/requirePermission");
 const requirePpcPin = require("../../middlewares/requirePpcPin");
 const {
@@ -11,18 +11,9 @@ const {
 const {
   findBomlist,
   loadNormalizedBom,
-  loadTypedBom,
   normalizedFields,
   registrationSpec,
 } = require("../services/registration");
-const {
-  definition,
-  fieldsForCategory,
-  scanDelegate,
-  typedData,
-  validatePayload,
-  assertPrefixes,
-} = require("../services/category-specs");
 const jakartaTime = (value) =>
   value
     ? new Date(value).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })
@@ -63,23 +54,12 @@ router.get("/scan", async (req, res) => {
     registration.model,
     registration.order_number,
   );
-  const normalizedBom = registration.bomlist_id
-    ? await loadNormalizedBom(prisma, bom)
-    : null;
-  let category = registration.product_category;
-  let fields;
-  let scans;
-  if (normalizedBom) {
-    const configuredRules = await prisma.registscan_components.findMany({
-      where: { id_regist: registration.id },
-    });
-    fields = normalizedFields(normalizedBom.rules, configuredRules);
-  } else {
-    const typed = await loadTypedBom(prisma, bom);
-    category = typed.category;
-    fields = fieldsForCategory(category, typed.spec);
-    scans = scanDelegate(category, prisma);
-  }
+  const normalizedBom = await loadNormalizedBom(prisma, bom);
+  const category = normalizedBom.category;
+  const configuredRules = await prisma.registscan_components.findMany({
+    where: { id_regist: registration.id },
+  });
+  const fields = normalizedFields(normalizedBom.rules, configuredRules);
   if (category !== registration.product_category) {
     throw new AppError(
       "Kategori BOM tidak cocok dengan registrasi",
@@ -88,20 +68,11 @@ router.get("/scan", async (req, res) => {
     );
   }
   const [normalizedRows, reference] = await Promise.all([
-    registration.bomlist_id
-      ? normalizedScanRows(prisma, registration.id, category)
-      : null,
+    normalizedScanRows(prisma, registration.id, category),
     registrationSpec(prisma, category, registration.id),
   ]);
-  const total = normalizedRows
-    ? normalizedRows.length
-    : await scans.count({ where: { id_regist: registration.id } });
-  const last = normalizedRows
-    ? normalizedRows[0] || null
-    : await scans.findFirst({
-        where: { id_regist: registration.id },
-        orderBy: { timestamps: "desc" },
-      });
+  const total = normalizedRows.length;
+  const last = normalizedRows[0] || null;
   res.status(200).json({
     validation: { ...registration, ...(reference || {}) },
     total,
@@ -126,49 +97,23 @@ router.get("/history", async (req, res) => {
     ? Math.min(Math.max(Number(req.query.limit) || 10, 1), 100)
     : null;
   const keyword = String(req.query.keyword || "").trim();
-  const fields = registration.bomlist_id
-    ? [
-        "sn",
-        ...(await prisma.registscan_components.findMany({
-          where: { id_regist: registration.id },
-          include: { component_type: true },
-        })).map((rule) => rule.component_type.code),
-      ]
-    : definition(registration.product_category).fields.map(([key]) => key);
-  const where = {
-    id_regist: registration.id,
-    ...(keyword
-      ? {
-          OR: fields.map((key) => ({
-            [key]: { contains: keyword, mode: "insensitive" },
-          })),
-        }
-      : {}),
-  };
-  let total;
-  let data;
-  if (registration.bomlist_id) {
-    const rows = await normalizedScanRows(
-      prisma,
-      registration.id,
-      registration.product_category,
-    );
-    const filteredRows = filterScanRows(rows, fields, keyword);
-    total = filteredRows.length;
-    data = limit
-      ? filteredRows.slice((page - 1) * limit, page * limit)
-      : filteredRows;
-  } else {
-    const scans = scanDelegate(registration.product_category, prisma);
-    [total, data] = await Promise.all([
-      scans.count({ where }),
-      scans.findMany({
-        where,
-        orderBy: { timestamps: "desc" },
-        ...(limit ? { skip: (page - 1) * limit, take: limit } : {}),
-      }),
-    ]);
-  }
+  const fields = [
+    "sn",
+    ...(await prisma.registscan_components.findMany({
+      where: { id_regist: registration.id },
+      include: { component_type: true },
+    })).map((rule) => rule.component_type.code),
+  ];
+  const rows = await normalizedScanRows(
+    prisma,
+    registration.id,
+    registration.product_category,
+  );
+  const filteredRows = filterScanRows(rows, fields, keyword);
+  const total = filteredRows.length;
+  const data = limit
+    ? filteredRows.slice((page - 1) * limit, page * limit)
+    : filteredRows;
   res.status(200).json({
     data,
     validation: registration,
@@ -181,42 +126,22 @@ router.get("/history", async (req, res) => {
 router.get("/history.xlsx", async (req, res) => {
   const registration = await registrationForRequest(req);
   const keyword = String(req.query.keyword || "").trim();
-  const keys = registration.bomlist_id
-    ? [
-        "sn",
-        ...(await prisma.registscan_components.findMany({
-          where: { id_regist: registration.id },
-          include: { component_type: true },
-        })).map((rule) => rule.component_type.code),
-      ]
-    : definition(registration.product_category).fields.map(([key]) => key);
-  const where = {
-    id_regist: registration.id,
-    ...(keyword
-      ? {
-          OR: keys.map((key) => ({
-            [key]: { contains: keyword, mode: "insensitive" },
-          })),
-        }
-      : {}),
-  };
-  let rows;
-  if (registration.bomlist_id) {
-    rows = filterScanRows(
-      await normalizedScanRows(
-        prisma,
-        registration.id,
-        registration.product_category,
-      ),
-      keys,
-      keyword,
-    );
-  } else {
-    rows = await scanDelegate(
-      registration.product_category,
+  const keys = [
+    "sn",
+    ...(await prisma.registscan_components.findMany({
+      where: { id_regist: registration.id },
+      include: { component_type: true },
+    })).map((rule) => rule.component_type.code),
+  ];
+  const rows = filterScanRows(
+    await normalizedScanRows(
       prisma,
-    ).findMany({ where, orderBy: { timestamps: "desc" } });
-  }
+      registration.id,
+      registration.product_category,
+    ),
+    keys,
+    keyword,
+  );
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Riwayat");
   sheet.columns = [
@@ -299,77 +224,29 @@ router.put(
   async (req, res) => {
     const recordId = req.params.id;
     const registration = await registrationForRequest(req);
-    if (registration.bomlist_id) {
-      const result = await prisma.$transaction(async (tx) => {
-        const normalizedRegistration = await tx.registscan.findUnique({
-          where: { id: registration.id },
-          include: {
-            component_rules: { include: { component_type: true } },
-          },
-        });
-        const pin = await authorizePin(tx, req.headers["x-pin"]);
-        const reason = requireReason(req.body?.reason);
-        return editNormalizedUnit(tx, {
-          registration: normalizedRegistration,
-          category: registration.product_category,
-          recordId,
-          payload: req.body || {},
-          reason,
-          userId: req.user.id,
-          pinId: pin.id,
-        });
-      });
-      return res
-        .status(200)
-        .json({ message: "data update successful", data: result });
-    }
-    const scans = scanDelegate(registration.product_category, prisma);
-    const existing = await scans.findUnique({ where: { id: recordId } });
-    if (!existing || existing.id_regist !== registration.id)
-      throw new AppError("Record tidak ditemukan", 404, "NOT_FOUND");
-    const { category, spec } = await loadTypedBom(
-      prisma,
-      await findBomlist(prisma, registration.model, registration.order_number),
-    );
-    if (category !== registration.product_category)
-      throw new AppError(
-        "Kategori BOM tidak cocok dengan registrasi",
-        400,
-        "CATEGORY_MISMATCH",
-      );
-    validatePayload(
-      category,
-      spec,
-      req.body || {},
-      { skipPrefix: true },
-    );
-    const data = typedData(category, req.body || {}, { partial: true });
-    // Nilai hasil edit tetap wajib sepanjang nilai referensi registrasinya.
-    assertLengths(
-      await registrationSpec(prisma, category, registration.id),
-      data,
-      fieldsForCategory(category, spec),
-    );
-    // Editing cannot silently introduce duplicate values in this registration.
-    for (const [key, value] of Object.entries(data)) {
-      if (!value) continue;
-      const duplicate = await scans.findFirst({
-        where: {
-          id_regist: registration.id,
-          [key]: value,
-          NOT: { id: recordId },
+    const result = await prisma.$transaction(async (tx) => {
+      const normalizedRegistration = await tx.registscan.findUnique({
+        where: { id: registration.id },
+        include: {
+          component_rules: { include: { component_type: true } },
         },
       });
-      if (duplicate)
-        throw new AppError(
-          `Double scan ${key} di satu regist`,
-          400,
-          "DOUBLE_SCAN",
-        );
-    }
-    assertPrefixes(fieldsForCategory(category, spec), data);
-    const result = await scans.update({ where: { id: recordId }, data });
-    res.status(200).json({ message: "data update successful", data: result });
+      const pin = await authorizePin(tx, req.headers["x-pin"]);
+      const reason = requireReason(req.body?.reason);
+      return editNormalizedUnit(tx, {
+        registration: normalizedRegistration,
+        category: registration.product_category,
+        recordId,
+        payload: req.body || {},
+        reason,
+        userId: req.user.id,
+        pinId: pin.id,
+      });
+    });
+    return res.status(200).json({
+      message: "data update successful",
+      data: result,
+    });
   },
 );
 
@@ -379,56 +256,43 @@ router.delete(
   requirePpcPin,
   async (req, res) => {
     const registration = await registrationForRequest(req);
-    let result;
-    if (registration.bomlist_id) {
-      result = await prisma.$transaction(async (tx) => {
-        const event = await tx.recordscan.findUnique({
-          where: { id: req.params.id },
-          include: {
-            components: { include: { component_type: true } },
-            production_unit: {
-              include: { components: { include: { component_type: true } } },
-            },
+    const result = await prisma.$transaction(async (tx) => {
+      const event = await tx.recordscan.findUnique({
+        where: { id: req.params.id },
+        include: {
+          components: { include: { component_type: true } },
+          production_unit: {
+            include: { components: { include: { component_type: true } } },
           },
-        });
-        if (
-          !event ||
-          event.deleted_at ||
-          event.id_regist !== registration.id
-        ) {
-          throw new AppError("Unit Scan tidak ditemukan", 404, "NOT_FOUND");
-        }
-        const pin = await authorizePin(tx, req.headers["x-pin"]);
-        const reason = requireReason(req.body?.reason || req.body?.delete_reason);
-        const deleted = await tx.recordscan.update({
-          where: { id: event.id },
-          data: {
-            deleted_at: new Date(),
-            deleted_by: req.user.id,
-            delete_reason: reason,
-          },
-        });
-        await tx.audit_events.create({
-          data: {
-            entity_type: "unit_scan",
-            entity_id: event.id,
-            action: "soft_delete",
-            before_data: legacyScanShape(event, registration.product_category),
-            after_data: { deleted_at: deleted.deleted_at },
-            reason,
-            performed_by: req.user.id,
-            authorized_pin_id: pin.id,
-          },
-        });
-        return legacyScanShape(event, registration.product_category);
+        },
       });
-    } else {
-      const scans = scanDelegate(registration.product_category, prisma);
-      const existing = await scans.findUnique({ where: { id: req.params.id } });
-      if (!existing || existing.id_regist !== registration.id)
-        throw new AppError("Record tidak ditemukan", 404, "NOT_FOUND");
-      result = await scans.delete({ where: { id: existing.id } });
-    }
+      if (!event || event.deleted_at || event.id_regist !== registration.id) {
+        throw new AppError("Unit Scan tidak ditemukan", 404, "NOT_FOUND");
+      }
+      const pin = await authorizePin(tx, req.headers["x-pin"]);
+      const reason = requireReason(req.body?.reason || req.body?.delete_reason);
+      const deleted = await tx.recordscan.update({
+        where: { id: event.id },
+        data: {
+          deleted_at: new Date(),
+          deleted_by: req.user.id,
+          delete_reason: reason,
+        },
+      });
+      await tx.audit_events.create({
+        data: {
+          entity_type: "unit_scan",
+          entity_id: event.id,
+          action: "soft_delete",
+          before_data: legacyScanShape(event, registration.product_category),
+          after_data: { deleted_at: deleted.deleted_at },
+          reason,
+          performed_by: req.user.id,
+          authorized_pin_id: pin.id,
+        },
+      });
+      return legacyScanShape(event, registration.product_category);
+    });
     res.status(200).json({ result, message: "Deleted Successfully" });
   },
 );

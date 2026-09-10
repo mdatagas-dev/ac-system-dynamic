@@ -71,7 +71,6 @@ test("NORMALIZED SCAN: endpoint writes normalized events while preserving respon
         order_number: orderNumber,
         order_quantity: 2,
         product_category: "ac",
-        ac_spec: { create: { sn_prefix: "NS-", sn_required: true } },
       },
     });
     template = await prisma.model_route_steps.create({
@@ -115,12 +114,6 @@ test("NORMALIZED SCAN: endpoint writes normalized events while preserving respon
     registration = registrationResponse.data.result;
     assert.strictEqual(registration.bomlist_id, order.id);
     assert.strictEqual(registration.route_step_id, orderStep.id);
-    assert.strictEqual(
-      await prisma.ac_registration_spec.findUnique({
-        where: { id_regist: registration.id },
-      }),
-      null,
-    );
 
     let response = await api("POST", "/rdps/post", {
       id_regist: registration.id,
@@ -130,10 +123,6 @@ test("NORMALIZED SCAN: endpoint writes normalized events while preserving respon
     assert.strictEqual(response.data.data.id_regist, registration.id);
     assert.strictEqual(response.data.unit.serial_number, serial);
     firstScanId = response.data.data.id;
-    assert.strictEqual(
-      await prisma.recordscan_ac.count({ where: { id_regist: registration.id } }),
-      0,
-    );
 
     response = await api("POST", "/rdps/post", {
       id_regist: registration.id,
@@ -257,7 +246,6 @@ test("NORMALIZED SCAN: endpoint writes normalized events while preserving respon
   } finally {
     if (registration) {
       await prisma.recordscan.deleteMany({ where: { id_regist: registration.id } });
-      await prisma.recordscan_ac.deleteMany({ where: { id_regist: registration.id } });
       await prisma.registscan.delete({ where: { id: registration.id } });
     }
     if (order) await prisma.production_units.deleteMany({ where: { bomlist_id: order.id } });
@@ -404,10 +392,6 @@ test("NORMALIZED BOM: creation snapshots model component and route templates", a
     assert.strictEqual(order.model_id, model.id);
     assert.strictEqual(order.order_quantity, 25);
     assert.strictEqual(order.fields[0].prefix, "ORDER-");
-    assert.strictEqual(
-      await prisma.ac_bom_spec.findUnique({ where: { bom_id: order.id } }),
-      null,
-    );
     assert.strictEqual(
       await prisma.bomlist_route_steps.count({ where: { bomlist_id: order.id } }),
       1,

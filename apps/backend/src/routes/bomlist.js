@@ -3,7 +3,7 @@ const router = express.Router();
 const prisma = require("../../lib/prisma");
 const AppError = require("../../lib/AppError");
 const requirePermission = require("../../middlewares/requirePermission");
-const { categoryKey, definition, bomSpecData, fieldsForCategory } = require("../services/category-specs");
+const { categoryKey } = require("../services/category-specs");
 const { normalizedFields } = require("../services/registration");
 const {
   createNormalizedBom,
@@ -12,21 +12,15 @@ const {
 
 async function enrichBom(row, db = prisma) {
   const category = categoryKey(row.product_category);
-  if (row.model_id && row.order_quantity) {
-    const rules = await db.bomlist_components.findMany({
-      where: { bomlist_id: row.id },
-      include: { component_type: true },
-    });
-    if (rules.length) {
-      return {
-        ...row,
-        product_category: category,
-        fields: normalizedFields(rules),
-      };
-    }
-  }
-  const spec = await db[definition(category).bomDelegate].findUnique({ where: { bom_id: row.id } });
-  return { ...row, product_category: category, fields: spec ? fieldsForCategory(category, spec) : [] };
+  const rules = await db.bomlist_components.findMany({
+    where: { bomlist_id: row.id },
+    include: { component_type: true },
+  });
+  return {
+    ...row,
+    product_category: category,
+    fields: normalizedFields(rules),
+  };
 }
 
 router.get("/", async (req, res) => {
@@ -65,19 +59,13 @@ router.post("/post", requirePermission("master-data:write"), async (req, res) =>
   const existing = await prisma.bomlist.findFirst({ where: { model, order_number: orderNumber, is_active: true } });
   if (existing) throw new AppError("BOM rule already exists for this model and order", 409, "DUPLICATE");
   const data = await prisma.$transaction(async (tx) => {
-    let bom;
-    if (payload.order_quantity !== undefined) {
-      bom = await createNormalizedBom(tx, {
-        master,
-        category,
-        model,
-        orderNumber,
-        payload,
-      });
-    } else {
-      bom = await tx.bomlist.create({ data: { model, order_number: orderNumber, product_category: category } });
-      await tx[definition(category).bomDelegate].create({ data: { bom_id: bom.id, ...bomSpecData(category, payload) } });
-    }
+    const bom = await createNormalizedBom(tx, {
+      master,
+      category,
+      model,
+      orderNumber,
+      payload,
+    });
     return enrichBom(bom, tx);
   });
   res.status(200).json({ message: "success", data });
@@ -95,22 +83,14 @@ router.put("/edit/:id", requirePermission("master-data:write"), async (req, res)
   const existing = await prisma.bomlist.findFirst({ where: { model, order_number: orderNumber, is_active: true, NOT: { id } } });
   if (existing) throw new AppError("BOM rule already exists for this model and order", 409, "DUPLICATE");
   const data = await prisma.$transaction(async (tx) => {
-    let bom;
-    if (current.model_id && current.order_quantity) {
-      bom = await updateNormalizedBom(tx, {
-        existing: current,
-        master,
-        category,
-        model,
-        orderNumber,
-        payload,
-      });
-    } else {
-      bom = await tx.bomlist.update({ where: { id }, data: { model, order_number: orderNumber, product_category: category } });
-      await tx[definition(category).bomDelegate].upsert({
-        where: { bom_id: id }, create: { bom_id: id, ...bomSpecData(category, payload) }, update: bomSpecData(category, payload),
-      });
-    }
+    const bom = await updateNormalizedBom(tx, {
+      existing: current,
+      master,
+      category,
+      model,
+      orderNumber,
+      payload,
+    });
     return enrichBom(bom, tx);
   });
   res.status(200).json({ message: "success", data });

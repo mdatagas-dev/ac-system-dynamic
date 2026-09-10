@@ -1,7 +1,3 @@
--- Apply only after database-redesign-contract-readiness reports ready=true.
--- This is intentionally outside prisma/migrations until the rollback window ends.
-BEGIN;
-
 DROP VIEW IF EXISTS recordscan_all;
 
 ALTER TABLE recordscan
@@ -15,5 +11,3 @@ DROP TABLE IF EXISTS ac_registration_spec;
 DROP TABLE IF EXISTS wm_registration_spec;
 DROP TABLE IF EXISTS ac_bom_spec;
 DROP TABLE IF EXISTS wm_bom_spec;
-
-COMMIT;

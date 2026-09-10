@@ -1,13 +1,6 @@
 const prisma = require("../../lib/prisma");
 const { stripBrandSuffix } = require("../rules/model-code");
-const {
-  categoryKey,
-  definition,
-  fieldsForCategory,
-  normalize,
-  typedData,
-  validatePayload,
-} = require("./category-specs");
+const { categoryKey, normalize } = require("./category-specs");
 const AppError = require("../../lib/AppError");
 
 async function findBomlist(db, model, orderNumber) {
@@ -19,21 +12,19 @@ async function findBomlist(db, model, orderNumber) {
   return short === exact ? null : db.bomlist.findFirst({ where: { model: short, order_number: order, is_active: true } });
 }
 
-async function loadTypedBom(db, bom) {
-  if (!bom) throw new AppError("Batch tidak ada di bomlist", 404, "BOMLIST_NOT_FOUND");
-  const category = categoryKey(bom.product_category);
-  const spec = await db[definition(category).bomDelegate].findUnique({ where: { bom_id: bom.id } });
-  if (!spec) throw new AppError("Spesifikasi kategori BOM belum dibuat", 400, "MISSING_CATEGORY_SPEC");
-  return { bom, category, spec };
-}
-
 async function loadNormalizedBom(db, bom) {
-  if (!bom?.model_id || !bom?.order_quantity) return null;
+  if (!bom) throw new AppError("Batch tidak ada di bomlist", 404, "BOMLIST_NOT_FOUND");
+  if (!bom.model_id || !bom.order_quantity) {
+    throw new AppError("Production Order belum normalized", 409, "NORMALIZED_LINK_MISSING");
+  }
   const rules = await db.bomlist_components.findMany({
     where: { bomlist_id: bom.id },
     include: { component_type: true },
   });
-  return rules.length ? { bom, category: categoryKey(bom.product_category), rules } : null;
+  if (!rules.length) {
+    throw new AppError("BOM Requirement belum tersedia", 409, "NORMALIZED_LINK_MISSING");
+  }
+  return { bom, category: categoryKey(bom.product_category), rules };
 }
 
 function validateNormalizedRegistration(rules, payload, requiresMainSerial) {
@@ -91,47 +82,30 @@ function normalizedFields(rules, configuredRules = null) {
 async function resolveBomRule({ model, order_number, payload, subline, routeStep, db = prisma }) {
   const bom = await findBomlist(db, model, order_number);
   const normalized = await loadNormalizedBom(db, bom);
-  if (normalized) {
-    const resolvedRouteStep = routeStep || await db.bomlist_route_steps.findFirst({
+  const resolvedRouteStep = routeStep || await db.bomlist_route_steps.findFirst({
       where: {
         bomlist_id: bom.id,
         name: { equals: subline, mode: "insensitive" },
       },
     });
-    if (!resolvedRouteStep) {
-      throw new AppError(
-        "Route Production Order belum tersedia",
-        409,
-        "NORMALIZED_LINK_MISSING",
-      );
-    }
-    const rules = validateNormalizedRegistration(
-      normalized.rules,
-      payload,
-      resolvedRouteStep.requires_main_serial,
+  if (!resolvedRouteStep) {
+    throw new AppError(
+      "Route Production Order belum tersedia",
+      409,
+      "NORMALIZED_LINK_MISSING",
     );
-    return {
-      ...normalized,
-      rules,
-      routeStep: resolvedRouteStep,
-      normalized: true,
-    };
   }
-  const typed = await loadTypedBom(db, bom);
-  const fields = validatePayload(typed.category, typed.spec, payload);
-  return { ...typed, fields, normalized: false };
-}
-
-async function createRegistrationSpec(db, category, idRegist, payload) {
-  return db[definition(category).registrationDelegate].create({ data: { id_regist: idRegist, ...typedData(category, payload) } });
-}
-
-async function updateRegistrationSpec(db, category, idRegist, payload) {
-  return db[definition(category).registrationDelegate].upsert({
-    where: { id_regist: idRegist },
-    create: { id_regist: idRegist, ...typedData(category, payload) },
-    update: typedData(category, payload, { partial: true }),
-  });
+  const rules = validateNormalizedRegistration(
+    normalized.rules,
+    payload,
+    resolvedRouteStep.requires_main_serial,
+  );
+  return {
+    ...normalized,
+    rules,
+    routeStep: resolvedRouteStep,
+    normalized: true,
+  };
 }
 
 async function registrationSpec(db, category, idRegist) {
@@ -139,16 +113,15 @@ async function registrationSpec(db, category, idRegist) {
     where: { id_regist: idRegist },
     include: { component_type: true },
   });
-  if (normalized.length) {
-    return Object.fromEntries(
-      normalized.map((rule) => [rule.component_type.code, rule.reference_value]),
-    );
-  }
-  return db[definition(category).registrationDelegate].findUnique({ where: { id_regist: idRegist } });
+  return Object.fromEntries(
+    normalized.map((rule) => [rule.component_type.code, rule.reference_value]),
+  );
 }
 
 module.exports = {
-  findBomlist, loadNormalizedBom, loadTypedBom, normalizedFields,
-  resolveBomRule, createRegistrationSpec,
-  updateRegistrationSpec, registrationSpec,
+  findBomlist,
+  loadNormalizedBom,
+  normalizedFields,
+  registrationSpec,
+  resolveBomRule,
 };

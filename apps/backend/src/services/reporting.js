@@ -30,28 +30,6 @@ const SCAN_REPORT_SOURCE = `
   LEFT JOIN component_types ct ON ct.id = cv.component_type_id
   WHERE rs.deleted_at IS NULL
   GROUP BY rs.id, pu.serial_number, r.product_category
-  UNION ALL
-  SELECT
-    a.id, a.id_regist, a.sn, a.sn_carton, a.sn_box, a.pcb_idu, a.pcb_odu,
-    a.sn_motor, a.sn_accessories, NULL::varchar, NULL::varchar,
-    a.timestamps, 'ac'::varchar, 'legacy'::varchar
-  FROM recordscan_ac a
-  WHERE NOT EXISTS (
-    SELECT 1 FROM recordscan rs
-    WHERE rs.legacy_source_table = 'recordscan_ac'
-      AND rs.legacy_source_id = a.id
-  )
-  UNION ALL
-  SELECT
-    w.id, w.id_regist, w.sn, NULL::varchar, NULL::varchar, NULL::varchar,
-    NULL::varchar, NULL::varchar, NULL::varchar, w.sn_drum, w.sn_pump,
-    w.timestamps, 'wm'::varchar, 'legacy'::varchar
-  FROM recordscan_wm w
-  WHERE NOT EXISTS (
-    SELECT 1 FROM recordscan rs
-    WHERE rs.legacy_source_table = 'recordscan_wm'
-      AND rs.legacy_source_id = w.id
-  )
 `;
 
 module.exports = { SCAN_REPORT_SOURCE };
