@@ -1,5 +1,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const {
   BACKFILL_CONFIRMATION,
@@ -9,6 +11,22 @@ const {
   componentRows,
   normalizeText,
 } = require("../scripts/database-redesign-backfill");
+
+test("database migration scripts preserve an explicitly supplied DATABASE_URL", () => {
+  const scripts = [
+    "database-redesign-backfill.js",
+    "database-redesign-scan-backfill.js",
+    "database-redesign-reconcile.js",
+  ];
+
+  for (const script of scripts) {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../scripts", script),
+      "utf8",
+    );
+    assert.doesNotMatch(source, /\.env\.test[\s\S]{0,80}override:\s*true/);
+  }
+});
 
 test("backfill writes require a test database and exact confirmation", () => {
   assert.throws(

@@ -219,7 +219,7 @@ async function runReconciliation(prisma) {
 
 async function main() {
   dotenv.config({ path: path.resolve(__dirname, "../.env") });
-  dotenv.config({ path: path.resolve(__dirname, "../.env.test"), override: true });
+  dotenv.config({ path: path.resolve(__dirname, "../.env.test") });
   assertReconciliationDatabase(process.env.DATABASE_URL);
   const prisma = require("../lib/prisma");
   try {

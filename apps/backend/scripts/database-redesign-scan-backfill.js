@@ -436,7 +436,7 @@ async function backfillScans(prisma) {
 
 async function main() {
   dotenv.config({ path: path.resolve(__dirname, "../.env") });
-  dotenv.config({ path: path.resolve(__dirname, "../.env.test"), override: true });
+  dotenv.config({ path: path.resolve(__dirname, "../.env.test") });
   assertScanBackfillWriteAllowed(
     process.env.DATABASE_URL,
     process.env.ALLOW_TEST_PHASE4_BACKFILL,
