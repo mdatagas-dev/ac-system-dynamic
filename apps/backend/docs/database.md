@@ -100,3 +100,32 @@ Peringatan seperti jumlah scan yang melebihi plan tetap report-only. Perintah
 quarantine menolak seluruh database yang namanya tidak mengandung `test`; write
 ke produksi baru boleh ditambahkan pada deployment phase setelah backup dan
 review hasil preflight.
+
+## Phase 3 normalized-data backfill
+
+The Phase 3 writer is intentionally test-only. Order quantities must be supplied
+from an approved JSON file because a Registration plan is a daily ceiling, not
+the Production Order total. The file is an object keyed by order number:
+
+```json
+{
+  "ODF-2026-001": 1000,
+  "ODF-2026-002": 750
+}
+```
+
+Run the backfill with an explicit confirmation:
+
+```bash
+ALLOW_TEST_PHASE3_BACKFILL=WRITE_TEST_PHASE3_BACKFILL \
+BACKFILL_ORDER_QUANTITIES_FILE=/absolute/path/approved-order-quantities.json \
+npm run db:backfill:phase3
+```
+
+The command normalizes Production Order numbers, links Product Models, copies
+order BOM requirements, creates route templates and order route snapshots, and
+links Registrations with their component reference-length snapshots. It rejects
+missing quantities, ambiguous master data, unknown stages, missing physical
+lines, and missing typed specifications before committing. Its JSON result
+includes target-table counts from before and after the transaction for
+reconciliation. Re-running it does not create duplicate normalized rows.
