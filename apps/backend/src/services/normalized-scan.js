@@ -1,6 +1,11 @@
 const AppError = require("../../lib/AppError");
 const { normalize } = require("./category-specs");
 
+const RESPONSE_FIELDS = {
+  ac: ["sn_carton", "pcb_idu", "pcb_odu", "sn_motor", "sn_accessories"],
+  wm: ["sn_drum", "sn_pump"],
+};
+
 function present(value) {
   return value !== undefined && value !== null && String(value).trim() !== "";
 }
@@ -63,6 +68,37 @@ function normalizedReady(registration) {
       registration?.order &&
       registration?.route_step,
   );
+}
+
+function legacyScanShape(event, category) {
+  const componentValues = Object.fromEntries(
+    event.production_unit.components.map((component) => [
+      component.component_type.code,
+      component.serial_number,
+    ]),
+  );
+  return {
+    id: event.legacy_source_id || event.id,
+    id_regist: event.id_regist,
+    sn: event.production_unit.serial_number,
+    ...Object.fromEntries(
+      RESPONSE_FIELDS[category].map((code) => [code, componentValues[code] || null]),
+    ),
+    timestamps: event.timestamps,
+  };
+}
+
+async function normalizedScanRows(db, registrationId, category) {
+  const events = await db.recordscan.findMany({
+    where: { id_regist: registrationId, deleted_at: null },
+    include: {
+      production_unit: {
+        include: { components: { include: { component_type: true } } },
+      },
+    },
+    orderBy: { timestamps: "desc" },
+  });
+  return events.map((event) => legacyScanShape(event, category));
 }
 
 async function advisoryLocks(tx, keys) {
@@ -237,5 +273,7 @@ module.exports = {
   assertComponentRules,
   assertRouteProgression,
   createNormalizedScan,
+  legacyScanShape,
   normalizedReady,
+  normalizedScanRows,
 };

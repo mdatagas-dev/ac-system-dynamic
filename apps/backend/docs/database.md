@@ -184,3 +184,14 @@ requires the daily PIN and a reason. Protected edits create an `audit_events`
 record. Delete also requires PIN and reason, sets the Registration soft-delete
 fields, records an audit event, and hides the Registration from normal lists.
 Legacy Registrations retain their compatibility behavior until backfilled.
+
+Normalized scan reads also keep the existing API contract. `GET /rdps/scan`,
+`GET /rdps/history`, and `GET /rdps/history.xlsx` read active Unit Scan events
+and adapt Production Unit/component data into the legacy response columns.
+Soft-deleted Unit Scans are excluded from totals, history, and exports.
+
+Deleting a normalized Unit Scan requires the daily PIN and a reason. The
+endpoint soft-deletes the Unit Scan, records an `audit_events` entry, and removes
+its compatibility row from the legacy typed scan table so old reports cannot
+show the deleted event. Legacy-only scans retain their compatibility behavior
+until their Registration is backfilled.

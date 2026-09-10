@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const {
   assertComponentRules,
   assertRouteProgression,
+  legacyScanShape,
 } = require("../src/services/normalized-scan");
 
 const rules = [
@@ -60,5 +61,38 @@ test("route progression requires every earlier configured route step", () => {
   assert.throws(
     () => assertRouteProgression(configured[1], configured, ["route-2"]),
     (error) => error.code === "DOUBLE_SCAN",
+  );
+});
+
+test("normalized Unit Scan adapts to the legacy AC response shape", () => {
+  assert.deepEqual(
+    legacyScanShape(
+      {
+        id_regist: "reg-1",
+        timestamps: new Date("2026-09-10T01:00:00.000Z"),
+        legacy_source_id: "legacy-1",
+        production_unit: {
+          serial_number: "AC-0001",
+          components: [
+            {
+              serial_number: "MTR-001",
+              component_type: { code: "sn_motor" },
+            },
+          ],
+        },
+      },
+      "ac",
+    ),
+    {
+      id: "legacy-1",
+      id_regist: "reg-1",
+      sn: "AC-0001",
+      sn_carton: null,
+      pcb_idu: null,
+      pcb_odu: null,
+      sn_motor: "MTR-001",
+      sn_accessories: null,
+      timestamps: new Date("2026-09-10T01:00:00.000Z"),
+    },
   );
 });

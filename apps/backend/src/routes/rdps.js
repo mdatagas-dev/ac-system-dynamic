@@ -26,6 +26,22 @@ const jakartaTime = (value) =>
     ? new Date(value).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })
     : "";
 const AppError = require("../../lib/AppError");
+const {
+  legacyScanShape,
+  normalizedScanRows,
+} = require("../services/normalized-scan");
+const {
+  authorizePin,
+  requireReason,
+} = require("../services/normalized-registration");
+
+function filterScanRows(rows, fields, keyword) {
+  if (!keyword) return rows;
+  const search = keyword.toUpperCase();
+  return rows.filter((row) =>
+    fields.some((key) => String(row[key] || "").toUpperCase().includes(search)),
+  );
+}
 
 async function registrationForRequest(req) {
   const id = req.headers.idregist || req.body?.id_regist;
@@ -50,14 +66,21 @@ router.get("/scan", async (req, res) => {
       "CATEGORY_MISMATCH",
     );
   const scans = scanDelegate(category, prisma);
-  const [total, last, reference] = await Promise.all([
-    scans.count({ where: { id_regist: registration.id } }),
-    scans.findFirst({
-      where: { id_regist: registration.id },
-      orderBy: { timestamps: "desc" },
-    }),
+  const [normalizedRows, reference] = await Promise.all([
+    registration.bomlist_id
+      ? normalizedScanRows(prisma, registration.id, category)
+      : null,
     registrationSpec(prisma, category, registration.id),
   ]);
+  const total = normalizedRows
+    ? normalizedRows.length
+    : await scans.count({ where: { id_regist: registration.id } });
+  const last = normalizedRows
+    ? normalizedRows[0] || null
+    : await scans.findFirst({
+        where: { id_regist: registration.id },
+        orderBy: { timestamps: "desc" },
+      });
   const fields = fieldsForCategory(category, spec);
   res.status(200).json({
     validation: { ...registration, ...(reference || {}) },
@@ -96,15 +119,30 @@ router.get("/history", async (req, res) => {
         }
       : {}),
   };
-  const scans = scanDelegate(registration.product_category, prisma);
-  const [total, data] = await Promise.all([
-    scans.count({ where }),
-    scans.findMany({
-      where,
-      orderBy: { timestamps: "desc" },
-      ...(limit ? { skip: (page - 1) * limit, take: limit } : {}),
-    }),
-  ]);
+  let total;
+  let data;
+  if (registration.bomlist_id) {
+    const rows = await normalizedScanRows(
+      prisma,
+      registration.id,
+      registration.product_category,
+    );
+    const filteredRows = filterScanRows(rows, fields, keyword);
+    total = filteredRows.length;
+    data = limit
+      ? filteredRows.slice((page - 1) * limit, page * limit)
+      : filteredRows;
+  } else {
+    const scans = scanDelegate(registration.product_category, prisma);
+    [total, data] = await Promise.all([
+      scans.count({ where }),
+      scans.findMany({
+        where,
+        orderBy: { timestamps: "desc" },
+        ...(limit ? { skip: (page - 1) * limit, take: limit } : {}),
+      }),
+    ]);
+  }
   res.status(200).json({
     data,
     validation: registration,
@@ -130,10 +168,23 @@ router.get("/history.xlsx", async (req, res) => {
         }
       : {}),
   };
-  const rows = await scanDelegate(
-    registration.product_category,
-    prisma,
-  ).findMany({ where, orderBy: { timestamps: "desc" } });
+  let rows;
+  if (registration.bomlist_id) {
+    rows = filterScanRows(
+      await normalizedScanRows(
+        prisma,
+        registration.id,
+        registration.product_category,
+      ),
+      keys,
+      keyword,
+    );
+  } else {
+    rows = await scanDelegate(
+      registration.product_category,
+      prisma,
+    ).findMany({ where, orderBy: { timestamps: "desc" } });
+  }
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Riwayat");
   sheet.columns = [
@@ -276,7 +327,58 @@ router.delete(
     const existing = await scans.findUnique({ where: { id: req.params.id } });
     if (!existing || existing.id_regist !== registration.id)
       throw new AppError("Record tidak ditemukan", 404, "NOT_FOUND");
-    const result = await scans.delete({ where: { id: existing.id } });
+    let result;
+    if (registration.bomlist_id) {
+      result = await prisma.$transaction(async (tx) => {
+        const event = await tx.recordscan.findUnique({
+          where: {
+            legacy_source_table_legacy_source_id: {
+              legacy_source_table:
+                registration.product_category === "ac"
+                  ? "recordscan_ac"
+                  : "recordscan_wm",
+              legacy_source_id: existing.id,
+            },
+          },
+          include: {
+            production_unit: {
+              include: { components: { include: { component_type: true } } },
+            },
+          },
+        });
+        if (!event || event.deleted_at) {
+          throw new AppError("Unit Scan tidak ditemukan", 404, "NOT_FOUND");
+        }
+        const pin = await authorizePin(tx, req.headers["x-pin"]);
+        const reason = requireReason(req.body?.reason || req.body?.delete_reason);
+        const deleted = await tx.recordscan.update({
+          where: { id: event.id },
+          data: {
+            deleted_at: new Date(),
+            deleted_by: req.user.id,
+            delete_reason: reason,
+          },
+        });
+        await tx.audit_events.create({
+          data: {
+            entity_type: "unit_scan",
+            entity_id: event.id,
+            action: "soft_delete",
+            before_data: legacyScanShape(event, registration.product_category),
+            after_data: { deleted_at: deleted.deleted_at },
+            reason,
+            performed_by: req.user.id,
+            authorized_pin_id: pin.id,
+          },
+        });
+        await scanDelegate(registration.product_category, tx).delete({
+          where: { id: existing.id },
+        });
+        return existing;
+      });
+    } else {
+      result = await scans.delete({ where: { id: existing.id } });
+    }
     res.status(200).json({ result, message: "Deleted Successfully" });
   },
 );

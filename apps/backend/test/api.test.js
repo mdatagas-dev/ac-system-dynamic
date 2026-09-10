@@ -43,6 +43,7 @@ test("NORMALIZED SCAN: endpoint dual-writes while preserving response shape", as
   let auditUser;
   let dailyPin;
   let session;
+  let firstScanId;
   try {
     auditUser = await prisma.users.create({
       data: {
@@ -117,6 +118,7 @@ test("NORMALIZED SCAN: endpoint dual-writes while preserving response shape", as
     assert.strictEqual(response.status, 201);
     assert.strictEqual(response.data.data.id_regist, registration.id);
     assert.strictEqual(response.data.unit.serial_number, serial);
+    firstScanId = response.data.data.id;
 
     response = await api("POST", "/rdps/post", {
       id_regist: registration.id,
@@ -150,6 +152,24 @@ test("NORMALIZED SCAN: endpoint dual-writes while preserving response shape", as
 
     response = await api(
       "DELETE",
+      `/rdps/delete/${firstScanId}`,
+      { id_regist: registration.id, reason: "incorrect scan" },
+      session,
+      { "X-PIN": "8642" },
+    );
+    assert.strictEqual(response.status, 200);
+    const history = await api(
+      "GET",
+      "/rdps/history",
+      undefined,
+      session,
+      { idregist: registration.id },
+    );
+    assert.strictEqual(history.status, 200);
+    assert.strictEqual(history.data.total, 1);
+
+    response = await api(
+      "DELETE",
       `/registscan/delete/${registration.id}`,
       { reason: "test soft delete" },
       session,
@@ -174,7 +194,11 @@ test("NORMALIZED SCAN: endpoint dual-writes while preserving response shape", as
     if (template) await prisma.model_route_steps.delete({ where: { id: template.id } });
     if (order) await prisma.bomlist.delete({ where: { id: order.id } });
     if (line) await prisma.line.delete({ where: { id: line.id } });
-    if (registration) await prisma.audit_events.deleteMany({ where: { entity_id: registration.id } });
+    if (dailyPin) {
+      await prisma.audit_events.deleteMany({
+        where: { authorized_pin_id: dailyPin.id },
+      });
+    }
     if (dailyPin) await prisma.pin.delete({ where: { id: dailyPin.id } });
     if (auditUser) await prisma.users.delete({ where: { id: auditUser.id } });
   }
