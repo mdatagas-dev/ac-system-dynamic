@@ -264,3 +264,19 @@ npm run db:quarantine:resolve
 The resolver is test-database-only, rejects duplicate IDs and blank decisions,
 is idempotent for an identical resolution, and refuses to overwrite a different
 resolution already recorded for the row.
+
+## Production additive migration wizard
+
+Run the reviewed interactive wizard from `apps/backend` on the production
+server:
+
+```bash
+./scripts/production-database-migration-wizard.sh
+```
+
+The wizard pins Prisma through `npm ci`, verifies the database identity, requires
+writes to be stopped, creates and validates a backup, restores it into an
+explicitly named test database, rehearses baselining and migration there, and
+requires separate approval before recording the same verified baseline and
+deploying the additive migration in production. It does not run production
+backfill or destructive contract migrations.

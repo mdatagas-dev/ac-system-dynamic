@@ -62,7 +62,12 @@ pnpm exec prisma generate
 pnpm exec prisma migrate deploy
 ```
 
-> **Production warning:** review migrations before deployment. The legacy scan-storage cleanup migration is destructive. Take a verified backup and obtain sign-off before applying it to production.
+> **Production warning:** the command above is for a correctly initialized test
+> or staging database. Existing production databases must not run it directly.
+> From `apps/backend`, use
+> `./scripts/production-database-migration-wizard.sh` to verify identity, backup,
+> restore/rehearse, baseline the verified history, and deploy only the pending
+> additive migration. The wizard does not run backfill or legacy cleanup.
 
 ## Run locally
 
