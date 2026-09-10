@@ -230,3 +230,16 @@ The verifier requires the configured base database name to contain `test`, gives
 the temporary database a generated `ac_system_test_clean_*` name, applies every
 migration, checks for drift against `schema.prisma`, and drops only that exact
 temporary database in a `finally` block.
+
+Prove both backfill phases and reconciliation together with isolated AC and WM
+fixtures:
+
+```bash
+ALLOW_TEST_BACKFILL_VERIFY=VERIFY_TEST_BACKFILL_END_TO_END \
+npm run db:verify:backfill
+```
+
+This second guarded verifier creates a generated test database, migrates it from
+zero, inserts one legacy order/Registration/scan fixture, runs Phase 3 and Phase
+4 twice, requires identical second-run counts, requires a clean reconciliation
+report, and then removes only its generated database.
