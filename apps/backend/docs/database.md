@@ -195,3 +195,9 @@ endpoint soft-deletes the Unit Scan, records an `audit_events` entry, and remove
 its compatibility row from the legacy typed scan table so old reports cannot
 show the deleted event. Legacy-only scans retain their compatibility behavior
 until their Registration is backfilled.
+
+Editing a normalized scan is a Production Unit identity correction, not an
+isolated event rewrite. It requires the daily PIN and a reason, revalidates the
+Registration length and BOM prefix snapshots, enforces global unit/component
+ownership, updates the Production Unit and its components, synchronizes every
+surviving legacy compatibility row for that unit, and records an audit event.

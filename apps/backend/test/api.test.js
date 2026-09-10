@@ -150,6 +150,61 @@ test("NORMALIZED SCAN: endpoint dual-writes while preserving response shape", as
     assert.strictEqual(response.status, 403);
     assert.strictEqual(response.data.code, "PIN_REQUIRED");
 
+    const correctedSerial = `${serial.slice(0, -1)}Y`;
+    response = await api("PUT", `/rdps/edit/${firstScanId}`, {
+      id_regist: registration.id,
+      sn: correctedSerial,
+      reason: "correct mistyped serial",
+    }, session);
+    assert.strictEqual(response.status, 403);
+    assert.strictEqual(response.data.code, "PIN_REQUIRED");
+
+    response = await api(
+      "PUT",
+      `/rdps/edit/${firstScanId}`,
+      { id_regist: registration.id, sn: correctedSerial },
+      session,
+      { "X-PIN": "8642" },
+    );
+    assert.strictEqual(response.status, 400);
+    assert.strictEqual(response.data.code, "REASON_REQUIRED");
+
+    response = await api(
+      "PUT",
+      `/rdps/edit/${firstScanId}`,
+      {
+        id_regist: registration.id,
+        sn: correctedSerial,
+        reason: "correct mistyped serial",
+      },
+      session,
+      { "X-PIN": "8642" },
+    );
+    assert.strictEqual(response.status, 200);
+    assert.strictEqual(response.data.data.sn, correctedSerial);
+
+    let history = await api(
+      "GET",
+      "/rdps/history",
+      undefined,
+      session,
+      { idregist: registration.id },
+    );
+    assert.strictEqual(history.status, 200);
+    assert.ok(history.data.data.some((row) => row.sn === correctedSerial));
+    const compatibilityRow = await prisma.recordscan_ac.findUnique({
+      where: { id: firstScanId },
+    });
+    assert.strictEqual(compatibilityRow.sn, correctedSerial);
+    const editAudit = await prisma.audit_events.findFirst({
+      where: {
+        entity_type: "production_unit",
+        action: "identity_edit",
+        authorized_pin_id: dailyPin.id,
+      },
+    });
+    assert.ok(editAudit);
+
     response = await api(
       "DELETE",
       `/rdps/delete/${firstScanId}`,
@@ -158,7 +213,7 @@ test("NORMALIZED SCAN: endpoint dual-writes while preserving response shape", as
       { "X-PIN": "8642" },
     );
     assert.strictEqual(response.status, 200);
-    const history = await api(
+    history = await api(
       "GET",
       "/rdps/history",
       undefined,

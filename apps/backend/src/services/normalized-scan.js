@@ -101,6 +101,10 @@ async function normalizedScanRows(db, registrationId, category) {
   return events.map((event) => legacyScanShape(event, category));
 }
 
+function sourceTable(category) {
+  return category === "ac" ? "recordscan_ac" : "recordscan_wm";
+}
+
 async function advisoryLocks(tx, keys) {
   for (const key of [...new Set(keys)].sort()) {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))::text AS locked`;
@@ -269,10 +273,191 @@ async function createNormalizedScan(tx, {
   return { created, unit };
 }
 
+async function editNormalizedUnit(tx, {
+  registration,
+  category,
+  legacyRecordId,
+  payload,
+  reason,
+  userId,
+  pinId,
+}) {
+  const allowedFields = new Set([
+    "id_regist",
+    "reason",
+    "sn",
+    ...RESPONSE_FIELDS[category],
+  ]);
+  const unknownFields = Object.keys(payload).filter(
+    (key) => present(payload[key]) && !allowedFields.has(key),
+  );
+  if (unknownFields.length) {
+    throw new AppError(
+      `Field tidak dikenal kategori: ${unknownFields.join(", ")}`,
+      400,
+      "UNKNOWN_FIELD",
+    );
+  }
+  const event = await tx.recordscan.findUnique({
+    where: {
+      legacy_source_table_legacy_source_id: {
+        legacy_source_table: sourceTable(category),
+        legacy_source_id: legacyRecordId,
+      },
+    },
+    include: {
+      production_unit: {
+        include: {
+          components: { include: { component_type: true } },
+          scan_events: true,
+        },
+      },
+    },
+  });
+  if (!event || event.deleted_at || event.id_regist !== registration.id) {
+    throw new AppError("Unit Scan tidak ditemukan", 404, "NOT_FOUND");
+  }
+
+  const unit = event.production_unit;
+  const currentComponents = Object.fromEntries(
+    unit.components.map((component) => [
+      component.component_type.code,
+      component.serial_number,
+    ]),
+  );
+  const merged = {
+    sn: Object.hasOwn(payload, "sn")
+      ? normalize(payload.sn)
+      : unit.serial_number,
+    ...currentComponents,
+  };
+  for (const code of RESPONSE_FIELDS[category]) {
+    if (Object.hasOwn(payload, code)) merged[code] = normalize(payload[code]);
+  }
+  assertComponentRules(registration.component_rules, merged);
+
+  const nextSerial = merged.sn;
+  const changedComponents = registration.component_rules
+    .filter(
+      (rule) =>
+        rule.component_type.code !== "sn" &&
+        Object.hasOwn(payload, rule.component_type.code),
+    )
+    .map((rule) => ({
+      rule,
+      serialNumber: merged[rule.component_type.code],
+    }));
+
+  await lockOrder(tx, registration.bomlist_id);
+  await advisoryLocks(tx, [
+    `unit:${unit.serial_number}`,
+    `unit:${nextSerial}`,
+    ...changedComponents
+      .filter(({ serialNumber }) => serialNumber)
+      .map(
+        ({ rule, serialNumber }) =>
+          `component:${rule.component_type_id}:${serialNumber}`,
+      ),
+  ]);
+
+  if (nextSerial !== unit.serial_number) {
+    const owner = await tx.production_units.findUnique({
+      where: { serial_number: nextSerial },
+    });
+    if (owner && owner.id !== unit.id) {
+      throw new AppError(
+        "Serial unit sudah dipakai unit lain",
+        409,
+        "SERIAL_OWNERSHIP_CONFLICT",
+      );
+    }
+    await tx.production_units.update({
+      where: { id: unit.id },
+      data: { serial_number: nextSerial },
+    });
+  }
+
+  for (const { rule, serialNumber } of changedComponents) {
+    const current = unit.components.find(
+      (component) => component.component_type_id === rule.component_type_id,
+    );
+    if (!serialNumber) {
+      if (current) {
+        await tx.production_unit_components.delete({ where: { id: current.id } });
+      }
+      continue;
+    }
+    const owner = await tx.production_unit_components.findUnique({
+      where: {
+        component_type_id_serial_number: {
+          component_type_id: rule.component_type_id,
+          serial_number: serialNumber,
+        },
+      },
+    });
+    if (owner && owner.production_unit_id !== unit.id) {
+      throw new AppError(
+        `${rule.component_type.code} sudah dipakai unit lain`,
+        409,
+        "COMPONENT_OWNERSHIP_CONFLICT",
+      );
+    }
+    if (current) {
+      await tx.production_unit_components.update({
+        where: { id: current.id },
+        data: { serial_number: serialNumber },
+      });
+    } else {
+      await tx.production_unit_components.create({
+        data: {
+          production_unit_id: unit.id,
+          component_type_id: rule.component_type_id,
+          serial_number: serialNumber,
+        },
+      });
+    }
+  }
+
+  const compatibilityData = {
+    sn: nextSerial,
+    ...Object.fromEntries(
+      RESPONSE_FIELDS[category].map((code) => [code, merged[code] || null]),
+    ),
+  };
+  const legacyDelegate = tx[sourceTable(category)];
+  for (const scanEvent of unit.scan_events) {
+    if (scanEvent.legacy_source_table !== sourceTable(category)) continue;
+    await legacyDelegate.updateMany({
+      where: { id: scanEvent.legacy_source_id },
+      data: compatibilityData,
+    });
+  }
+
+  await tx.audit_events.create({
+    data: {
+      entity_type: "production_unit",
+      entity_id: unit.id,
+      action: "identity_edit",
+      before_data: legacyScanShape(event, category),
+      after_data: { ...compatibilityData, id: legacyRecordId },
+      reason,
+      performed_by: userId,
+      authorized_pin_id: pinId,
+    },
+  });
+  return {
+    ...compatibilityData,
+    id: legacyRecordId,
+    id_regist: registration.id,
+    timestamps: event.timestamps,
+  };
+}
+
 module.exports = {
   assertComponentRules,
   assertRouteProgression,
   createNormalizedScan,
+  editNormalizedUnit,
   legacyScanShape,
   normalizedReady,
   normalizedScanRows,

@@ -27,6 +27,7 @@ const jakartaTime = (value) =>
     : "";
 const AppError = require("../../lib/AppError");
 const {
+  editNormalizedUnit,
   legacyScanShape,
   normalizedScanRows,
 } = require("../services/normalized-scan");
@@ -271,6 +272,30 @@ router.put(
     const existing = await scans.findUnique({ where: { id: recordId } });
     if (!existing || existing.id_regist !== registration.id)
       throw new AppError("Record tidak ditemukan", 404, "NOT_FOUND");
+    if (registration.bomlist_id) {
+      const result = await prisma.$transaction(async (tx) => {
+        const normalizedRegistration = await tx.registscan.findUnique({
+          where: { id: registration.id },
+          include: {
+            component_rules: { include: { component_type: true } },
+          },
+        });
+        const pin = await authorizePin(tx, req.headers["x-pin"]);
+        const reason = requireReason(req.body?.reason);
+        return editNormalizedUnit(tx, {
+          registration: normalizedRegistration,
+          category: registration.product_category,
+          legacyRecordId: recordId,
+          payload: req.body || {},
+          reason,
+          userId: req.user.id,
+          pinId: pin.id,
+        });
+      });
+      return res
+        .status(200)
+        .json({ message: "data update successful", data: result });
+    }
     const { category, spec } = await loadTypedBom(
       prisma,
       await findBomlist(prisma, registration.model, registration.order_number),
