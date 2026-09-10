@@ -59,7 +59,30 @@ Index: GIN trigram pada `id_regist`, btree pada setiap kolom `sn*` + `timestamps
 1. **relasi recordscan → registscan tanpa FK** — join memakai `rcd.id_regist::uuid = rgs.id`. Jangan menambah FK constraint tanpa migrasi hati-hati.
 2. `registscan.model` punya suffix 5 karakter; validasi bomlist memotongnya (`model.slice(0, -5)`).
 3. **DB test terpisah**: `ac_system_test` — test TIDAK boleh menyentuh `ac_production` (lihat docs/testing.md).
-4. Migrasi schema → jalankan `prisma db push` ke DB test sebelum `npm test`:
+4. Migrasi schema → jalankan migration history ke DB test sebelum `npm test`:
    ```bash
-   DATABASE_URL="postgresql://engineering@localhost:5433/ac_system_test?sslmode=disable" npx prisma db push --skip-generate
+   DATABASE_URL="postgresql://engineering@localhost:5433/ac_system_test?sslmode=disable" npx prisma migrate deploy
    ```
+
+## Baseline migrasi
+
+`prisma/migrations/0_legacy_baseline` merepresentasikan database sebelum Prisma
+Migrate digunakan. Database produksi lama yang sudah memiliki tabel tersebut harus
+menandai baseline sebagai applied setelah schema diverifikasi; baseline tidak boleh
+dijalankan langsung pada database berisi data.
+
+Database test kosong menjalankan baseline dan seluruh migration berikutnya secara
+normal. Jangan gunakan `prisma db push` untuk rollout redesign karena perintah itu
+melewati migration history dan custom SQL.
+
+## Preflight redesign
+
+Jalankan pemeriksaan read-only pada database test:
+
+```bash
+DATABASE_URL="postgresql://engineering@localhost:5433/ac_system_test?sslmode=disable" npm run db:preflight
+```
+
+Script keluar dengan status `2` bila konflik blocking ditemukan. Pemeriksaan
+database produksi dinonaktifkan secara default dan hanya boleh dilakukan sebagai
+operasi read-only yang direncanakan setelah backup dan persetujuan deployment.

@@ -90,85 +90,85 @@ model product_categories {
 // AC BOM values and field settings. Each BOM has at most one AC specification.
 model ac_bom_spec {
   bom_id                  String  @id @db.Uuid
-  sn_prefix               String?
+  sn_prefix               String? @db.VarChar(255)
   sn_required             Boolean @default(true)
   sn_unit                 String? @db.VarChar(3)
-  sn_odu_prefix           String?
+  sn_odu_prefix           String? @db.VarChar(255)
   sn_odu_required         Boolean @default(false)
   sn_odu_unit             String? @db.VarChar(3)
-  sn_carton_prefix        String?
+  sn_carton_prefix        String? @db.VarChar(255)
   sn_carton_required      Boolean @default(false)
   sn_carton_unit          String? @db.VarChar(3)
-  pcb_idu_prefix          String?
+  pcb_idu_prefix          String? @db.VarChar(255)
   pcb_idu_required        Boolean @default(false)
   pcb_idu_unit            String? @db.VarChar(3)
-  pcb_odu_prefix          String?
+  pcb_odu_prefix          String? @db.VarChar(255)
   pcb_odu_required        Boolean @default(false)
   pcb_odu_unit            String? @db.VarChar(3)
-  sn_box_prefix           String?
+  sn_box_prefix           String? @db.VarChar(255)
   sn_box_required         Boolean @default(false)
   sn_box_unit             String? @db.VarChar(3)
-  sn_motor_prefix         String?
+  sn_motor_prefix         String? @db.VarChar(255)
   sn_motor_required       Boolean @default(false)
   sn_motor_unit           String? @db.VarChar(3)
-  sn_accessories_prefix   String?
+  sn_accessories_prefix   String? @db.VarChar(255)
   sn_accessories_required Boolean @default(false)
   sn_accessories_unit     String? @db.VarChar(3)
 
-  bom bomlist @relation(fields: [bom_id], references: [id], onDelete: Cascade)
+  bom bomlist @relation(fields: [bom_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 // WM is intentionally provisional. Add typed columns through a migration as WM
 // engineering confirms additional components.
 model wm_bom_spec {
   bom_id           String  @id @db.Uuid
-  sn_prefix        String?
+  sn_prefix        String? @db.VarChar(255)
   sn_required      Boolean @default(true)
-  sn_drum_prefix   String?
+  sn_drum_prefix   String? @db.VarChar(255)
   sn_drum_required Boolean @default(true)
-  sn_pump_prefix   String?
+  sn_pump_prefix   String? @db.VarChar(255)
   sn_pump_required Boolean @default(false)
 
-  bom bomlist @relation(fields: [bom_id], references: [id], onDelete: Cascade)
+  bom bomlist @relation(fields: [bom_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 model ac_registration_spec {
   id_regist      String  @id @db.Uuid
-  sn             String?
-  sn_odu         String?
-  sn_carton      String?
-  pcb_idu        String?
-  pcb_odu        String?
-  sn_box         String?
-  sn_motor       String?
-  sn_accessories String?
+  sn             String? @db.VarChar(255)
+  sn_odu         String? @db.VarChar(255)
+  sn_carton      String? @db.VarChar(255)
+  pcb_idu        String? @db.VarChar(255)
+  pcb_odu        String? @db.VarChar(255)
+  sn_box         String? @db.VarChar(255)
+  sn_motor       String? @db.VarChar(255)
+  sn_accessories String? @db.VarChar(255)
 
-  registration registscan @relation(fields: [id_regist], references: [id], onDelete: Cascade)
+  registration registscan @relation(fields: [id_regist], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 model wm_registration_spec {
   id_regist String  @id @db.Uuid
-  sn        String?
-  sn_drum   String?
-  sn_pump   String?
+  sn        String? @db.VarChar(255)
+  sn_drum   String? @db.VarChar(255)
+  sn_pump   String? @db.VarChar(255)
 
-  registration registscan @relation(fields: [id_regist], references: [id], onDelete: Cascade)
+  registration registscan @relation(fields: [id_regist], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 model recordscan_ac {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   id_regist      String   @db.Uuid
-  sn             String?
-  sn_odu         String?
-  sn_carton      String?
-  pcb_idu        String?
-  pcb_odu        String?
-  sn_box         String?
-  sn_motor       String?
-  sn_accessories String?
+  sn             String? @db.VarChar(255)
+  sn_odu         String? @db.VarChar(255)
+  sn_carton      String? @db.VarChar(255)
+  pcb_idu        String? @db.VarChar(255)
+  pcb_odu        String? @db.VarChar(255)
+  sn_box         String? @db.VarChar(255)
+  sn_motor       String? @db.VarChar(255)
+  sn_accessories String? @db.VarChar(255)
   timestamps     DateTime @default(now()) @db.Timestamptz(6)
 
-  registration registscan @relation(fields: [id_regist], references: [id], onDelete: Cascade)
+  registration registscan @relation(fields: [id_regist], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([id_regist])
   @@index([sn])
@@ -185,12 +185,12 @@ model recordscan_ac {
 model recordscan_wm {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   id_regist  String   @db.Uuid
-  sn         String?
-  sn_drum    String?
-  sn_pump    String?
+  sn         String? @db.VarChar(255)
+  sn_drum    String? @db.VarChar(255)
+  sn_pump    String? @db.VarChar(255)
   timestamps DateTime @default(now()) @db.Timestamptz(6)
 
-  registration registscan @relation(fields: [id_regist], references: [id], onDelete: Cascade)
+  registration registscan @relation(fields: [id_regist], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([id_regist])
   @@index([sn])
