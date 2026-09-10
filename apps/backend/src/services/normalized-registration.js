@@ -42,8 +42,13 @@ async function authorizePin(db, rawPin) {
   if (!value) {
     throw new AppError("PIN harian wajib", 403, "PIN_REQUIRED");
   }
-  const record = await db.pin.findFirst({ where: { date: jakartaDate() } });
-  if (!record || Number(record.pin) !== Number(value)) {
+  const numericPin = Number(value);
+  const record = Number.isFinite(numericPin)
+    ? await db.pin.findFirst({
+        where: { date: jakartaDate(), pin: numericPin },
+      })
+    : null;
+  if (!record) {
     throw new AppError("PIN harian tidak sesuai", 403, "PIN_INVALID");
   }
   return record;

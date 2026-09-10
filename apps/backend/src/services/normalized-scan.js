@@ -72,15 +72,15 @@ function normalizedReady(registration) {
 
 function legacyScanShape(event, category) {
   const componentValues = Object.fromEntries(
-    event.production_unit.components.map((component) => [
+    (event.production_unit?.components || event.components || []).map((component) => [
       component.component_type.code,
       component.serial_number,
     ]),
   );
   return {
-    id: event.legacy_source_id || event.id,
+    id: event.id,
     id_regist: event.id_regist,
-    sn: event.production_unit.serial_number,
+    sn: event.production_unit?.serial_number || null,
     ...Object.fromEntries(
       RESPONSE_FIELDS[category].map((code) => [code, componentValues[code] || null]),
     ),
@@ -92,6 +92,7 @@ async function normalizedScanRows(db, registrationId, category) {
   const events = await db.recordscan.findMany({
     where: { id_regist: registrationId, deleted_at: null },
     include: {
+      components: { include: { component_type: true } },
       production_unit: {
         include: { components: { include: { component_type: true } } },
       },
@@ -99,10 +100,6 @@ async function normalizedScanRows(db, registrationId, category) {
     orderBy: { timestamps: "desc" },
   });
   return events.map((event) => legacyScanShape(event, category));
-}
-
-function sourceTable(category) {
-  return category === "ac" ? "recordscan_ac" : "recordscan_wm";
 }
 
 async function advisoryLocks(tx, keys) {
@@ -185,16 +182,23 @@ async function createNormalizedScan(tx, {
   registration,
   user,
   payload,
-  legacyDelegate,
-  legacyData,
 }) {
+  const requiresMainSerial = registration.route_step.requires_main_serial;
   const serialNumber = normalize(payload.sn);
-  assertComponentRules(registration.component_rules, payload);
+  if (requiresMainSerial && !serialNumber) {
+    throw new AppError("Wajib diisi: Serial Number", 400, "MISSING_REQUIRED");
+  }
+  const applicableRules = requiresMainSerial
+    ? registration.component_rules
+    : registration.component_rules.filter(
+        (rule) => rule.component_type.code !== "sn",
+      );
+  assertComponentRules(applicableRules, payload);
   const components = componentValues(registration.component_rules, payload);
 
   await lockOrder(tx, registration.bomlist_id);
   await advisoryLocks(tx, [
-    `unit:${serialNumber}`,
+    ...(serialNumber ? [`unit:${serialNumber}`] : []),
     ...components.map(
       (component) =>
         `component:${component.componentTypeId}:${component.serialNumber}`,
@@ -212,10 +216,12 @@ async function createNormalizedScan(tx, {
     );
   }
 
-  let unit = await tx.production_units.findUnique({
-    where: { serial_number: serialNumber },
-    include: { components: true, scan_events: true },
-  });
+  let unit = serialNumber
+    ? await tx.production_units.findUnique({
+        where: { serial_number: serialNumber },
+        include: { components: true, scan_events: true },
+      })
+    : null;
   if (unit && unit.bomlist_id !== registration.bomlist_id) {
     throw new AppError(
       "Serial unit sudah terdaftar pada Production Order lain",
@@ -223,7 +229,7 @@ async function createNormalizedScan(tx, {
       "SERIAL_ACROSS_ORDERS",
     );
   }
-  if (!unit) {
+  if (serialNumber && !unit) {
     const unitCount = await tx.production_units.count({
       where: { bomlist_id: registration.bomlist_id },
     });
@@ -240,43 +246,52 @@ async function createNormalizedScan(tx, {
     });
   }
 
-  const routeSteps = await tx.bomlist_route_steps.findMany({
-    where: { bomlist_id: registration.bomlist_id },
-    orderBy: { sequence: "asc" },
-  });
-  assertRouteProgression(
-    registration.route_step,
-    routeSteps,
-    unit.scan_events
-      .filter((event) => !event.deleted_at)
-      .map((event) => event.route_step_id),
-  );
-  await assertAndCreateComponents(tx, unit, components);
+  if (unit) {
+    const routeSteps = await tx.bomlist_route_steps.findMany({
+      where: { bomlist_id: registration.bomlist_id },
+      orderBy: { sequence: "asc" },
+    });
+    assertRouteProgression(
+      registration.route_step,
+      routeSteps,
+      unit.scan_events
+        .filter((event) => !event.deleted_at)
+        .map((event) => event.route_step_id),
+    );
+    await assertAndCreateComponents(tx, unit, components);
+  }
 
-  const created = await legacyDelegate.create({
-    data: { id_regist: registration.id, ...legacyData },
-  });
-  await tx.recordscan.create({
+  const created = await tx.recordscan.create({
     data: {
       id_regist: registration.id,
-      production_unit_id: unit.id,
+      production_unit_id: unit?.id || null,
       route_step_id: registration.route_step_id,
       scanned_by: await scannerId(tx, user?.id),
-      timestamps: created.timestamps,
-      legacy_source_table:
-        registration.product_category === "ac"
-          ? "recordscan_ac"
-          : "recordscan_wm",
-      legacy_source_id: created.id,
+      components: {
+        create: components.map((component) => ({
+          component_type_id: component.componentTypeId,
+          route_step_id: registration.route_step_id,
+          serial_number: component.serialNumber,
+        })),
+      },
+    },
+    include: {
+      components: { include: { component_type: true } },
+      production_unit: {
+        include: { components: { include: { component_type: true } } },
+      },
     },
   });
-  return { created, unit };
+  return {
+    created: legacyScanShape(created, registration.product_category),
+    unit,
+  };
 }
 
 async function editNormalizedUnit(tx, {
   registration,
   category,
-  legacyRecordId,
+  recordId,
   payload,
   reason,
   userId,
@@ -299,13 +314,9 @@ async function editNormalizedUnit(tx, {
     );
   }
   const event = await tx.recordscan.findUnique({
-    where: {
-      legacy_source_table_legacy_source_id: {
-        legacy_source_table: sourceTable(category),
-        legacy_source_id: legacyRecordId,
-      },
-    },
+    where: { id: recordId },
     include: {
+      components: { include: { component_type: true } },
       production_unit: {
         include: {
           components: { include: { component_type: true } },
@@ -319,6 +330,13 @@ async function editNormalizedUnit(tx, {
   }
 
   const unit = event.production_unit;
+  if (!unit) {
+    throw new AppError(
+      "Edit scan komponen tanpa serial utama belum didukung",
+      409,
+      "COMPONENT_EVENT_EDIT_UNSUPPORTED",
+    );
+  }
   const currentComponents = Object.fromEntries(
     unit.components.map((component) => [
       component.component_type.code,
@@ -424,22 +442,13 @@ async function editNormalizedUnit(tx, {
       RESPONSE_FIELDS[category].map((code) => [code, merged[code] || null]),
     ),
   };
-  const legacyDelegate = tx[sourceTable(category)];
-  for (const scanEvent of unit.scan_events) {
-    if (scanEvent.legacy_source_table !== sourceTable(category)) continue;
-    await legacyDelegate.updateMany({
-      where: { id: scanEvent.legacy_source_id },
-      data: compatibilityData,
-    });
-  }
-
   await tx.audit_events.create({
     data: {
       entity_type: "production_unit",
       entity_id: unit.id,
       action: "identity_edit",
       before_data: legacyScanShape(event, category),
-      after_data: { ...compatibilityData, id: legacyRecordId },
+      after_data: { ...compatibilityData, id: recordId },
       reason,
       performed_by: userId,
       authorized_pin_id: pinId,
@@ -447,7 +456,7 @@ async function editNormalizedUnit(tx, {
   });
   return {
     ...compatibilityData,
-    id: legacyRecordId,
+    id: recordId,
     id_regist: registration.id,
     timestamps: event.timestamps,
   };

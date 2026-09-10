@@ -209,7 +209,7 @@ router.get("/history.xlsx", async (req, res) => {
 });
 router.post("/post", requirePermission("scan:write"), async (req, res) => {
   const payload = req.body || {};
-  if (!payload.sn || /[%$#@!^*]/.test(String(payload.sn)))
+  if (payload.sn && /[%$#@!^*]/.test(String(payload.sn)))
     throw new AppError(
       "SN mengandung karakter tidak valid",
       400,
@@ -268,10 +268,6 @@ router.put(
   async (req, res) => {
     const recordId = req.params.id;
     const registration = await registrationForRequest(req);
-    const scans = scanDelegate(registration.product_category, prisma);
-    const existing = await scans.findUnique({ where: { id: recordId } });
-    if (!existing || existing.id_regist !== registration.id)
-      throw new AppError("Record tidak ditemukan", 404, "NOT_FOUND");
     if (registration.bomlist_id) {
       const result = await prisma.$transaction(async (tx) => {
         const normalizedRegistration = await tx.registscan.findUnique({
@@ -285,7 +281,7 @@ router.put(
         return editNormalizedUnit(tx, {
           registration: normalizedRegistration,
           category: registration.product_category,
-          legacyRecordId: recordId,
+          recordId,
           payload: req.body || {},
           reason,
           userId: req.user.id,
@@ -296,6 +292,10 @@ router.put(
         .status(200)
         .json({ message: "data update successful", data: result });
     }
+    const scans = scanDelegate(registration.product_category, prisma);
+    const existing = await scans.findUnique({ where: { id: recordId } });
+    if (!existing || existing.id_regist !== registration.id)
+      throw new AppError("Record tidak ditemukan", 404, "NOT_FOUND");
     const { category, spec } = await loadTypedBom(
       prisma,
       await findBomlist(prisma, registration.model, registration.order_number),
@@ -348,30 +348,23 @@ router.delete(
   requirePpcPin,
   async (req, res) => {
     const registration = await registrationForRequest(req);
-    const scans = scanDelegate(registration.product_category, prisma);
-    const existing = await scans.findUnique({ where: { id: req.params.id } });
-    if (!existing || existing.id_regist !== registration.id)
-      throw new AppError("Record tidak ditemukan", 404, "NOT_FOUND");
     let result;
     if (registration.bomlist_id) {
       result = await prisma.$transaction(async (tx) => {
         const event = await tx.recordscan.findUnique({
-          where: {
-            legacy_source_table_legacy_source_id: {
-              legacy_source_table:
-                registration.product_category === "ac"
-                  ? "recordscan_ac"
-                  : "recordscan_wm",
-              legacy_source_id: existing.id,
-            },
-          },
+          where: { id: req.params.id },
           include: {
+            components: { include: { component_type: true } },
             production_unit: {
               include: { components: { include: { component_type: true } } },
             },
           },
         });
-        if (!event || event.deleted_at) {
+        if (
+          !event ||
+          event.deleted_at ||
+          event.id_regist !== registration.id
+        ) {
           throw new AppError("Unit Scan tidak ditemukan", 404, "NOT_FOUND");
         }
         const pin = await authorizePin(tx, req.headers["x-pin"]);
@@ -396,12 +389,13 @@ router.delete(
             authorized_pin_id: pin.id,
           },
         });
-        await scanDelegate(registration.product_category, tx).delete({
-          where: { id: existing.id },
-        });
-        return existing;
+        return legacyScanShape(event, registration.product_category);
       });
     } else {
+      const scans = scanDelegate(registration.product_category, prisma);
+      const existing = await scans.findUnique({ where: { id: req.params.id } });
+      if (!existing || existing.id_regist !== registration.id)
+        throw new AppError("Record tidak ditemukan", 404, "NOT_FOUND");
       result = await scans.delete({ where: { id: existing.id } });
     }
     res.status(200).json({ result, message: "Deleted Successfully" });

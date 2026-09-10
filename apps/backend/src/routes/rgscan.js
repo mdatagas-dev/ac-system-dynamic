@@ -22,13 +22,18 @@ const {
 const baseSelect = { id: true, model: true, order_number: true, po_number: true, subline: true, userid: true, shift: true, plan: true, timestamps: true, product_category: true };
 
 async function scanCount(db, registration) {
+  if (registration.bomlist_id) {
+    return db.recordscan.count({
+      where: { id_regist: registration.id, deleted_at: null },
+    });
+  }
   return scanDelegate(registration.product_category, db).count({ where: { id_regist: registration.id } });
 }
 
 async function assertNoOpenRegistration(db, userId) {
   const registrations = await db.registscan.findMany({
     where: { userid: userId, deleted_at: null },
-    select: { id: true, model: true, order_number: true, plan: true, product_category: true },
+    select: { id: true, model: true, order_number: true, plan: true, product_category: true, bomlist_id: true },
   });
   for (const registration of registrations) {
     if (registration.plan == null) continue;

@@ -47,8 +47,12 @@ router.post("/post", requirePermission("pin:manage"), async (req, res) => {
 
 router.post("/compare", requirePermission("scan:write"), async (req, res) => {
   const { pin } = req.body;
-  const today = new Date();
-  const date = today.toISOString().split("T")[0];
+  const date = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 
   const getData = await prisma.pin.findFirst({
     where: {

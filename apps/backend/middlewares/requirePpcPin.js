@@ -7,10 +7,18 @@ async function requirePpcPin(req, _res, next) {
   if (String(req.user?.roleuser || "").toLowerCase() !== "ppc") return next();
   const pin = String(req.headers["x-pin"] || "").trim();
   if (!pin) return next(new AppError("PIN harian wajib untuk mengubah atau menghapus data", 403, "PIN_REQUIRED"));
-  const today = new Date();
-  const date = new Date(today.toISOString().slice(0, 10));
-  const record = await prisma.pin.findFirst({ where: { date } });
-  if (!record || Number(record.pin) !== Number(pin)) {
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const date = new Date(`${today}T00:00:00.000Z`);
+  const numericPin = Number(pin);
+  const record = Number.isFinite(numericPin)
+    ? await prisma.pin.findFirst({ where: { date, pin: numericPin } })
+    : null;
+  if (!record) {
     return next(new AppError("PIN harian tidak sesuai", 403, "PIN_INVALID"));
   }
   return next();

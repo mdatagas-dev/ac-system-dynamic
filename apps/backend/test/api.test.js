@@ -4,7 +4,12 @@ const assert = require("node:assert");
 const { api, token, track, waitForServer, cleanupAll, uniq } = require("../test-helpers");
 const prisma = require("../lib/prisma");
 let bomlistId, modelId, lineId, pinId, userId, registId, recordId;
-const TODAY = new Date().toISOString().split("T")[0];
+const TODAY = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Jakarta",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+}).format(new Date());
 const MODEL_SHORT = "TDD-" + uniq;        // bomlist.model
 const MODEL_FULL = MODEL_SHORT + "12345"; // registscan.model, slice(-5) -> MODEL_SHORT
 const ORDER = "ORD-" + uniq;
@@ -27,7 +32,7 @@ after(async () => {
   await cleanupAll();
 });
 
-test("NORMALIZED SCAN: endpoint dual-writes while preserving response shape", async () => {
+test("NORMALIZED SCAN: endpoint writes normalized events while preserving response shape", async () => {
   const suffix = `norm-${uniq}`;
   const serial = `NS-${uniq}`.toUpperCase();
   const stage = `LINE NORMALIZED ${uniq}`.toUpperCase();
@@ -192,10 +197,11 @@ test("NORMALIZED SCAN: endpoint dual-writes while preserving response shape", as
     );
     assert.strictEqual(history.status, 200);
     assert.ok(history.data.data.some((row) => row.sn === correctedSerial));
-    const compatibilityRow = await prisma.recordscan_ac.findUnique({
+    const normalizedRow = await prisma.recordscan.findUnique({
       where: { id: firstScanId },
+      include: { production_unit: true },
     });
-    assert.strictEqual(compatibilityRow.sn, correctedSerial);
+    assert.strictEqual(normalizedRow.production_unit.serial_number, correctedSerial);
     const editAudit = await prisma.audit_events.findFirst({
       where: {
         entity_type: "production_unit",

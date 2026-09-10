@@ -45,7 +45,7 @@ router.get("/dashboard", async (req, res) => {
     AND rgs.timestamps::date = ${dateToday}`;
 
     whereClause2 = `
-  	aln.line = UPPER($1)
+	aln.line = UPPER($1)
 	AND
 	(rgs.timestamps AT TIME ZONE 'Asia/Jakarta')::date = ${dateToday}
 	AND
@@ -61,7 +61,7 @@ router.get("/dashboard", async (req, res) => {
 	AND
   ( 
     ( 
-      rgs.shift = '2' AND EXTRACT(HOUR FROM rcs.timestamps AT TIME ZONE 'Asia/Jakarta') >= 16 
+      rgs.shift = '2' AND EXTRACT(HOUR FROM rcs.timestamps AT TIME ZONE 'Asia/Jakarta') >= 16
     AND
       (rgs.timestamps AT TIME ZONE 'Asia/Jakarta')::date = ${dateYesterday} 
     )
@@ -89,16 +89,18 @@ router.get("/dashboard", async (req, res) => {
     `;
 
     whereClause3 = `
-    ( 
-      rgs.shift = '2' AND EXTRACT(HOUR FROM rcs.timestamps AT TIME ZONE 'Asia/Jakarta') >= 16 
-    AND
-      (rgs.timestamps AT TIME ZONE 'Asia/Jakarta')::date = ${dateYesterday} 
-    )
-      OR
     (
-        rgs.shift = '2' AND EXTRACT(HOUR FROM rcs.timestamps AT TIME ZONE 'Asia/Jakarta') >= 0 
+      (
+      rgs.shift = '2' AND EXTRACT(HOUR FROM rcs.timestamps AT TIME ZONE 'Asia/Jakarta') >= 16 
       AND
-      (rgs.timestamps AT TIME ZONE 'Asia/Jakarta')::date = ${dateToday}
+        (rgs.timestamps AT TIME ZONE 'Asia/Jakarta')::date = ${dateYesterday}
+      )
+      OR
+      (
+        rgs.shift = '2' AND EXTRACT(HOUR FROM rcs.timestamps AT TIME ZONE 'Asia/Jakarta') >= 0 
+        AND
+        (rgs.timestamps AT TIME ZONE 'Asia/Jakarta')::date = ${dateToday}
+      )
     )
     `;
   }

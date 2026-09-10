@@ -64,13 +64,13 @@ test("route progression requires every earlier configured route step", () => {
   );
 });
 
-test("normalized Unit Scan adapts to the legacy AC response shape", () => {
+test("normalized Unit Scan preserves the existing AC response fields with normalized IDs", () => {
   assert.deepEqual(
     legacyScanShape(
       {
         id_regist: "reg-1",
         timestamps: new Date("2026-09-10T01:00:00.000Z"),
-        legacy_source_id: "legacy-1",
+        id: "event-1",
         production_unit: {
           serial_number: "AC-0001",
           components: [
@@ -84,7 +84,7 @@ test("normalized Unit Scan adapts to the legacy AC response shape", () => {
       "ac",
     ),
     {
-      id: "legacy-1",
+      id: "event-1",
       id_regist: "reg-1",
       sn: "AC-0001",
       sn_carton: null,

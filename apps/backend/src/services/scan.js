@@ -125,21 +125,22 @@ async function createScan(tx, { user, id_regist, payload }) {
   if (registration.deleted_at) {
     throw new AppError("Regist sudah dihapus", 410, "REGIST_DELETED");
   }
-  const { category, spec: bomSpec } = await loadTypedBom(tx, await findBomlist(tx, registration.model, registration.order_number));
-  if (category !== registration.product_category) throw new AppError("Kategori BOM tidak cocok dengan registrasi", 400, "CATEGORY_MISMATCH");
-  const fields = validatePayload(category, bomSpec, payload, { skipPrefix: true });
-  const reference = await registrationSpec(tx, category, registration.id);
-  const legacyData = typedData(category, payload);
   let result;
   if (normalizedReady(registration)) {
     result = await createNormalizedScan(tx, {
       registration,
       user,
       payload,
-      legacyDelegate: scanDelegate(category, tx),
-      legacyData,
     });
   } else {
+    const { category, spec: bomSpec } = await loadTypedBom(
+      tx,
+      await findBomlist(tx, registration.model, registration.order_number),
+    );
+    if (category !== registration.product_category) throw new AppError("Kategori BOM tidak cocok dengan registrasi", 400, "CATEGORY_MISMATCH");
+    const fields = validatePayload(category, bomSpec, payload, { skipPrefix: true });
+    const reference = await registrationSpec(tx, category, registration.id);
+    const legacyData = typedData(category, payload);
     assertLengths(reference, payload, fields);
     assertAccuracy(reference, payload, fields);
     await assertStageOrder(tx, registration, payload);
