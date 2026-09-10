@@ -171,3 +171,16 @@ row keeps existing history, dashboard, export, and response contracts working.
 Registrations without normalized links continue through the legacy path during
 the rollout window. The normalized path intentionally omits fuzzy accuracy
 matching.
+
+Normalized Production Orders also create normalized Registrations through the
+existing `POST /registscan/post` endpoint. The endpoint resolves the physical
+line and order route step and snapshots each Registration reference, expected
+length, required flag, and BOM prefix.
+
+For normalized Registrations, edits cannot reduce the plan below active Unit
+Scans. Date/shift/plan changes remain normal edits; changing the Production
+Order, physical line, route step, or Registration references after scanning
+requires the daily PIN and a reason. Protected edits create an `audit_events`
+record. Delete also requires PIN and reason, sets the Registration soft-delete
+fields, records an audit event, and hides the Registration from normal lists.
+Legacy Registrations retain their compatibility behavior until backfilled.

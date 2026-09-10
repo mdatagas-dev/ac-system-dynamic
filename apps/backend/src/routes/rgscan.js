@@ -3,11 +3,21 @@ const router = express.Router();
 const prisma = require("../../lib/prisma");
 const { hasPermission } = require("../services/permissions");
 const { resolveBomRule, createRegistrationSpec, updateRegistrationSpec, registrationSpec } = require("../services/registration");
-const { scanDelegate } = require("../services/category-specs");
+const { definition, normalize, scanDelegate } = require("../services/category-specs");
 const requirePermission = require("../../middlewares/requirePermission");
 const requirePpcPin = require("../../middlewares/requirePpcPin");
 const { assertCanAccessRegistration } = require("../services/registration-access");
 const AppError = require("../../lib/AppError");
+const {
+  assertPlanNotBelowScans,
+  auditRegistration,
+  authorizePin,
+  createComponentSnapshots,
+  normalizedRegistrationData,
+  referenceChanges,
+  requireReason,
+  structuralChanges,
+} = require("../services/normalized-registration");
 
 const baseSelect = { id: true, model: true, order_number: true, po_number: true, subline: true, userid: true, shift: true, plan: true, timestamps: true, product_category: true };
 
@@ -17,7 +27,7 @@ async function scanCount(db, registration) {
 
 async function assertNoOpenRegistration(db, userId) {
   const registrations = await db.registscan.findMany({
-    where: { userid: userId },
+    where: { userid: userId, deleted_at: null },
     select: { id: true, model: true, order_number: true, plan: true, product_category: true },
   });
   for (const registration of registrations) {
@@ -41,6 +51,7 @@ router.get("/", async (req, res) => {
   const search = ["model", "order_number", "po_number", "subline"].map((field) => ({ [field]: { contains: keyword, mode: "insensitive" } }));
   if (isUuid) search.unshift({ id: keyword });
   const where = {
+    deleted_at: null,
     ...(hasPermission(req.user, "registscan:read") ? {} : { userid: req.user.id }),
     ...(keyword ? { OR: search } : {}),
   };
@@ -59,7 +70,7 @@ router.get("/", async (req, res) => {
 
 router.get("/checkregist", async (req, res) => {
   const userId = hasPermission(req.user, "registscan:read") && req.query.userid ? String(req.query.userid) : req.user.id;
-  const rows = await prisma.registscan.findMany({ where: { userid: userId }, select: baseSelect });
+  const rows = await prisma.registscan.findMany({ where: { userid: userId, deleted_at: null }, select: baseSelect });
   const data = (await Promise.all(
     rows.map(async (row) => ({ ...row, total: await scanCount(prisma, row) })),
   )).filter((row) => row.plan > row.total);
@@ -90,23 +101,64 @@ router.post("/post", requirePermission("registscan:write"), async (req, res) => 
       await assertNoOpenRegistration(tx, userid);
     }
     const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload, db: tx });
+    const normalizedData = await normalizedRegistrationData(tx, resolved.bom, subline);
     const registration = await tx.registscan.create({
-      data: { model: String(payload.model).trim(), order_number: String(payload.order_number).trim(), po_number: String(payload.po_number).trim(), subline, userid, shift: String(payload.shift), plan, product_category: resolved.category },
+      data: { model: String(payload.model).trim(), order_number: String(payload.order_number).trim(), po_number: String(payload.po_number).trim(), subline, userid, shift: String(payload.shift), plan, product_category: resolved.category, ...(normalizedData || {}) },
     });
     await createRegistrationSpec(tx, resolved.category, registration.id, payload);
+    if (normalizedData) {
+      await createComponentSnapshots(tx, registration.id, resolved.bom.id, payload);
+    }
     return registration;
   });
   res.status(201).json({ message: "Data Added Successfully", result });
 });
 
 router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) => {
-  const existing = await prisma.registscan.findUnique({ where: { id: req.params.id }, select: baseSelect });
+  const existing = await prisma.registscan.findUnique({
+    where: { id: req.params.id },
+    include: { ac_spec: true, wm_spec: true },
+  });
   assertCanAccessRegistration(req.user, existing);
   const { payload, subline, plan } = registrationInput(req, false);
   const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload });
   if (resolved.category !== existing.product_category) throw new AppError("Kategori registrasi tidak dapat diubah", 400, "CATEGORY_CHANGE_FORBIDDEN");
   const result = await prisma.$transaction(async (tx) => {
-    const registration = await tx.registscan.update({ where: { id: existing.id }, data: { model: String(payload.model).trim(), order_number: String(payload.order_number).trim(), po_number: String(payload.po_number).trim(), subline, shift: String(payload.shift), plan } });
+    let normalizedData = {};
+    let protectedFields = [];
+    let activeScans = await scanCount(tx, existing);
+    if (existing.bomlist_id) {
+      activeScans = await tx.recordscan.count({ where: { id_regist: existing.id, deleted_at: null } });
+      assertPlanNotBelowScans(plan, activeScans);
+      const [line, routeStep] = await Promise.all([
+        tx.line.findFirst({ where: { line: { equals: subline, mode: "insensitive" } } }),
+        tx.bomlist_route_steps.findFirst({ where: { bomlist_id: resolved.bom.id, name: { equals: subline, mode: "insensitive" } } }),
+      ]);
+      if (!resolved.bom.model_id || !resolved.bom.order_quantity || !line || !routeStep) {
+        throw new AppError("Relasi Production Order atau route belum lengkap", 409, "NORMALIZED_LINK_MISSING");
+      }
+      normalizedData = { bomlist_id: resolved.bom.id, line_id: line.id, route_step_id: routeStep.id };
+      protectedFields = structuralChanges(existing, normalizedData);
+      const currentSpec = existing.product_category === "ac" ? existing.ac_spec : existing.wm_spec;
+      const keys = definition(existing.product_category).fields.map(([key]) => key);
+      protectedFields.push(...referenceChanges(currentSpec, payload, keys));
+      if (activeScans > 0 && protectedFields.length > 0) {
+        const pin = await authorizePin(tx, req.headers["x-pin"]);
+        const reason = requireReason(payload.reason);
+        const before = Object.fromEntries(protectedFields.map((field) => [field, existing[field] ?? currentSpec?.[field]]));
+        const after = Object.fromEntries(protectedFields.map((field) => [field, normalizedData[field] ?? normalize(payload[field])]));
+        await auditRegistration(tx, {
+          registrationId: existing.id,
+          action: "structural_edit",
+          before,
+          after,
+          reason,
+          userId: req.user.id,
+          pinId: pin.id,
+        });
+      }
+    }
+    const registration = await tx.registscan.update({ where: { id: existing.id }, data: { model: String(payload.model).trim(), order_number: String(payload.order_number).trim(), po_number: String(payload.po_number).trim(), subline, shift: String(payload.shift), plan, ...normalizedData } });
     await updateRegistrationSpec(tx, resolved.category, existing.id, payload);
     return registration;
   });
@@ -114,9 +166,33 @@ router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) 
 });
 
 router.delete("/delete/:id", requirePermission("registscan:write"), requirePpcPin, async (req, res) => {
-  const existing = await prisma.registscan.findUnique({ where: { id: req.params.id }, select: baseSelect });
+  const existing = await prisma.registscan.findUnique({ where: { id: req.params.id } });
   assertCanAccessRegistration(req.user, existing);
-  await prisma.registscan.delete({ where: { id: existing.id } });
+  if (existing.bomlist_id) {
+    await prisma.$transaction(async (tx) => {
+      const pin = await authorizePin(tx, req.headers["x-pin"]);
+      const reason = requireReason(req.body?.reason || req.body?.delete_reason);
+      const deleted = await tx.registscan.update({
+        where: { id: existing.id },
+        data: {
+          deleted_at: new Date(),
+          deleted_by: req.user.id,
+          delete_reason: reason,
+        },
+      });
+      await auditRegistration(tx, {
+        registrationId: existing.id,
+        action: "soft_delete",
+        before: existing,
+        after: deleted,
+        reason,
+        userId: req.user.id,
+        pinId: pin.id,
+      });
+    });
+  } else {
+    await prisma.registscan.delete({ where: { id: existing.id } });
+  }
   res.status(200).json({ message: "Deleted Successfully" });
 });
 

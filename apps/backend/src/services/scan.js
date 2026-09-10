@@ -122,6 +122,9 @@ async function createScan(tx, { user, id_regist, payload }) {
     },
   });
   assertCanAccessRegistration(user, registration);
+  if (registration.deleted_at) {
+    throw new AppError("Regist sudah dihapus", 410, "REGIST_DELETED");
+  }
   const { category, spec: bomSpec } = await loadTypedBom(tx, await findBomlist(tx, registration.model, registration.order_number));
   if (category !== registration.product_category) throw new AppError("Kategori BOM tidak cocok dengan registrasi", 400, "CATEGORY_MISMATCH");
   const fields = validatePayload(category, bomSpec, payload, { skipPrefix: true });

@@ -40,15 +40,30 @@ test("NORMALIZED SCAN: endpoint dual-writes while preserving response shape", as
   let template;
   let orderStep;
   let registration;
-  let unitId;
+  let auditUser;
+  let dailyPin;
+  let session;
   try {
+    auditUser = await prisma.users.create({
+      data: {
+        username: `normalized_${uniq}`,
+        hash: "not-used-by-session-test",
+        email: `normalized_${uniq}@test.local`,
+        roleuser: "superuser",
+        departement: "QA",
+      },
+    });
+    dailyPin = await prisma.pin.create({
+      data: { date: new Date(TODAY), pin: 8642 },
+    });
+    session = await token("superuser", "TEST", auditUser.id);
     line = await prisma.line.create({ data: { line: stage } });
     order = await prisma.bomlist.create({
       data: {
         model: MODEL_SHORT,
         model_id: model.id,
         order_number: orderNumber,
-        order_quantity: 1,
+        order_quantity: 2,
         product_category: "ac",
         ac_spec: { create: { sn_prefix: "NS-", sn_required: true } },
       },
@@ -72,58 +87,96 @@ test("NORMALIZED SCAN: endpoint dual-writes while preserving response shape", as
         sequence: 900,
       },
     });
-    registration = await prisma.registscan.create({
+    await prisma.bomlist_components.create({
       data: {
-        model: MODEL_FULL,
-        order_number: orderNumber,
-        subline: stage,
-        userid: "normalized-test",
-        shift: "1",
-        plan: 1,
-        product_category: "ac",
         bomlist_id: order.id,
-        line_id: line.id,
-        route_step_id: orderStep.id,
-        production_date: new Date(TODAY),
-        ac_spec: { create: { sn: serial } },
-        component_rules: {
-          create: {
-            component_type_id: snType.id,
-            reference_value: serial,
-            expected_length: serial.length,
-            is_required: true,
-            prefix_snapshot: "NS-",
-          },
-        },
+        component_type_id: snType.id,
+        prefix: "NS-",
+        is_required: true,
       },
     });
+    const registrationResponse = await api("POST", "/registscan/post", {
+      model: MODEL_FULL,
+      order_number: orderNumber,
+      po_number: `PO-${uniq}`,
+      subline: stage,
+      userid: "normalized-test",
+      shift: "1",
+      plan: 2,
+      sn: serial,
+    }, session);
+    assert.strictEqual(registrationResponse.status, 201);
+    registration = registrationResponse.data.result;
+    assert.strictEqual(registration.bomlist_id, order.id);
+    assert.strictEqual(registration.route_step_id, orderStep.id);
 
     let response = await api("POST", "/rdps/post", {
       id_regist: registration.id,
       sn: serial,
-    });
+    }, session);
     assert.strictEqual(response.status, 201);
     assert.strictEqual(response.data.data.id_regist, registration.id);
     assert.strictEqual(response.data.unit.serial_number, serial);
-    unitId = response.data.unit.id;
 
     response = await api("POST", "/rdps/post", {
       id_regist: registration.id,
+      sn: `${serial.slice(0, -1)}Z`,
+    }, session);
+    assert.strictEqual(response.status, 201);
+
+    response = await api("PUT", `/registscan/edit/${registration.id}`, {
+      model: MODEL_FULL,
+      order_number: orderNumber,
+      po_number: `PO-${uniq}`,
+      subline: stage,
+      shift: "1",
+      plan: 1,
       sn: serial,
-    });
+    }, session);
     assert.strictEqual(response.status, 400);
-    assert.strictEqual(response.data.code, "PLAN_REACHED");
+    assert.strictEqual(response.data.code, "PLAN_BELOW_ACTUAL");
+
+    response = await api("PUT", `/registscan/edit/${registration.id}`, {
+      model: MODEL_FULL,
+      order_number: orderNumber,
+      po_number: `PO-${uniq}`,
+      subline: stage,
+      shift: "1",
+      plan: 2,
+      sn: `NS-${"X".repeat(serial.length - 3)}`,
+    }, session);
+    assert.strictEqual(response.status, 403);
+    assert.strictEqual(response.data.code, "PIN_REQUIRED");
+
+    response = await api(
+      "DELETE",
+      `/registscan/delete/${registration.id}`,
+      { reason: "test soft delete" },
+      session,
+      { "X-PIN": "8642" },
+    );
+    assert.strictEqual(response.status, 200);
+    const hidden = await api(
+      "GET",
+      `/registscan?keyword=${orderNumber}`,
+      undefined,
+      session,
+    );
+    assert.strictEqual(hidden.data.total, 0);
   } finally {
     if (registration) {
       await prisma.recordscan.deleteMany({ where: { id_regist: registration.id } });
       await prisma.recordscan_ac.deleteMany({ where: { id_regist: registration.id } });
       await prisma.registscan.delete({ where: { id: registration.id } });
     }
-    if (unitId) await prisma.production_units.delete({ where: { id: unitId } });
+    if (order) await prisma.production_units.deleteMany({ where: { bomlist_id: order.id } });
     if (orderStep) await prisma.bomlist_route_steps.delete({ where: { id: orderStep.id } });
     if (template) await prisma.model_route_steps.delete({ where: { id: template.id } });
     if (order) await prisma.bomlist.delete({ where: { id: order.id } });
     if (line) await prisma.line.delete({ where: { id: line.id } });
+    if (registration) await prisma.audit_events.deleteMany({ where: { entity_id: registration.id } });
+    if (dailyPin) await prisma.pin.delete({ where: { id: dailyPin.id } });
+    if (auditUser) await prisma.users.delete({ where: { id: auditUser.id } });
   }
 });
 
