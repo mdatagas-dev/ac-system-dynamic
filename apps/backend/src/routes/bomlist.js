@@ -9,6 +9,7 @@ const {
   createNormalizedBom,
   updateNormalizedBom,
 } = require("../services/normalized-bom");
+const { ensureModelTemplates } = require("../services/model-templates");
 
 async function enrichBom(row, db = prisma) {
   const category = categoryKey(row.product_category);
@@ -36,7 +37,7 @@ router.get("/template", async (req, res) => {
   if (!modelName) {
     throw new AppError("model wajib diisi", 400, "VALIDATION");
   }
-  const master = await prisma.model.findFirst({
+  let master = await prisma.model.findFirst({
     where: { model: modelName },
     include: {
       category: { select: { slug: true, name: true } },
@@ -52,6 +53,20 @@ router.get("/template", async (req, res) => {
   if (!master) {
     throw new AppError("Model tidak ditemukan", 404, "NOT_FOUND");
   }
+  await ensureModelTemplates(prisma, master.id, master.category?.slug);
+  master = await prisma.model.findFirst({
+    where: { id: master.id },
+    include: {
+      category: { select: { slug: true, name: true } },
+      bom_templates: {
+        include: { component_type: true },
+      },
+      route_templates: {
+        include: { process: { select: { code: true, name: true } } },
+        orderBy: { sequence: "asc" },
+      },
+    },
+  });
   if (!master.bom_templates.length || !master.route_templates.length) {
     throw new AppError(
       "Template komponen atau route model belum lengkap",
