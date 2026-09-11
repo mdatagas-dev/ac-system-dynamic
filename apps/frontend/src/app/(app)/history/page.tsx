@@ -13,6 +13,7 @@ import { IconButton } from "@/components/vm3/IconButton";
 import { Button } from "@/components/vm3/Button";
 import { Dialog } from "@/components/vm3/Dialog";
 import { useSnackbar } from "@/components/vm3/Snackbar";
+import { bomFields, type BomRuleField } from "@/lib/bom";
 
 interface Regist {
   id: string;
@@ -21,17 +22,13 @@ interface Regist {
   subline: string;
   product_category?: string | null;
 }
-interface ScanRecord {
+interface ScanRecord extends Record<string, unknown> {
   id: string;
-  sn: string;
-  sn_motor: string | null;
-  pcb_idu: string | null;
-  pcb_odu: string | null;
-  sn_carton: string | null;
-  sn_accessories: string | null;
-  sn_drum?: string | null;
-  sn_pump?: string | null;
   timestamps: string;
+}
+
+interface ScanContext {
+  bomlist?: Array<Record<string, unknown>>;
 }
 
 export default function HistoryPage() {
@@ -55,6 +52,9 @@ function HistoryContent() {
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deletePin, setDeletePin] = useState("");
+  const [fields, setFields] = useState<BomRuleField[]>([]);
 
   useEffect(() => {
     http
@@ -89,12 +89,36 @@ function HistoryContent() {
     return () => clearTimeout(t);
   }, [load]);
 
+  useEffect(() => {
+    if (!registId) {
+      const timer = setTimeout(() => setFields([]), 0);
+      return () => clearTimeout(timer);
+    }
+    let cancelled = false;
+    http
+      .get<ScanContext>("/rdps/scan", { extraHeaders: { idregist: registId } })
+      .then((res) => {
+        if (!cancelled) setFields(bomFields(res.bomlist?.[0]));
+      })
+      .catch((err) => {
+        if (!cancelled) show(`Gagal memuat struktur riwayat: ${(err as Error).message}`);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [registId, show]);
+
   const remove = async () => {
     if (!deleteId) return;
     try {
-      await http.del(`/rdps/delete/${deleteId}`, { extraHeaders: { idregist: registId! } });
+      await http.del(`/rdps/delete/${deleteId}`, {
+        body: { reason: deleteReason },
+        extraHeaders: { idregist: registId!, "X-PIN": deletePin },
+      });
       show("Scan dihapus");
       setDeleteId(null);
+      setDeleteReason("");
+      setDeletePin("");
       load();
     } catch (err) {
       show(`Gagal hapus: ${(err as Error).message}`);
@@ -106,7 +130,11 @@ function HistoryContent() {
     setExporting(true);
     try {
       const kw = keyword.trim();
-      await downloadFile(`/rdps/history.xlsx${kw ? `?keyword=${encodeURIComponent(kw)}` : ""}`, "history.xlsx");
+      await downloadFile(
+        `/rdps/history.xlsx${kw ? `?keyword=${encodeURIComponent(kw)}` : ""}`,
+        "history.xlsx",
+        { idregist: registId },
+      );
     } catch (err) {
       show(`Gagal mengunduh XLSX: ${(err as Error).message}`);
     } finally {
@@ -114,8 +142,6 @@ function HistoryContent() {
     }
   };
   const totalPages = Math.max(1, Math.ceil(total / 20));
-  const selected = regists.find((regist) => regist.id === registId);
-  const isWm = selected?.product_category === "wm";
 
   return (
     <div className="flex flex-col gap-6">
@@ -125,7 +151,10 @@ function HistoryContent() {
           <Select
             options={regists.map((r) => ({ value: r.id, label: `${r.model} · ${r.subline}` }))}
             value={registId}
-            onChange={setRegistId}
+            onChange={(value) => {
+              setRegistId(value);
+              setPage(1);
+            }}
             placeholder="Pilih registrasi"
           />
         </div>
@@ -133,7 +162,7 @@ function HistoryContent() {
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="max-w-sm flex-1">
-          <SearchField value={keyword} onChange={setKeyword} placeholder={isWm ? "Cari SN, drum, pump…" : "Cari SN, carton, PCB, motor, accessories…"} />
+          <SearchField value={keyword} onChange={setKeyword} placeholder="Cari serial atau komponen…" />
         </div>
         <Button variant="outlined" onClick={exportHistory} disabled={!registId || exporting || rows.length === 0}>
           <span className="material-symbols-rounded text-base" aria-hidden>download</span>
@@ -146,21 +175,7 @@ function HistoryContent() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-outline-variant text-xs uppercase text-on-surface-variant">
-                <th className="p-3">SN</th>
-                {isWm ? (
-                  <>
-                    <th className="p-3">Drum</th>
-                    <th className="p-3">Pump</th>
-                  </>
-                ) : (
-                  <>
-                    <th className="p-3">Carton</th>
-                    <th className="p-3">PCB IDU</th>
-                    <th className="p-3">PCB ODU</th>
-                    <th className="p-3">Motor</th>
-                    <th className="p-3">Accessories</th>
-                  </>
-                )}
+                {fields.map((field) => <th key={field.key} className="p-3">{field.label}</th>)}
                 <th className="p-3">Waktu</th>
                 <th className="p-3"></th>
               </tr>
@@ -168,21 +183,11 @@ function HistoryContent() {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className="border-b border-outline-variant last:border-0">
-                  <td className="p-3 font-mono font-medium">{r.sn}</td>
-                  {isWm ? (
-                    <>
-                      <td className="p-3">{r.sn_drum ?? "-"}</td>
-                      <td className="p-3">{r.sn_pump ?? "-"}</td>
-                    </>
-                  ) : (
-                    <>
-                      <td className="p-3">{r.sn_carton ?? "-"}</td>
-                      <td className="p-3">{r.pcb_idu ?? "-"}</td>
-                      <td className="p-3">{r.pcb_odu ?? "-"}</td>
-                      <td className="p-3">{r.sn_motor ?? "-"}</td>
-                      <td className="p-3">{r.sn_accessories ?? "-"}</td>
-                    </>
-                  )}
+                  {fields.map((field) => (
+                    <td key={field.key} className="p-3 font-mono font-medium">
+                      {String(r[field.key] ?? "-")}
+                    </td>
+                  ))}
                   <td className="p-3 text-on-surface-variant">
                     {r.timestamps ? new Date(r.timestamps).toLocaleString("id-ID") : "-"}
                   </td>
@@ -217,16 +222,27 @@ function HistoryContent() {
         open={deleteId != null}
         onOpenChange={(open) => !open && setDeleteId(null)}
         title="Hapus Scan"
-        description="Data scan akan dihapus permanen. Lanjutkan?"
+        description="Scan akan diarsipkan dari hasil aktif. PIN harian dan alasan akan dicatat pada audit trail."
         actions={
           <>
             <Button variant="text" onClick={() => setDeleteId(null)}>
               Batal
             </Button>
-            <Button onClick={remove}>Hapus</Button>
+            <Button onClick={remove} disabled={!deleteReason.trim() || !deletePin.trim()}>Hapus</Button>
           </>
         }
-      />
+      >
+        <div className="mt-4 grid gap-4">
+          <label className="grid gap-1.5 text-sm font-medium text-on-surface">
+            Alasan penghapusan
+            <input value={deleteReason} onChange={(event) => setDeleteReason(event.target.value)} className="h-10 rounded-md border border-outline bg-card px-3 font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+          </label>
+          <label className="grid gap-1.5 text-sm font-medium text-on-surface">
+            PIN harian
+            <input type="password" inputMode="numeric" value={deletePin} onChange={(event) => setDeletePin(event.target.value)} className="h-10 rounded-md border border-outline bg-card px-3 font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary/20" />
+          </label>
+        </div>
+      </Dialog>
     </div>
   );
 }

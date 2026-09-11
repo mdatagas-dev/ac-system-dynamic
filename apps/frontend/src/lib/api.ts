@@ -83,8 +83,15 @@ export const http = {
 };
 
 /** Unduh file (xlsx) dari backend dengan cookie session — paritas dengan ekspor lama. */
-export async function downloadFile(path: string, filename: string): Promise<void> {
-  const response = await fetch(`${API_URL}${path}`, { credentials: "include" });
+export async function downloadFile(
+  path: string,
+  filename: string,
+  extraHeaders?: Record<string, string>,
+): Promise<void> {
+  const response = await fetch(`${API_URL}${path}`, {
+    credentials: "include",
+    headers: extraHeaders,
+  });
   if (!response.ok) {
     let message = `Error ${response.status}`;
     try {
