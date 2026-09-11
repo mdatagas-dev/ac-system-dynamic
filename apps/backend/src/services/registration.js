@@ -65,18 +65,22 @@ function validateNormalizedRegistration(rules, payload, requiresMainSerial) {
 }
 
 function normalizedFields(rules, configuredRules = null) {
-  const configuredIds = configuredRules
-    ? new Set(configuredRules.map((rule) => rule.component_type_id))
+  const configuredById = configuredRules
+    ? new Map(configuredRules.map((rule) => [rule.component_type_id, rule]))
     : null;
   return rules
-    .filter((rule) => !configuredIds || configuredIds.has(rule.component_type_id))
-    .map((rule) => ({
-      key: rule.component_type.code,
-      label: rule.component_type.label,
-      unit: null,
-      prefix: rule.prefix || "",
-      required: configuredIds ? true : rule.is_required,
-    }));
+    .filter((rule) => !configuredById || configuredById.has(rule.component_type_id))
+    .map((rule) => {
+      const configured = configuredById?.get(rule.component_type_id);
+      return {
+        key: rule.component_type.code,
+        label: rule.component_type.label,
+        unit: null,
+        prefix: rule.prefix || "",
+        required: configuredById ? true : rule.is_required,
+        expected_length: configured?.expected_length ?? null,
+      };
+    });
 }
 
 async function resolveBomRule({ model, order_number, payload, subline, routeStep, db = prisma }) {

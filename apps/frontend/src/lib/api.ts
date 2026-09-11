@@ -15,9 +15,11 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? defaultApiUrl;
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  code?: string;
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -56,13 +58,15 @@ export async function api<T = unknown>(
 
   if (!res.ok) {
     let message = `Error ${res.status}`;
+    let code: string | undefined;
     try {
       const data = await res.json();
       message = data?.error ?? data?.message ?? message;
+      code = data?.code ?? undefined;
     } catch {
       /* body bukan JSON */
     }
-    throw new ApiError(message, res.status);
+    throw new ApiError(message, res.status, code);
   }
 
   if (res.status === 204) return undefined as T;

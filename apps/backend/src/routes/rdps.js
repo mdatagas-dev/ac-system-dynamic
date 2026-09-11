@@ -42,6 +42,7 @@ async function registrationForRequest(req) {
   if (!id) throw new AppError("tidak ada id regist", 404, "NOT_FOUND");
   const registration = await prisma.registscan.findUnique({
     where: { id: String(id) },
+    include: { route_step: { select: { name: true, requires_main_serial: true } } },
   });
   assertCanAccessRegistration(req.user, registration);
   return registration;
@@ -73,10 +74,23 @@ router.get("/scan", async (req, res) => {
   ]);
   const total = normalizedRows.length;
   const last = normalizedRows[0] || null;
+  // Progres order terpisah dari plan registrasi: unit unik vs order_quantity.
+  const [unitCount, orderQuantity] = await Promise.all([
+    prisma.production_units.count({ where: { bomlist_id: bom.id } }),
+    prisma.bomlist.findUnique({
+      where: { id: bom.id },
+      select: { order_quantity: true },
+    }).then((order) => order?.order_quantity ?? null),
+  ]);
   res.status(200).json({
     validation: { ...registration, ...(reference || {}) },
     total,
     last,
+    route_step: {
+      name: registration.route_step?.name ?? registration.subline,
+      requires_main_serial: registration.route_step?.requires_main_serial ?? true,
+    },
+    order: { order_quantity: orderQuantity, unit_count: unitCount },
     bomlist: [
       {
         id: bom.id,

@@ -84,9 +84,14 @@ export default function RegistPage() {
   // batch yang sedang dilihat detailnya (dialog read-only)
   const [detail, setDetail] = useState<Regist | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
   const [pinAction, setPinAction] = useState<"delete" | null>(null);
   const [pin, setPin] = useState("");
   const [pinLoading, setPinLoading] = useState(false);
+  // Edit terproteksi: backend menuntut PIN + alasan bila ada scan dan perubahan struktural.
+  const [protectedEdit, setProtectedEdit] = useState(false);
+  const [editPin, setEditPin] = useState("");
+  const [editReason, setEditReason] = useState("");
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -281,6 +286,9 @@ export default function RegistPage() {
   // Edit memakai dialog create: prefill form, BOM probe jalan otomatis dari model+order
   const openEdit = (r: Regist) => {
     setEditing(r);
+    setProtectedEdit(false);
+    setEditPin("");
+    setEditReason("");
     setForm({
       model: r.model ?? "",
       order_number: r.order_number ?? "",
@@ -301,16 +309,22 @@ export default function RegistPage() {
     setDialogOpen(true);
   };
 
-  const submit = async () => {
+  const submit = async (override?: { pin?: string; reason?: string }) => {
     try {
       if (editing) {
-        await http.put(`/registscan/edit/${editing.id}`, {
-          ...form,
-          plan: Number(form.plan),
-        });
+        const pin = override?.pin ?? editPin;
+        const reason = override?.reason ?? editReason;
+        await http.put(
+          `/registscan/edit/${editing.id}`,
+          { ...form, plan: Number(form.plan), ...(reason ? { reason } : {}) },
+          { extraHeaders: pin ? { "X-PIN": pin } : undefined },
+        );
         show("Registrasi diperbarui");
         setDialogOpen(false);
         setEditing(null);
+        setProtectedEdit(false);
+        setEditPin("");
+        setEditReason("");
         setForm(EMPTY);
         load(keyword, page);
         void loadPending();
@@ -332,7 +346,14 @@ export default function RegistPage() {
         load(keyword, 1);
       }
     } catch (err) {
-      show(`Gagal: ${(err as Error).message}`);
+      const apiError = err as Error & { code?: string };
+      if (editing && (apiError.code === "PIN_REQUIRED" || apiError.code === "REASON_REQUIRED")) {
+        // Backend menandai edit sebagai struktural — minta PIN + alasan lalu ulang.
+        setProtectedEdit(true);
+        show(apiError.message);
+        return;
+      }
+      show(`Gagal: ${apiError.message}`);
     }
   };
 
@@ -344,9 +365,13 @@ export default function RegistPage() {
       return;
     }
     try {
-      await http.del(`/registscan/delete/${deleteId}`, { extraHeaders: verifiedPin ? { "X-PIN": verifiedPin } : undefined });
+      await http.del(`/registscan/delete/${deleteId}`, {
+        body: { reason: deleteReason },
+        extraHeaders: verifiedPin ? { "X-PIN": verifiedPin } : undefined,
+      });
       show("Data dihapus");
       setDeleteId(null);
+      setDeleteReason("");
       load(keyword, page);
       void loadPending();
     } catch (err) {
@@ -518,7 +543,7 @@ export default function RegistPage() {
         actions={
           <>
             <Button variant="text" onClick={() => setDialogOpen(false)}>Batal</Button>
-            <Button onClick={() => submit()} disabled={!isFormValid}>{editing ? "Simpan Perubahan" : "Simpan"}</Button>
+            <Button onClick={() => submit()} disabled={!isFormValid || Boolean(editing && protectedEdit && (!editPin.trim() || !editReason.trim()))}>{editing ? "Simpan Perubahan" : "Simpan"}</Button>
           </>
         }
       >
@@ -573,22 +598,38 @@ export default function RegistPage() {
                 mengandung prefix dari BOM
               </div> */}
               <div className="grid gap-4 sm:grid-cols-2">
-                {fields.map((f) => (
-                  <TextField
-                    key={f.key}
-                    label={f.label}
-                    value={String((form as Record<string, unknown>)[f.key] ?? "")}
-                    onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
-                    required={f.required}
-                    helper={f.prefix ? `Prefix BOM: ${f.prefix}` : undefined}
-                  />
-                ))}
+                {fields.map((f) => {
+                  const value = String((form as Record<string, unknown>)[f.key] ?? "");
+                  return (
+                    <TextField
+                      key={f.key}
+                      label={f.label}
+                      value={value}
+                      onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                      required={f.required}
+                      helper={f.prefix ? `Prefix BOM: ${f.prefix} · Panjang: ${value.length}` : undefined}
+                    />
+                  );
+                })}
               </div>
             </section>
           ) : (
             <div className="rounded-lg border border-dashed border-outline-variant p-4 text-xs text-on-surface-variant">
               {/* Isi <b>Model</b> dan <b>Batch</b> untuk memuat field SN dari BOM rule. */}
             </div>
+          )}
+
+          {/* Edit terproteksi — diminta backend saat ada scan dan perubahan struktural */}
+          {editing && protectedEdit && (
+            <section aria-label="Verifikasi perubahan struktural" className="rounded-lg border border-warning/40 bg-warning/10 p-4">
+              <div className="mb-2 text-sm font-semibold text-warning">
+                Perubahan struktural setelah scan — verifikasi diperlukan
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <TextField label="PIN Harian" type="password" value={editPin} onChange={(event) => setEditPin(event.target.value)} required />
+                <TextField label="Alasan perubahan" value={editReason} onChange={(event) => setEditReason(event.target.value)} required helper="Dicatat pada audit trail." />
+              </div>
+            </section>
           )}
         </div>
       </Dialog>
@@ -644,16 +685,29 @@ export default function RegistPage() {
 
       <Dialog
         open={deleteId != null}
-        onOpenChange={(open) => !open && setDeleteId(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteId(null);
+            setDeleteReason("");
+          }
+        }}
         title="Hapus Registrasi"
         description="Data registrasi beserta scan terkait? Tindakan ini tidak dapat dibatalkan."
-        actions={
-          <>
-            <Button variant="text" onClick={() => setDeleteId(null)}>Batal</Button>
-            <Button onClick={() => remove()}>Hapus</Button>
-          </>
-        }
-      />
+      >
+        <div className="mt-4">
+          <TextField
+            label="Alasan penghapusan"
+            required
+            value={deleteReason}
+            onChange={(event) => setDeleteReason(event.target.value)}
+            helper="Wajib diisi — dicatat pada audit trail."
+          />
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="text" onClick={() => { setDeleteId(null); setDeleteReason(""); }}>Batal</Button>
+          <Button onClick={() => remove()} disabled={!deleteReason.trim()}>Hapus</Button>
+        </div>
+      </Dialog>
     </div>
   );
 }

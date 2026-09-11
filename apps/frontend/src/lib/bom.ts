@@ -7,6 +7,8 @@ export interface BomRuleField {
   label: string;
   prefix: string;
   required: boolean;
+  /** Panjang wajib dari reference registrasi (null = bebas). */
+  expected_length: number | null;
 }
 
 export interface BomRule {
@@ -24,7 +26,7 @@ export interface BomRule {
   sn_drum?: string | null;
   sn_pump?: string | null;
   /** Typed category metadata returned by the backend. */
-  fields?: Array<{ key: string; label?: string; prefix?: string; required?: boolean }> | null;
+  fields?: Array<{ key: string; label?: string; prefix?: string; required?: boolean; expected_length?: number | null }> | null;
 }
 
 const FIXED_LABELS: Record<string, string> = {
@@ -48,7 +50,9 @@ export function bomFields(row: BomRule | Record<string, unknown> | null | undefi
   const r = row as Record<string, unknown>;
   const fields: BomRuleField[] = [];
 
-  const template = Array.isArray(r.fields) ? (r.fields as Array<{ key: string; label?: string; prefix?: string; required?: boolean }>) : [];
+  const template = Array.isArray(r.fields)
+    ? (r.fields as Array<{ key: string; label?: string; prefix?: string; required?: boolean; expected_length?: number | null }>)
+    : [];
   for (const t of template) {
     // Typed endpoints include prefix in field metadata. The fallback keeps the
     // reader compatible with legacy BOM responses during cutover.
@@ -59,6 +63,7 @@ export function bomFields(row: BomRule | Record<string, unknown> | null | undefi
       label: t.label || FIXED_LABELS[t.key] || t.key,
       prefix,
       required: t.required === true && prefix !== "",
+      expected_length: typeof t.expected_length === "number" ? t.expected_length : null,
     });
   }
   return fields;

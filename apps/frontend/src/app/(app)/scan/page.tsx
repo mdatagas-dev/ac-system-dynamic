@@ -39,6 +39,8 @@ interface ScanSummary {
   validation?: Regist | null;
   total?: number;
   last?: { sn?: string; sn_odu?: string } | null;
+  route_step?: { name?: string | null; requires_main_serial?: boolean } | null;
+  order?: { order_quantity?: number | null; unit_count?: number | null } | null;
   bomlist?: Array<Record<string, unknown>>;
 }
 
@@ -149,8 +151,20 @@ function ScanContent() {
     // operator hanya scan field yang diisi saat registrasi batch ini —
     // field kosong di registrasi berarti bukan bagian dari alur line mereka
     const registration = scanSummary?.validation as unknown as Record<string, unknown> | null | undefined;
-    return all.filter((field) => String(registration?.[field.key] ?? "").trim() !== "");
-  }, [scanSummary?.bomlist, scanSummary?.validation]);
+    const fields = all.filter((field) => String(registration?.[field.key] ?? "").trim() !== "");
+    // Route step component-only: serial utama tidak discan di step ini.
+    if (scanSummary?.route_step?.requires_main_serial === false) {
+      return fields.filter((field) => field.key !== "sn");
+    }
+    return fields;
+  }, [scanSummary?.bomlist, scanSummary?.validation, scanSummary?.route_step]);
+
+  // Ambang auto-advance/auto-submit per field: dari expected_length registrasi,
+  // fallback ke ambang lama (6 utk field pertama, 4 lainnya).
+  const thresholds = useMemo(
+    () => orderedFields.map((f, i) => f.expected_length ?? (i === 0 ? 6 : 4)),
+    [orderedFields],
+  );
 
   const fieldKeys = orderedFields.map((field) => field.key).join("|");
 
@@ -235,14 +249,6 @@ function ScanContent() {
       if (idx >= 0) inputRefs.current[idx]?.focus();
       return;
     }
-    // Aturan lama: SN Carton harus sama dengan SN Unit
-    const sn = (fieldValues.sn ?? "").trim();
-    const carton = (fieldValues.sn_carton ?? "").trim();
-    if (sn && carton && carton !== sn) {
-      scanToast.error("SN Carton tidak sama dengan SN Unit");
-      return;
-    }
-
     setLoading(true);
     try {
       const payload: Record<string, unknown> = {
@@ -275,7 +281,7 @@ function ScanContent() {
     }
   }, [registId, fieldValues, isComplete, orderedFields, show]);
 
-  // Auto pindah generik: field ke-i terisi (len >=6 untuk i=0, >=4 lainnya) → focus i+1
+  // Auto pindah generik: field ke-i terisi (>= ambang field tsb) → focus i+1
   useEffect(() => {
     if (loading) return;
     if (!orderedFields.length) return;
@@ -284,7 +290,7 @@ function ScanContent() {
       const nextKey = orderedFields[i + 1]!.key;
       const curVal = (fieldValues[curKey] ?? "").trim();
       const nextVal = (fieldValues[nextKey] ?? "").trim();
-      const threshold = i === 0 ? 6 : 4;
+      const threshold = thresholds[i]!;
       if (curVal.length >= threshold && nextVal === "") {
         let prevFilled = true;
         for (let k = 0; k <= i; k++) {
@@ -298,9 +304,9 @@ function ScanContent() {
         return () => clearTimeout(t);
       }
     }
-  }, [fieldValues, orderedFields, loading]);
+  }, [fieldValues, orderedFields, thresholds, loading]);
 
-  // Auto submit generik: semua required terisi + field terakhir >=4 (atau >=6 bila hanya 1 field) → scan()
+  // Auto submit generik: semua required terisi >= ambang masing-masing → scan()
   useEffect(() => {
     if (loading) return;
     if (!orderedFields.length) return;
@@ -308,24 +314,18 @@ function ScanContent() {
     if (failedValuesRef.current && JSON.stringify(fieldValues) === failedValuesRef.current) return;
     const allRequiredFilled = orderedFields.every((f) => !f.required || (fieldValues[f.key] ?? "").trim().length > 0);
     if (!allRequiredFilled) return;
-    const lastIdx = orderedFields.length - 1;
-    const lastKey = orderedFields[lastIdx]!.key;
-    const lastVal = (fieldValues[lastKey] ?? "").trim();
-    const thLast = orderedFields.length === 1 ? 6 : 4;
-    if (lastVal.length < thLast) return;
     for (let i = 0; i < orderedFields.length; i++) {
       const f = orderedFields[i]!;
       if (!f.required) continue;
       const v = (fieldValues[f.key] ?? "").trim();
-      const th = i === 0 ? 6 : 4;
-      if (v.length < th) return;
+      if (v.length < thresholds[i]!) return;
     }
     const t = setTimeout(() => {
       void scan();
     }, 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fieldValues, orderedFields, loading]);
+  }, [fieldValues, orderedFields, thresholds, loading]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -340,7 +340,12 @@ function ScanContent() {
           </div>
           <div className="text-right">
             <div className="text-sm font-semibold">{selected.subline}</div>
-            <div className="text-xs opacity-80">Plan: {selected.plan ?? "-"} &nbsp; Count: {count}</div>
+            <div className="text-xs opacity-80">
+              Plan: {count}/{selected.plan ?? "-"}
+              {scanSummary?.order?.order_quantity != null && (
+                <> &nbsp;•&nbsp; Order: {scanSummary.order.unit_count ?? 0}/{scanSummary.order.order_quantity}</>
+              )}
+            </div>
           </div>
           {unitFromSubline(selected.subline) && (
             <span className="rounded-full bg-on-primary-container/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide">
@@ -383,7 +388,9 @@ function ScanContent() {
               <div key={f.key} className="flex items-center gap-4">
                 <div className="w-40 shrink-0 text-base font-medium text-on-surface">
                   {f.label}
-                  {f.required ? "" : <span className="text-on-surface-variant/60 font-normal"> </span>}
+                  {f.expected_length != null && (
+                    <span className="block text-xs font-normal text-on-surface-variant">{f.expected_length} karakter</span>
+                  )}
                 </div>
                 <div className="flex-1">
                   <input
