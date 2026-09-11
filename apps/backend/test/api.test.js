@@ -87,6 +87,7 @@ test("NORMALIZED SCAN: endpoint writes normalized events while preserving respon
         bomlist_id: order.id,
         process_id: process.id,
         template_step_id: template.id,
+        line_id: line.id,
         code: suffix,
         name: stage,
         sequence: 900,
@@ -105,6 +106,7 @@ test("NORMALIZED SCAN: endpoint writes normalized events while preserving respon
       order_number: orderNumber,
       po_number: `PO-${uniq}`,
       subline: stage,
+      line_id: line.id,
       userid: "normalized-test",
       shift: "1",
       plan: 2,
@@ -113,6 +115,7 @@ test("NORMALIZED SCAN: endpoint writes normalized events while preserving respon
     assert.strictEqual(registrationResponse.status, 201);
     registration = registrationResponse.data.result;
     assert.strictEqual(registration.bomlist_id, order.id);
+    assert.strictEqual(registration.line_id, line.id);
     assert.strictEqual(registration.route_step_id, orderStep.id);
 
     let response = await api("POST", "/rdps/post", {

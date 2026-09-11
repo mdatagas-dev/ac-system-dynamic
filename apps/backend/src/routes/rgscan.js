@@ -90,11 +90,17 @@ function registrationInput(req, requireUserId) {
   }
   const plan = Number(payload.plan);
   if (!Number.isInteger(plan) || plan <= 0) throw new AppError("plan harus bilangan bulat positif", 400, "VALIDATION");
-  return { payload, subline, plan, routeStepId: String(payload.route_step_id || "").trim() || null };
+  return {
+    payload,
+    subline,
+    plan,
+    lineId: String(payload.line_id || "").trim() || null,
+    routeStepId: String(payload.route_step_id || "").trim() || null,
+  };
 }
 
 router.post("/post", requirePermission("registscan:write"), async (req, res) => {
-  const { payload, subline, plan, routeStepId } = registrationInput(req, false);
+  const { payload, subline, plan, lineId, routeStepId } = registrationInput(req, false);
   const userid = hasPermission(req.user, "registscan:read") && payload.userid ? String(payload.userid) : req.user.id;
   const result = await prisma.$transaction(async (tx) => {
     // Serialize PPC registrations per operator so two quick submissions cannot
@@ -103,7 +109,7 @@ router.post("/post", requirePermission("registscan:write"), async (req, res) => 
       await tx.$queryRaw`WITH lock AS (SELECT pg_advisory_xact_lock(hashtextextended(${userid}, 0))) SELECT 1 FROM lock`;
       await assertNoOpenRegistration(tx, userid);
     }
-    const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload, subline, routeStepId, db: tx });
+    const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload, subline, lineId, routeStepId, db: tx });
     const normalizedData = await normalizedRegistrationData(tx, resolved.bom, subline, resolved.routeStep);
     const registration = await tx.registscan.create({
       data: { model: String(payload.model).trim(), order_number: String(payload.order_number).trim(), po_number: String(payload.po_number).trim(), subline: resolved.routeStep.line_master?.line || subline, userid, shift: String(payload.shift), plan, product_category: resolved.category, ...(normalizedData || {}) },
@@ -119,8 +125,8 @@ router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) 
     where: { id: req.params.id },
   });
   assertCanAccessRegistration(req.user, existing);
-  const { payload, subline, plan, routeStepId } = registrationInput(req, false);
-  const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload, subline, routeStepId });
+  const { payload, subline, plan, lineId, routeStepId } = registrationInput(req, false);
+  const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload, subline, lineId, routeStepId });
   if (resolved.category !== existing.product_category) throw new AppError("Kategori registrasi tidak dapat diubah", 400, "CATEGORY_CHANGE_FORBIDDEN");
   const result = await prisma.$transaction(async (tx) => {
     let normalizedData;

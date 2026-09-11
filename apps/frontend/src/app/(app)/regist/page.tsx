@@ -49,6 +49,7 @@ const REGISTRATION_METADATA_KEYS = new Set([
   "order_number",
   "po_number",
   "subline",
+  "line_id",
   "route_step_id",
   "shift",
   "plan",
@@ -59,6 +60,7 @@ const EMPTY: Record<string, string> = {
   order_number: "",
   po_number: "",
   subline: "",
+  line_id: "",
   route_step_id: "",
   shift: "1",
   plan: "10",
@@ -187,8 +189,8 @@ export default function RegistPage() {
            if (hit) {
              setBomRule(hit);
             setForm((current) => {
-              const routeExists = hit.route_steps?.some((step) => step.id === current.route_step_id);
-              return routeExists ? current : { ...current, route_step_id: "", subline: "" };
+              const lineExists = hit.route_steps?.some((step) => step.line_id === current.line_id);
+              return lineExists ? current : { ...current, line_id: "", route_step_id: "", subline: "" };
             });
           } else {
             setBomRule(null);
@@ -216,8 +218,8 @@ export default function RegistPage() {
   // di line tersebut.
   const fields = useMemo(() => bomFields(bomRule), [bomRule]);
   const selectedRoute = useMemo(
-    () => bomRule?.route_steps?.find((step) => step.id === form.route_step_id) ?? null,
-    [bomRule, form.route_step_id],
+    () => bomRule?.route_steps?.find((step) => step.line_id === form.line_id) ?? null,
+    [bomRule, form.line_id],
   );
   const registrationFields = useMemo(
     () => selectedRoute?.requires_main_serial === false
@@ -225,11 +227,12 @@ export default function RegistPage() {
       : fields,
     [fields, selectedRoute],
   );
-  const routeOptions = useMemo(
-    () => (bomRule?.route_steps ?? []).map((step) => ({
-      value: step.id,
-      label: `${step.sequence}. ${step.name} · ${step.line_master?.line ?? "Line belum ditetapkan"}`,
-    })),
+  const lineOptions = useMemo(
+    () => [...new Map(
+      (bomRule?.route_steps ?? [])
+        .filter((step) => step.line_id && step.line_master?.line)
+        .map((step) => [step.line_id!, { value: step.line_id!, label: step.line_master!.line! }]),
+    ).values()],
     [bomRule],
   );
   const requiredKeys = useMemo(
@@ -241,7 +244,7 @@ export default function RegistPage() {
   );
   const plan = Number(form.plan);
   const isFormValid =
-    ["model", "order_number", "po_number", "subline", "route_step_id"].every(
+    ["model", "order_number", "po_number", "subline", "line_id"].every(
       (k) => String((form as Record<string, unknown>)[k] ?? "").trim() !== "",
     ) &&
     // BOM rule wajib ada — tanpa rule, backend menolak ("Batch tidak ada di bomlist")
@@ -296,7 +299,7 @@ export default function RegistPage() {
       const next = Object.fromEntries(
         Object.entries(current).filter(([key]) => REGISTRATION_METADATA_KEYS.has(key)),
       ) as Record<string, string>;
-      return { ...next, ...updates, route_step_id: "", subline: "" };
+      return { ...next, ...updates, line_id: "", route_step_id: "", subline: "" };
     });
   };
 
@@ -311,6 +314,7 @@ export default function RegistPage() {
       order_number: r.order_number ?? "",
       po_number: r.po_number ?? "",
       subline: r.subline ?? "",
+      line_id: r.line_id ?? "",
       route_step_id: r.route_step_id ?? "",
       shift: r.shift ?? "1",
       plan: String(r.plan ?? ""),
@@ -583,22 +587,22 @@ export default function RegistPage() {
             <TextField label="Order Number" value={form.order_number} onChange={(e) => changeOrderIdentity({ order_number: e.target.value })} required />
             <TextField label="PO Number" value={form.po_number} onChange={(e) => setForm({ ...form, po_number: e.target.value })} required />
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-foreground">Route Step / Line *</label>
+              <label className="mb-1.5 block text-sm font-medium text-foreground">Line *</label>
               <Select
-                options={routeOptions}
-                value={form.route_step_id || null}
+                options={lineOptions}
+                value={form.line_id || null}
                 onChange={(value) => {
-                  const route = bomRule?.route_steps?.find((step) => step.id === value);
-                  setForm({ ...form, route_step_id: value ?? "", subline: route?.line_master?.line ?? "" });
+                  const route = bomRule?.route_steps?.find((step) => step.line_id === value);
+                  setForm({ ...form, line_id: value ?? "", route_step_id: "", subline: route?.line_master?.line ?? "" });
                 }}
-                placeholder={routeOptions.length ? "Pilih route step dan line" : "Muat route template terlebih dahulu"}
-                disabled={ruleLoading || routeOptions.length === 0}
-                aria-label="Route step dan line produksi"
+                placeholder={lineOptions.length ? "Pilih line" : "Tidak ada line untuk Production Order ini"}
+                disabled={ruleLoading || lineOptions.length === 0}
+                aria-label="Line produksi"
               />
               <p className="mt-1 text-xs text-muted-foreground">
                 {selectedRoute?.requires_main_serial === false
                   ? "Route ini component-only: main serial tidak diperlukan."
-                  : "Registration akan mewarisi Line yang ditetapkan pada route template model."}
+                  : "Pilih line; sistem menentukan alur internal secara otomatis."}
               </p>
             </div>
             <TextField label="Shift" value={form.shift} onChange={(e) => setForm({ ...form, shift: e.target.value })} />

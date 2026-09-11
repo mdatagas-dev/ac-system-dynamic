@@ -30,7 +30,7 @@ async function loadNormalizedBom(db, bom) {
 function validateNormalizedRegistration(rules, payload, requiresMainSerial) {
   const allowed = new Set(rules.map((rule) => rule.component_type.code));
   const metadata = new Set([
-    "model", "order_number", "po_number", "subline", "route_step_id", "userid", "shift",
+    "model", "order_number", "po_number", "subline", "line_id", "route_step_id", "userid", "shift",
     "plan", "id_regist", "product_category", "reason",
   ]);
   const unknown = Object.keys(payload).filter(
@@ -83,7 +83,7 @@ function normalizedFields(rules, configuredRules = null) {
     });
 }
 
-async function resolveBomRule({ model, order_number, payload, subline, routeStep, routeStepId, db = prisma }) {
+async function resolveBomRule({ model, order_number, payload, subline, routeStep, routeStepId, lineId, db = prisma }) {
   const bom = await findBomlist(db, model, order_number);
   const normalized = await loadNormalizedBom(db, bom);
   const routeSelect = {
@@ -94,6 +94,12 @@ async function resolveBomRule({ model, order_number, payload, subline, routeStep
         where: { id: String(routeStepId), bomlist_id: bom.id },
         ...routeSelect,
       })
+    : lineId
+      ? await db.bomlist_route_steps.findFirst({
+          where: { bomlist_id: bom.id, line_id: String(lineId) },
+          ...routeSelect,
+          orderBy: { sequence: "asc" },
+        })
     : await db.bomlist_route_steps.findFirst({
         where: {
           bomlist_id: bom.id,
