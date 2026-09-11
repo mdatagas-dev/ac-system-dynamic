@@ -20,7 +20,10 @@ async function enrichBom(row, db = prisma) {
     }),
     db.bomlist_route_steps.findMany({
       where: { bomlist_id: row.id },
-      include: { process: { select: { code: true, name: true } } },
+      include: {
+        process: { select: { code: true, name: true } },
+        line_master: { select: { id: true, line: true } },
+      },
       orderBy: { sequence: "asc" },
     }),
   ]);
@@ -45,7 +48,10 @@ router.get("/template", async (req, res) => {
         include: { component_type: true },
       },
       route_templates: {
-        include: { process: { select: { code: true, name: true } } },
+        include: {
+          process: { select: { code: true, name: true } },
+          line_master: { select: { id: true, line: true } },
+        },
         orderBy: { sequence: "asc" },
       },
     },

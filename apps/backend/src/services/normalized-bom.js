@@ -55,6 +55,7 @@ function componentSnapshot(template, payload) {
 function routeSnapshot(template) {
   return {
     process_id: template.process_id,
+    line_id: template.line_id,
     template_step_id: template.id,
     code: template.code,
     name: template.name,

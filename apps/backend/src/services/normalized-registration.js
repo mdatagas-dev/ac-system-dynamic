@@ -89,20 +89,18 @@ async function auditRegistration(db, {
   });
 }
 
-async function normalizedRegistrationData(db, bom, subline) {
+async function normalizedRegistrationData(db, bom, subline, routeStep = null) {
   if (!bom.model_id || !bom.order_quantity) return null;
-  const [line, routeStep] = await Promise.all([
-    db.line.findFirst({
-      where: { line: { equals: subline, mode: "insensitive" } },
-    }),
-    db.bomlist_route_steps.findFirst({
-      where: {
-        bomlist_id: bom.id,
-        name: { equals: subline, mode: "insensitive" },
-      },
-    }),
-  ]);
-  if (!line || !routeStep) {
+  const resolvedRouteStep = routeStep || await db.bomlist_route_steps.findFirst({
+    where: {
+      bomlist_id: bom.id,
+      name: { equals: subline, mode: "insensitive" },
+    },
+  });
+  const line = resolvedRouteStep?.line_id
+    ? await db.line.findUnique({ where: { id: resolvedRouteStep.line_id } })
+    : await db.line.findFirst({ where: { line: { equals: subline, mode: "insensitive" } } });
+  if (!line?.line || !resolvedRouteStep) {
     throw new AppError(
       "Line atau route Production Order belum tersedia",
       409,
@@ -112,7 +110,7 @@ async function normalizedRegistrationData(db, bom, subline) {
   return {
     bomlist_id: bom.id,
     line_id: line.id,
-    route_step_id: routeStep.id,
+    route_step_id: resolvedRouteStep.id,
     production_date: jakartaDate(),
   };
 }

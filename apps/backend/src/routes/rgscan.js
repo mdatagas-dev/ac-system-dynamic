@@ -20,7 +20,7 @@ const {
   updateComponentSnapshots,
 } = require("../services/normalized-registration");
 
-const baseSelect = { id: true, model: true, order_number: true, po_number: true, subline: true, userid: true, shift: true, plan: true, timestamps: true, product_category: true };
+const baseSelect = { id: true, model: true, order_number: true, po_number: true, subline: true, userid: true, shift: true, plan: true, timestamps: true, product_category: true, line_id: true, route_step_id: true };
 
 async function scanCount(db, registration) {
   return db.recordscan.count({
@@ -90,11 +90,11 @@ function registrationInput(req, requireUserId) {
   }
   const plan = Number(payload.plan);
   if (!Number.isInteger(plan) || plan <= 0) throw new AppError("plan harus bilangan bulat positif", 400, "VALIDATION");
-  return { payload, subline, plan };
+  return { payload, subline, plan, routeStepId: String(payload.route_step_id || "").trim() || null };
 }
 
 router.post("/post", requirePermission("registscan:write"), async (req, res) => {
-  const { payload, subline, plan } = registrationInput(req, false);
+  const { payload, subline, plan, routeStepId } = registrationInput(req, false);
   const userid = hasPermission(req.user, "registscan:read") && payload.userid ? String(payload.userid) : req.user.id;
   const result = await prisma.$transaction(async (tx) => {
     // Serialize PPC registrations per operator so two quick submissions cannot
@@ -103,10 +103,10 @@ router.post("/post", requirePermission("registscan:write"), async (req, res) => 
       await tx.$queryRaw`WITH lock AS (SELECT pg_advisory_xact_lock(hashtextextended(${userid}, 0))) SELECT 1 FROM lock`;
       await assertNoOpenRegistration(tx, userid);
     }
-    const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload, subline, db: tx });
-    const normalizedData = await normalizedRegistrationData(tx, resolved.bom, subline);
+    const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload, subline, routeStepId, db: tx });
+    const normalizedData = await normalizedRegistrationData(tx, resolved.bom, subline, resolved.routeStep);
     const registration = await tx.registscan.create({
-      data: { model: String(payload.model).trim(), order_number: String(payload.order_number).trim(), po_number: String(payload.po_number).trim(), subline, userid, shift: String(payload.shift), plan, product_category: resolved.category, ...(normalizedData || {}) },
+      data: { model: String(payload.model).trim(), order_number: String(payload.order_number).trim(), po_number: String(payload.po_number).trim(), subline: resolved.routeStep.line_master?.line || subline, userid, shift: String(payload.shift), plan, product_category: resolved.category, ...(normalizedData || {}) },
     });
     await createComponentSnapshots(tx, registration.id, resolved.bom.id, payload);
     return registration;
@@ -119,18 +119,18 @@ router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) 
     where: { id: req.params.id },
   });
   assertCanAccessRegistration(req.user, existing);
-  const { payload, subline, plan } = registrationInput(req, false);
-  const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload, subline });
+  const { payload, subline, plan, routeStepId } = registrationInput(req, false);
+  const resolved = await resolveBomRule({ model: payload.model, order_number: payload.order_number, payload, subline, routeStepId });
   if (resolved.category !== existing.product_category) throw new AppError("Kategori registrasi tidak dapat diubah", 400, "CATEGORY_CHANGE_FORBIDDEN");
   const result = await prisma.$transaction(async (tx) => {
     let normalizedData;
     let protectedFields = [];
     const activeScans = await scanCount(tx, existing);
     assertPlanNotBelowScans(plan, activeScans);
-    const [line, routeStep] = await Promise.all([
-      tx.line.findFirst({ where: { line: { equals: subline, mode: "insensitive" } } }),
-      tx.bomlist_route_steps.findFirst({ where: { bomlist_id: resolved.bom.id, name: { equals: subline, mode: "insensitive" } } }),
-    ]);
+    const routeStep = resolved.routeStep;
+    const line = routeStep.line_id
+      ? await tx.line.findUnique({ where: { id: routeStep.line_id } })
+      : await tx.line.findFirst({ where: { line: { equals: subline, mode: "insensitive" } } });
     if (!resolved.bom.model_id || !resolved.bom.order_quantity || !line || !routeStep) {
       throw new AppError("Relasi Production Order atau route belum lengkap", 409, "NORMALIZED_LINK_MISSING");
     }
@@ -161,7 +161,7 @@ router.put("/edit/:id", requirePermission("registscan:write"), async (req, res) 
         pinId: pin.id,
       });
     }
-    const registration = await tx.registscan.update({ where: { id: existing.id }, data: { model: String(payload.model).trim(), order_number: String(payload.order_number).trim(), po_number: String(payload.po_number).trim(), subline, shift: String(payload.shift), plan, ...normalizedData } });
+    const registration = await tx.registscan.update({ where: { id: existing.id }, data: { model: String(payload.model).trim(), order_number: String(payload.order_number).trim(), po_number: String(payload.po_number).trim(), subline: line.line, shift: String(payload.shift), plan, ...normalizedData } });
     await updateComponentSnapshots(tx, existing.id, resolved.bom.id, payload);
     return registration;
   });

@@ -20,6 +20,10 @@ _Avoid_: BOM field, dynamic component
 An operator-created record of planned work for one Production Order, production date, shift, line, and route step. Its plan is a hard ceiling for scans in that Registration.
 _Avoid_: Batch, production run, session
 
+**Line**:
+A physical production resource that can be assigned to one or more Route Steps. A Registration selects a Route Step and inherits its assigned Line.
+_Avoid_: Subline, parsed line name
+
 **Registration Reference**:
 A representative component value entered during Registration whose length defines the required scan length for that Registration.
 _Avoid_: Accuracy reference, sample scan
@@ -37,7 +41,7 @@ A record of a Production Unit passing the route step identified by a Registratio
 _Avoid_: Record, history row
 
 **Route Step**:
-One ordered stage in a Production Order's manufacturing route, derived from its Product Model's route template.
+One ordered stage in a Production Order's manufacturing route, derived from its Product Model's route template and assigned to a Line.
 _Avoid_: Subline, parsed line name
 
 **Plan**:

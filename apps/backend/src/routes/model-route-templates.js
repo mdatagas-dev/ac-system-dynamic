@@ -16,8 +16,9 @@ function normalizeSteps(input) {
     const name = String(step?.name || "").trim();
     const sequence = Number(step?.sequence ?? index + 1);
     const processId = String(step?.process_id || "").trim();
-    if (!code || !name || !processId || !Number.isInteger(sequence) || sequence <= 0) {
-      throw new AppError("Code, nama, process, dan sequence route wajib valid", 400, "VALIDATION");
+    const lineId = String(step?.line_id || "").trim();
+    if (!code || !name || !processId || !lineId || !Number.isInteger(sequence) || sequence <= 0) {
+      throw new AppError("Code, nama, process, Line, dan sequence route wajib valid", 400, "VALIDATION");
     }
     if (seenCodes.has(code) || seenSequences.has(sequence)) {
       throw new AppError("Code dan sequence route tidak boleh duplikat", 400, "DUPLICATE");
@@ -28,6 +29,7 @@ function normalizeSteps(input) {
       code,
       name,
       sequence,
+      line_id: lineId,
       process_id: processId,
       is_required: step?.is_required !== false,
       requires_main_serial: step?.requires_main_serial !== false,
@@ -44,7 +46,10 @@ async function loadModel(modelId, db = prisma) {
       brand: true,
       category: { select: { slug: true, name: true } },
       route_templates: {
-        include: { process: { select: { id: true, code: true, name: true } } },
+        include: {
+          process: { select: { id: true, code: true, name: true } },
+          line_master: { select: { id: true, line: true } },
+        },
         orderBy: { sequence: "asc" },
       },
     },
@@ -58,23 +63,32 @@ router.get("/", async (req, res) => {
   if (!modelId) throw new AppError("model_id wajib diisi", 400, "VALIDATION");
   const initial = await loadModel(modelId);
   await ensureModelTemplates(prisma, initial.id, initial.category?.slug);
-  const [model, processes] = await Promise.all([
+  const [model, processes, lines] = await Promise.all([
     loadModel(modelId),
     prisma.processes.findMany({ where: { is_active: true }, orderBy: { code: "asc" } }),
+    prisma.line.findMany({ where: { line: { not: null } }, orderBy: { line: "asc" } }),
   ]);
-  res.status(200).json({ data: { model, processes } });
+  res.status(200).json({ data: { model, processes, lines } });
 });
 
 router.put("/:modelId", requirePermission("master-data:write"), async (req, res) => {
   const steps = normalizeSteps(req.body?.steps);
   const model = await loadModel(req.params.modelId);
   const processIds = [...new Set(steps.map((step) => step.process_id))];
+  const lineIds = [...new Set(steps.map((step) => step.line_id).filter(Boolean))];
   const processes = await prisma.processes.findMany({
     where: { id: { in: processIds }, is_active: true },
     select: { id: true },
   });
   if (processes.length !== processIds.length) {
     throw new AppError("Process route tidak ditemukan atau tidak aktif", 400, "VALIDATION");
+  }
+  const lines = await prisma.line.findMany({
+    where: { id: { in: lineIds }, line: { not: null } },
+    select: { id: true },
+  });
+  if (lines.length !== lineIds.length || lineIds.length !== steps.length) {
+    throw new AppError("Setiap route step wajib memiliki Line aktif", 400, "VALIDATION");
   }
 
   await prisma.$transaction(async (tx) => {

@@ -64,10 +64,12 @@ model registscan {
 }
 
 model line {
-  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  line               String?      @db.VarChar(255)
-  uph_uph_lineToline uph[]        @relation("uph_lineToline")
-  registrations      registscan[]
+  id                   String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  line                 String?                 @db.VarChar(255)
+  uph_uph_lineToline   uph[]                   @relation("uph_lineToline")
+  registrations        registscan[]
+  model_route_steps    model_route_steps[]
+  order_route_steps    bomlist_route_steps[]
 }
 
 model model {
@@ -179,6 +181,7 @@ model processes {
 model model_route_steps {
   id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   model_id             String                @db.Uuid
+  line_id              String?               @db.Uuid
   process_id           String                @db.Uuid
   code                 String                @db.VarChar(100)
   name                 String                @db.VarChar(255)
@@ -186,11 +189,13 @@ model model_route_steps {
   is_required          Boolean               @default(true)
   requires_main_serial Boolean               @default(true)
   model                model                 @relation(fields: [model_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  line_master          line?                 @relation(fields: [line_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
   process              processes             @relation(fields: [process_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   order_steps          bomlist_route_steps[]
 
   @@unique([model_id, code])
   @@unique([model_id, sequence])
+  @@index([line_id])
   @@index([process_id])
 }
 
@@ -210,6 +215,7 @@ model bomlist_components {
 model bomlist_route_steps {
   id                   String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   bomlist_id           String                  @db.Uuid
+  line_id              String?                 @db.Uuid
   process_id           String                  @db.Uuid
   template_step_id     String?                 @db.Uuid
   code                 String                  @db.VarChar(100)
@@ -218,6 +224,7 @@ model bomlist_route_steps {
   is_required          Boolean                 @default(true)
   requires_main_serial Boolean                 @default(true)
   bom                  bomlist                 @relation(fields: [bomlist_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  line_master          line?                   @relation(fields: [line_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
   process              processes               @relation(fields: [process_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   template_step        model_route_steps?      @relation(fields: [template_step_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
   registrations        registscan[]
@@ -226,6 +233,7 @@ model bomlist_route_steps {
 
   @@unique([bomlist_id, code])
   @@unique([bomlist_id, sequence])
+  @@index([line_id])
   @@index([process_id])
   @@index([template_step_id])
 }

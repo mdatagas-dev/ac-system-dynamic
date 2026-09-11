@@ -20,17 +20,14 @@ import { useSnackbar } from "@/components/vm3/Snackbar";
 import { useAuth } from "@/lib/auth";
 import { bomFields, type BomRule } from "@/lib/bom";
 
-interface Line {
-  id: string;
-  line: string | null;
-}
-
 interface Regist {
   id: string;
   model: string;
   order_number: string;
   po_number: string;
   subline: string;
+  line_id?: string | null;
+  route_step_id?: string | null;
   plan: number | null;
   shift?: string | null;
   sn?: string | null;
@@ -52,6 +49,7 @@ const EMPTY: Record<string, string> = {
   order_number: "",
   po_number: "",
   subline: "",
+  route_step_id: "",
   shift: "1",
   plan: "10",
   sn: "",
@@ -75,8 +73,6 @@ export default function RegistPage() {
   const router = useRouter();
   const isPpc = user?.roleuser.toLowerCase() === "ppc";
   const [rows, setRows] = useState<Regist[]>([]);
-  const [lines, setLines] = useState<Line[]>([]);
-  const [lineLoading, setLineLoading] = useState(true);
   const [form, setForm] = useState<Record<string, string>>(EMPTY);
   const [dialogOpen, setDialogOpen] = useState(false);
   // batch yang sedang diedit (null = mode create)
@@ -97,38 +93,6 @@ export default function RegistPage() {
   const [searchInput, setSearchInput] = useState("");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-
-  useEffect(() => {
-    let cancelled = false;
-    http
-      .get<{ data: Line[] }>("/line")
-      .then((res) => {
-        if (!cancelled) setLines(res.data ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setLines([]);
-          show("Gagal memuat daftar line");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLineLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [show]);
-
-  const lineOptions = useMemo(() => {
-    const options = lines.flatMap(({ line }) => {
-      const value = line?.trim();
-      return value ? [{ value, label: value }] : [];
-    });
-    if (form.subline && !options.some((option) => option.value === form.subline)) {
-      options.unshift({ value: form.subline, label: form.subline });
-    }
-    return options;
-  }, [form.subline, lines]);
 
   // Batch belum tuntas (plan > scan) — operator harus menyelesaikannya dulu.
   const [pending, setPending] = useState<{ id: string; model: string; order_number: string; plan: number; total: number }[]>([]);
@@ -210,8 +174,12 @@ export default function RegistPage() {
             (b) => b.order_number === order && model.startsWith(b.model),
           );
           const hit = candidates[0];
-          if (hit) {
-            setBomRule(hit);
+           if (hit) {
+             setBomRule(hit);
+            setForm((current) => {
+              const routeExists = hit.route_steps?.some((step) => step.id === current.route_step_id);
+              return routeExists ? current : { ...current, route_step_id: "", subline: "" };
+            });
           } else {
             setBomRule(null);
             setRuleError("BOM rule tidak ditemukan untuk model + order ini");
@@ -235,12 +203,19 @@ export default function RegistPage() {
 
   // Satu template BOM dipakai oleh semua unit.
   const fields = useMemo(() => bomFields(bomRule), [bomRule]);
+  const routeOptions = useMemo(
+    () => (bomRule?.route_steps ?? []).map((step) => ({
+      value: step.id,
+      label: `${step.sequence}. ${step.name} · ${step.line_master?.line ?? "Line belum ditetapkan"}`,
+    })),
+    [bomRule],
+  );
   const requiredKeys = useMemo(
     () => fields.filter((f) => f.required).map((f) => f.key),
     [fields],
   );
   const isFormValid =
-    ["model", "order_number", "po_number", "subline"].every(
+    ["model", "order_number", "po_number", "subline", "route_step_id"].every(
       (k) => String((form as Record<string, unknown>)[k] ?? "").trim() !== "",
     ) &&
     // BOM rule wajib ada — tanpa rule, backend menolak ("Batch tidak ada di bomlist")
@@ -294,6 +269,7 @@ export default function RegistPage() {
       order_number: r.order_number ?? "",
       po_number: r.po_number ?? "",
       subline: r.subline ?? "",
+      route_step_id: r.route_step_id ?? "",
       shift: r.shift ?? "1",
       plan: String(r.plan ?? ""),
       sn: r.sn ?? "",
@@ -565,18 +541,19 @@ export default function RegistPage() {
             <TextField label="Order Number" value={form.order_number} onChange={(e) => setForm({ ...form, order_number: e.target.value })} required />
             <TextField label="PO Number" value={form.po_number} onChange={(e) => setForm({ ...form, po_number: e.target.value })} required />
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-foreground">Line *</label>
+              <label className="mb-1.5 block text-sm font-medium text-foreground">Route Step / Line *</label>
               <Select
-                options={lineOptions}
-                value={form.subline || null}
-                onChange={(value) => setForm({ ...form, subline: value ?? "" })}
-                placeholder={lineLoading ? "Memuat line..." : "Pilih line produksi"}
-                disabled={lineLoading || lineOptions.length === 0}
-                aria-label="Line produksi"
+                options={routeOptions}
+                value={form.route_step_id || null}
+                onChange={(value) => {
+                  const route = bomRule?.route_steps?.find((step) => step.id === value);
+                  setForm({ ...form, route_step_id: value ?? "", subline: route?.line_master?.line ?? "" });
+                }}
+                placeholder={routeOptions.length ? "Pilih route step dan line" : "Muat route template terlebih dahulu"}
+                disabled={ruleLoading || routeOptions.length === 0}
+                aria-label="Route step dan line produksi"
               />
-              <p className="mt-1 text-xs text-muted-foreground">
-                {lineLoading ? "Memuat daftar line..." : lineOptions.length ? "Pilih line yang akan menjalankan batch ini." : "Belum ada line tersedia."}
-              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Registration akan mewarisi Line yang ditetapkan pada route template model.</p>
             </div>
             <TextField label="Shift" value={form.shift} onChange={(e) => setForm({ ...form, shift: e.target.value })} />
             <TextField label="Plan" type="number" value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} />

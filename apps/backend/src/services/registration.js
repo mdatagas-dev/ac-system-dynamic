@@ -30,7 +30,7 @@ async function loadNormalizedBom(db, bom) {
 function validateNormalizedRegistration(rules, payload, requiresMainSerial) {
   const allowed = new Set(rules.map((rule) => rule.component_type.code));
   const metadata = new Set([
-    "model", "order_number", "po_number", "subline", "userid", "shift",
+    "model", "order_number", "po_number", "subline", "route_step_id", "userid", "shift",
     "plan", "id_regist", "product_category", "reason",
   ]);
   const unknown = Object.keys(payload).filter(
@@ -83,15 +83,24 @@ function normalizedFields(rules, configuredRules = null) {
     });
 }
 
-async function resolveBomRule({ model, order_number, payload, subline, routeStep, db = prisma }) {
+async function resolveBomRule({ model, order_number, payload, subline, routeStep, routeStepId, db = prisma }) {
   const bom = await findBomlist(db, model, order_number);
   const normalized = await loadNormalizedBom(db, bom);
-  const resolvedRouteStep = routeStep || await db.bomlist_route_steps.findFirst({
-      where: {
-        bomlist_id: bom.id,
-        name: { equals: subline, mode: "insensitive" },
-      },
-    });
+  const routeSelect = {
+    include: { line_master: { select: { id: true, line: true } } },
+  };
+  const resolvedRouteStep = routeStep || (routeStepId
+    ? await db.bomlist_route_steps.findFirst({
+        where: { id: String(routeStepId), bomlist_id: bom.id },
+        ...routeSelect,
+      })
+    : await db.bomlist_route_steps.findFirst({
+        where: {
+          bomlist_id: bom.id,
+          name: { equals: subline, mode: "insensitive" },
+        },
+        ...routeSelect,
+      }));
   if (!resolvedRouteStep) {
     throw new AppError(
       "Route Production Order belum tersedia",

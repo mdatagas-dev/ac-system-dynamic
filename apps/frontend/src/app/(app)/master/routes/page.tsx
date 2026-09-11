@@ -20,6 +20,8 @@ type RouteStep = {
   sequence: number;
   process_id: string;
   process?: Process | null;
+  line_id: string | null;
+  line_master?: { id: string; line: string | null } | null;
   is_required: boolean;
   requires_main_serial: boolean;
 };
@@ -29,6 +31,7 @@ const EMPTY_DRAFT: Draft = {
   code: "",
   name: "",
   process_id: "",
+  line_id: "",
   is_required: true,
   requires_main_serial: true,
 };
@@ -41,6 +44,7 @@ export default function ProductionRoutesPage() {
   const [models, setModels] = useState<Model[]>([]);
   const [modelId, setModelId] = useState<string | null>(null);
   const [processes, setProcesses] = useState<Process[]>([]);
+  const [lines, setLines] = useState<Array<{ id: string; line: string | null }>>([]);
   const [steps, setSteps] = useState<RouteStep[]>([]);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -78,13 +82,14 @@ export default function ProductionRoutesPage() {
     const timer = setTimeout(() => {
       setLoading(true);
       http
-        .get<{ data: { model: { route_templates: RouteStep[] }; processes: Process[] } }>(
+      .get<{ data: { model: { route_templates: RouteStep[] }; processes: Process[]; lines: Array<{ id: string; line: string | null }> } }>(
           `/model-route-templates?model_id=${encodeURIComponent(modelId)}`,
         )
         .then((response) => {
           if (cancelled) return;
-          setSteps(response.data.model.route_templates ?? []);
-          setProcesses(response.data.processes ?? []);
+        setSteps(response.data.model.route_templates ?? []);
+        setProcesses(response.data.processes ?? []);
+        setLines(response.data.lines ?? []);
           setEditingIndex(null);
           setDraft(EMPTY_DRAFT);
         })
@@ -115,6 +120,7 @@ export default function ProductionRoutesPage() {
       code: step.code,
       name: step.name,
       process_id: step.process_id,
+      line_id: step.line_id ?? "",
       is_required: step.is_required,
       requires_main_serial: step.requires_main_serial,
     });
@@ -128,8 +134,8 @@ export default function ProductionRoutesPage() {
   const applyDraft = () => {
     const code = draft.code.trim().toLowerCase();
     const name = draft.name.trim();
-    if (!code || !name || !draft.process_id) {
-      show("Code, nama, dan process wajib diisi");
+    if (!code || !name || !draft.process_id || !draft.line_id) {
+      show("Code, nama, process, dan Line wajib diisi");
       return;
     }
     if (steps.some((step, index) => step.code === code && index !== editingIndex)) {
@@ -170,17 +176,19 @@ export default function ProductionRoutesPage() {
           code: step.code,
           name: step.name,
           process_id: step.process_id,
+          line_id: step.line_id,
           sequence: index + 1,
           is_required: step.is_required,
           requires_main_serial: step.requires_main_serial,
         })),
       });
       show("Production route template disimpan");
-      const response = await http.get<{ data: { model: { route_templates: RouteStep[] }; processes: Process[] } }>(
+      const response = await http.get<{ data: { model: { route_templates: RouteStep[] }; processes: Process[]; lines: Array<{ id: string; line: string | null }> } }>(
         `/model-route-templates?model_id=${encodeURIComponent(modelId)}`,
       );
       setSteps(response.data.model.route_templates ?? []);
       setProcesses(response.data.processes ?? []);
+      setLines(response.data.lines ?? []);
     } catch (error) {
       show(`Gagal menyimpan route template: ${(error as Error).message}`);
     } finally {
@@ -244,6 +252,7 @@ export default function ProductionRoutesPage() {
                     <span className="rounded-full bg-surface-container px-2 py-0.5 text-xs text-on-surface-variant">{step.code}</span>
                   </div>
                   <p className="text-sm text-on-surface-variant">{step.process?.name ?? processes.find((process) => process.id === step.process_id)?.name ?? step.process_id}</p>
+                  <p className="text-sm text-on-surface-variant">Line: {step.line_master?.line ?? lines.find((line) => line.id === step.line_id)?.line ?? "Belum ditetapkan"}</p>
                   <div className="mt-2 flex flex-wrap gap-2 text-xs text-on-surface-variant">
                     <span>{step.is_required ? "Required" : "Optional"}</span>
                     <span>•</span>
@@ -277,6 +286,10 @@ export default function ProductionRoutesPage() {
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">Process</label>
             <Select options={processOptions} value={draft.process_id || null} onChange={(value) => setDraft((current) => ({ ...current, process_id: value ?? "" }))} placeholder="Pilih process" disabled={processes.length === 0} aria-label="Process" />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">Line</label>
+            <Select options={lines.flatMap((line) => line.line ? [{ value: line.id, label: line.line }] : [])} value={draft.line_id || null} onChange={(value) => setDraft((current) => ({ ...current, line_id: value ?? "" }))} placeholder="Pilih Line" disabled={lines.length === 0} aria-label="Line" />
           </div>
           <div className="flex flex-col justify-end gap-3 pb-1 sm:col-span-2 sm:flex-row sm:justify-start">
             <label className="flex items-center gap-2 text-sm text-on-surface-variant">

@@ -27,6 +27,13 @@ export interface BomRule {
   sn_pump?: string | null;
   /** Typed category metadata returned by the backend. */
   fields?: Array<{ key: string; label?: string; prefix?: string; required?: boolean; expected_length?: number | null }> | null;
+  route_steps?: Array<{
+    id: string;
+    name: string;
+    sequence: number;
+    line_id?: string | null;
+    line_master?: { id: string; line: string | null } | null;
+  }> | null;
 }
 
 const FIXED_LABELS: Record<string, string> = {
