@@ -57,8 +57,11 @@ router.post("/login", async (req, res) => {
   await redis.set(`session:${sessionId}`, JSON.stringify(user), { EX: SESSION_TTL });
 
   // Kirim session id via cookie HttpOnly -> JS browser tidak bisa baca
-  // Secure hanya di production (HTTPS), SameSite=Lax cegah CSRF lintas situs
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  // Production defaults to HTTPS cookies. HTTP-only LAN installations must
+  // explicitly opt out so browsers can persist the session cookie.
+  const useSecureCookie =
+    process.env.NODE_ENV === "production" && process.env.COOKIE_SECURE !== "false";
+  const secure = useSecureCookie ? "; Secure" : "";
   res.setHeader(
     "Set-Cookie",
     `session_id=${sessionId}; HttpOnly; Path=/; Max-Age=${SESSION_TTL}; SameSite=Lax${secure}`,

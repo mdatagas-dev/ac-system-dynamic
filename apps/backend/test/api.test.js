@@ -937,6 +937,7 @@ test("TDD/SESSION: login -> akses -> logout -> akses lagi 401", async () => {
   const setCookie = loginRes.headers.get("set-cookie") || "";
   const sid = /session_id=([^;]+)/.exec(setCookie)?.[1];
   assert.ok(sid, "harus ada session_id di Set-Cookie");
+  assert.doesNotMatch(setCookie, /; Secure(?:;|$)/i);
 
   // akses pakai cookie session
   let r = await api("GET", "/pin", undefined, sid);
