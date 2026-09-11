@@ -388,6 +388,16 @@ test("NORMALIZED BOM: creation snapshots model component and route templates", a
     assert.strictEqual(templateResponse.data.data.model_id, model.id);
     assert.strictEqual(templateResponse.data.data.fields[0].key, "sn");
     assert.strictEqual(templateResponse.data.data.route_steps[0].name, routeTemplate.name);
+    const routeTemplateResponse = await api(
+      "GET",
+      `/model-route-templates?model_id=${model.id}`,
+    );
+    assert.strictEqual(routeTemplateResponse.status, 200);
+    assert.strictEqual(routeTemplateResponse.data.data.model.id, model.id);
+    assert.strictEqual(
+      routeTemplateResponse.data.data.model.route_templates[0].name,
+      routeTemplate.name,
+    );
 
     const response = await api("POST", "/bomlist/post", {
       model: MODEL_SHORT,

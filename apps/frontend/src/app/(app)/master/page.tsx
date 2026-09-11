@@ -323,9 +323,14 @@ export default function MasterPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Master Data</h1>
-        <Button icon="add" onClick={() => router.push("/master/bomlist")}>
-          BOM List
-        </Button>
+        <div className="flex gap-2">
+          <Button icon="route" variant="outlined" onClick={() => router.push("/master/routes")}>
+            Production Route
+          </Button>
+          <Button icon="add" onClick={() => router.push("/master/bomlist")}>
+            BOM List
+          </Button>
+        </div>
       </div>
       <Tabs
         tabs={ENTITIES.map((e) => ({ value: e.key, label: e.label }))}

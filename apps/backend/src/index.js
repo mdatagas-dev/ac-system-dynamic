@@ -23,6 +23,7 @@ const pinRoutes = require("./routes/pin");
 const bomlistRoutes = require("./routes/bomlist");
 const uphRoutes = require("./routes/uph");
 const productCategoriesRoutes = require("./routes/product-categories");
+const modelRouteTemplatesRoutes = require("./routes/model-route-templates");
 
 const redis = require("./config/redis");
 const requirePermission = require("../middlewares/requirePermission");
@@ -80,6 +81,7 @@ app.use("/users", auth, requirePermission("users:manage"), usersRoutes);
 app.use("/bomlist", auth, bomlistRoutes);
 app.use("/line", auth, lineRoutes);
 app.use("/model", auth, modelRoutes);
+app.use("/model-route-templates", auth, modelRouteTemplatesRoutes);
 app.use("/pin", auth, pinRoutes);
 app.use("/uph", auth, requirePermission("master-data:write"), uphRoutes);
 app.use("/product-categories", auth, requirePermission("master-data:write"), productCategoriesRoutes);
