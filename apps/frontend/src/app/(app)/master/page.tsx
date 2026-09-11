@@ -80,17 +80,11 @@ const ENTITIES: Entity[] = [
     fields: [
       { key: "model", label: "Model", required: true },
       { key: "order_number", label: "Order Number", required: true },
-      { key: "product_category", label: "Kategori" },
-      // Kolom prefix material (paritas dengan tabel bomlist lama) — nilai
-      // diambil dari row.fields[] karena rule baru disimpan di tabel typed.
-      { key: "sn", label: "SN Unit" },
-      { key: "sn_carton", label: "SN Carton" },
-      { key: "pcb_idu", label: "PCB IDU" },
-      { key: "pcb_odu", label: "PCB ODU" },
-      { key: "sn_motor", label: "SN Motor" },
-      { key: "sn_accessories", label: "SN Accessories" },
-      { key: "sn_drum", label: "SN Drum" },
-      { key: "sn_pump", label: "SN Pump" },
+      { key: "po_number", label: "PO Number" },
+      { key: "order_quantity", label: "Order Quantity", type: "number", required: true },
+      { key: "order_status", label: "Status" },
+      { key: "component_count", label: "Components" },
+      { key: "route_count", label: "Route Steps" },
     ],
     rowKey: (r) => String(r.id),
     getList: () => http.get<{ data: Record<string, unknown>[] }>("/bomlist?limit=100").then((r) => (r.data ?? []) as Record<string, unknown>[]),
@@ -148,32 +142,25 @@ const ENTITIES: Entity[] = [
 
 const EMPTY_FORM: Record<string, unknown> = {};
 
-const BOM_FIELDS = {
-  ac: [
-    { key: "sn", label: "Serial Number", scope: "Universal" },
-    { key: "sn_carton", label: "SN Carton", scope: "Universal" },
-    { key: "sn_accessories", label: "SN Accessories", scope: "Universal" },
-    { key: "pcb_idu", label: "PCB IDU", scope: "Universal" },
-    { key: "pcb_odu", label: "PCB ODU", scope: "Universal" },
-    { key: "sn_motor", label: "SN Motor", scope: "Universal" },
-  ],
-  wm: [
-    { key: "sn", label: "Serial Number", scope: "Washing Machine" },
-    { key: "sn_drum", label: "SN Drum", scope: "Washing Machine" },
-    { key: "sn_pump", label: "SN Pump", scope: "Washing Machine" },
-  ],
-} as const;
-
 type ProductCategoryRow = Record<string, unknown> & { id: string; slug: string; name: string; suffix_length?: number };
-// Kolom tabel BOM yang isinya prefix material dari row.fields[] (bukan kolom row)
-const BOM_PREFIX_KEYS = new Set(["sn", "sn_carton", "pcb_idu", "pcb_odu", "sn_motor", "sn_accessories", "sn_drum", "sn_pump"]);
-function bomPrefixOf(row: Record<string, unknown>, key: string): string {
-  const meta = Array.isArray(row.fields) ? (row.fields as Array<Record<string, unknown>>) : [];
-  const hit = meta.find((f) => String(f.key ?? "") === key);
-  if (!hit) return "-";
-  const prefix = String(hit.prefix ?? "").trim();
-  return prefix ? (hit.required === true ? `${prefix} *` : prefix) : "-";
-}
+type BomComponent = { key: string; label: string; prefix: string; required: boolean };
+type RouteStep = {
+  id: string;
+  code: string;
+  name: string;
+  sequence: number;
+  is_required: boolean;
+  requires_main_serial: boolean;
+  process?: { code: string; name: string } | null;
+};
+type BomTemplate = {
+  model_id: string;
+  model: string;
+  product_category: string;
+  category_name: string | null;
+  fields: BomComponent[];
+  route_steps: RouteStep[];
+};
 
 
 export default function MasterPage() {
@@ -204,9 +191,11 @@ export default function MasterPage() {
   const [categories, setCategories] = useState<ProductCategoryRow[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
 
-  // Model master — category determines the typed BOM fields shown in this form.
+  // Model master drives the normalized component and route templates.
   const [models, setModels] = useState<string[]>([]);
-  const [modelCategories, setModelCategories] = useState<Record<string, string>>({});
+  const [bomTemplate, setBomTemplate] = useState<BomTemplate | null>(null);
+  const [templateLoading, setTemplateLoading] = useState(false);
+  const [templateError, setTemplateError] = useState("");
   useEffect(() => {
     if (tab !== "bomlist") return;
     let cancelled = false;
@@ -216,10 +205,6 @@ export default function MasterPage() {
         if (cancelled) return;
         const rows = (r.data ?? []) as Record<string, unknown>[];
         setModels(rows.map((m) => String(m.model ?? "")).filter(Boolean));
-        setModelCategories(Object.fromEntries(rows.map((m) => {
-          const category = String(m.product_category ?? "").toLowerCase();
-          return [String(m.model ?? ""), category === "ai" || category === "an" ? "ac" : category === "washing" ? "wm" : category];
-        })));
       })
       .catch(() => {
         if (!cancelled) setModels([]);
@@ -228,6 +213,47 @@ export default function MasterPage() {
       cancelled = true;
     };
   }, [tab]);
+
+  useEffect(() => {
+    if (tab !== "bomlist" || !dialogOpen || !String(form.model ?? "").trim()) {
+      setBomTemplate(null);
+      setTemplateError("");
+      return;
+    }
+    let cancelled = false;
+    setTemplateLoading(true);
+    setTemplateError("");
+    http
+      .get<{ data: BomTemplate }>(
+        `/bomlist/template?model=${encodeURIComponent(String(form.model).trim())}`,
+      )
+      .then((response) => {
+        if (cancelled) return;
+        setBomTemplate(response.data);
+        if (!editing) {
+          setForm((current) => {
+            const next = { ...current };
+            for (const field of response.data.fields) {
+              next[field.key] = field.prefix;
+              next[`${field.key}_required`] = field.required;
+            }
+            return next;
+          });
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setBomTemplate(null);
+          setTemplateError((error as Error).message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setTemplateLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dialogOpen, editing, form.model, tab]);
 
   // Line master — datalist untuk Section user (subline registrasi)
   const [lines, setLines] = useState<string[]>([]);
@@ -320,6 +346,8 @@ export default function MasterPage() {
       setForm({ slug: "", name: "" });
     } else if (entity.key === "model") {
       setForm({ category_id: "" });
+    } else if (entity.key === "bomlist") {
+      setForm({ model: "", order_number: "", po_number: "", order_quantity: "" });
     } else {
       setForm({});
     }
@@ -334,6 +362,8 @@ export default function MasterPage() {
       const next: Record<string, unknown> = {
         model: row.model ?? "",
         order_number: row.order_number ?? "",
+        po_number: row.po_number ?? "",
+        order_quantity: row.order_quantity ?? "",
       };
       const fieldMetadata = Array.isArray(row.fields) ? row.fields as Array<Record<string, unknown>> : [];
       for (const field of fieldMetadata) {
@@ -361,11 +391,13 @@ export default function MasterPage() {
         if (payload.name) payload.name = String(payload.name).trim();
       }
       if (entity.key === "bomlist") {
-        const category = selectedBomCategory;
-        if (!category || !(category in BOM_FIELDS)) throw new Error("Pilih model dengan kategori AC atau Washing Machine");
-        const allowed = new Set<string>(BOM_FIELDS[category as keyof typeof BOM_FIELDS].map((field) => field.key));
+        if (!bomTemplate) throw new Error("Template komponen dan route model belum tersedia");
+        const allowed = new Set<string>(bomTemplate.fields.map((field) => field.key));
         for (const key of Object.keys(payload)) {
-          if (key !== "model" && key !== "order_number" && key !== "product_category" && !allowed.has(key.replace(/_required$/, ""))) {
+          if (
+            !["model", "order_number", "po_number", "order_quantity"].includes(key) &&
+            !allowed.has(key.replace(/_required$/, ""))
+          ) {
             delete payload[key];
           }
         }
@@ -420,11 +452,6 @@ export default function MasterPage() {
     [categories],
   );
 
-
-  const selectedBomCategory = entity.key === "bomlist" ? modelCategories[String(form.model ?? "")] : undefined;
-  const bomFields = selectedBomCategory && selectedBomCategory in BOM_FIELDS
-    ? BOM_FIELDS[selectedBomCategory as keyof typeof BOM_FIELDS]
-    : [];
 
   // Judul dialog
   const dialogTitle = editing ? `Edit ${entity.label}` : `Tambah ${entity.label}`;
@@ -488,8 +515,10 @@ export default function MasterPage() {
                     <td key={f.key} className="p-3">
                       {f.type === "password"
                         ? "••••••"
-                        : entity.key === "bomlist" && BOM_PREFIX_KEYS.has(f.key)
-                          ? bomPrefixOf(row, f.key)
+                        : entity.key === "bomlist" && f.key === "component_count"
+                          ? Array.isArray(row.fields) ? row.fields.length : 0
+                          : entity.key === "bomlist" && f.key === "route_count"
+                            ? Array.isArray(row.route_steps) ? row.route_steps.length : 0
                           : entity.key === "model" && f.key === "category_id"
                             ? String(row.category_name ?? "-")
                             : f.type === "switch"
@@ -535,34 +564,59 @@ export default function MasterPage() {
         {entity.key === "bomlist" ? (
           <div className="mt-4 space-y-5">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Combobox
-                label="Model"
-                options={models}
-                value={String(form.model ?? "")}
-                onChange={(value) => setForm((current) => ({ ...current, model: value }))}
-                placeholder="Ketik untuk mencari model"
-              />
+              {editing ? (
+                <TextField label="Model" value={String(form.model ?? "")} readOnly />
+              ) : (
+                <Combobox
+                  label="Model"
+                  options={models}
+                  value={String(form.model ?? "")}
+                  onChange={(value) => setForm((current) => ({ ...current, model: value }))}
+                  placeholder="Ketik untuk mencari model"
+                />
+              )}
               <TextField
                 label="Order Number"
                 required
                 value={String(form.order_number ?? "")}
                 onChange={(event) => setForm((current) => ({ ...current, order_number: event.target.value }))}
               />
+              <TextField
+                label="PO Number"
+                value={String(form.po_number ?? "")}
+                onChange={(event) => setForm((current) => ({ ...current, po_number: event.target.value }))}
+              />
+              <TextField
+                label="Order Quantity"
+                type="number"
+                required
+                min={1}
+                value={String(form.order_quantity ?? "")}
+                onChange={(event) => setForm((current) => ({ ...current, order_quantity: event.target.value }))}
+              />
             </div>
-            {selectedBomCategory ? (
+            {templateLoading ? (
+              <p className="rounded-lg bg-surface-container px-3 py-2 text-sm text-on-surface-variant">
+                Memuat template model…
+              </p>
+            ) : templateError ? (
+              <p className="rounded-lg bg-error-container px-3 py-2 text-sm text-on-error-container">
+                {templateError}
+              </p>
+            ) : bomTemplate ? (
               <>
                 <p className="rounded-lg bg-surface-container px-3 py-2 text-sm text-on-surface-variant">
-                  Kategori model: <strong className="text-on-surface">{selectedBomCategory === "ac" ? "Air Conditioner" : "Washing Machine"}</strong>
+                  Kategori model: <strong className="text-on-surface">{bomTemplate.category_name ?? bomTemplate.product_category.toUpperCase()}</strong>
                 </p>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <h2 className="text-sm font-semibold text-on-surface sm:col-span-2">Material dan aturan registrasi</h2>
-                  {bomFields.map((field) => {
+                  <h2 className="text-sm font-semibold text-on-surface sm:col-span-2">Component Requirements</h2>
+                  {bomTemplate.fields.map((field) => {
                     const prefix = String(form[field.key] ?? "");
                     const requiredKey = `${field.key}_required`;
                     return (
                       <div key={field.key} className="grid gap-2 rounded-lg border border-outline-variant p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                         <TextField
-                          label={`${field.label} · ${field.scope}`}
+                          label={field.label}
                           value={prefix}
                           onChange={(event) => setForm((current) => ({
                             ...current,
@@ -585,9 +639,33 @@ export default function MasterPage() {
                     );
                   })}
                 </div>
+                <div className="space-y-3">
+                  <div>
+                    <h2 className="text-sm font-semibold text-on-surface">Production Route</h2>
+                    <p className="text-xs text-on-surface-variant">Route disalin dari template model saat BOM List dibuat.</p>
+                  </div>
+                  <ol className="grid gap-2">
+                    {(editing && Array.isArray(editing.route_steps)
+                      ? editing.route_steps as RouteStep[]
+                      : bomTemplate.route_steps
+                    ).map((step) => (
+                      <li key={step.id} className="flex items-center justify-between gap-4 rounded-lg border border-outline-variant px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-on-surface">
+                            {step.sequence}. {step.name}
+                          </p>
+                          <p className="text-xs text-on-surface-variant">{step.process?.name ?? step.code}</p>
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${step.requires_main_serial ? "bg-primary-container text-on-primary-container" : "bg-tertiary-container text-on-tertiary-container"}`}>
+                          {step.requires_main_serial ? "Main SN required" : "Component only"}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
               </>
             ) : (
-              <p className="rounded-lg bg-surface-container px-3 py-2 text-sm text-on-surface-variant">Pilih model untuk menampilkan field material sesuai kategori.</p>
+              <p className="rounded-lg bg-surface-container px-3 py-2 text-sm text-on-surface-variant">Pilih model untuk menampilkan component requirements dan production route.</p>
             )}
           </div>
         ) : (
@@ -649,7 +727,7 @@ export default function MasterPage() {
         open={deleteId != null}
         onOpenChange={(open) => !open && setDeleteId(null)}
         title={`Hapus ${entity.label}`}
-        description="Data akan dihapus permanen. Lanjutkan?"
+        description={entity.key === "bomlist" ? "BOM List akan diarsipkan dan tidak dapat dipakai untuk registrasi baru. Lanjutkan?" : "Data akan dihapus permanen. Lanjutkan?"}
         actions={
           <>
             <Button variant="text" onClick={() => setDeleteId(null)}>

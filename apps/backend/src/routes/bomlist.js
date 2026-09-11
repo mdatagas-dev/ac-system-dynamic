@@ -12,16 +12,64 @@ const {
 
 async function enrichBom(row, db = prisma) {
   const category = categoryKey(row.product_category);
-  const rules = await db.bomlist_components.findMany({
-    where: { bomlist_id: row.id },
-    include: { component_type: true },
-  });
+  const [rules, routeSteps] = await Promise.all([
+    db.bomlist_components.findMany({
+      where: { bomlist_id: row.id },
+      include: { component_type: true },
+    }),
+    db.bomlist_route_steps.findMany({
+      where: { bomlist_id: row.id },
+      include: { process: { select: { code: true, name: true } } },
+      orderBy: { sequence: "asc" },
+    }),
+  ]);
   return {
     ...row,
     product_category: category,
     fields: normalizedFields(rules),
+    route_steps: routeSteps,
   };
 }
+
+router.get("/template", async (req, res) => {
+  const modelName = String(req.query.model || "").trim();
+  if (!modelName) {
+    throw new AppError("model wajib diisi", 400, "VALIDATION");
+  }
+  const master = await prisma.model.findFirst({
+    where: { model: modelName },
+    include: {
+      category: { select: { slug: true, name: true } },
+      bom_templates: {
+        include: { component_type: true },
+      },
+      route_templates: {
+        include: { process: { select: { code: true, name: true } } },
+        orderBy: { sequence: "asc" },
+      },
+    },
+  });
+  if (!master) {
+    throw new AppError("Model tidak ditemukan", 404, "NOT_FOUND");
+  }
+  if (!master.bom_templates.length || !master.route_templates.length) {
+    throw new AppError(
+      "Template komponen atau route model belum lengkap",
+      409,
+      "MODEL_TEMPLATE_MISSING",
+    );
+  }
+  res.status(200).json({
+    data: {
+      model_id: master.id,
+      model: master.model,
+      product_category: categoryKey(master.category?.slug),
+      category_name: master.category?.name ?? null,
+      fields: normalizedFields(master.bom_templates),
+      route_steps: master.route_templates,
+    },
+  });
+});
 
 router.get("/", async (req, res) => {
   const { page = 1, limit = 10, keyword = "", archived = "false" } = req.query;

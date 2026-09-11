@@ -380,6 +380,15 @@ test("NORMALIZED BOM: creation snapshots model component and route templates", a
         sequence: 902,
       },
     });
+    const templateResponse = await api(
+      "GET",
+      `/bomlist/template?model=${encodeURIComponent(MODEL_SHORT)}`,
+    );
+    assert.strictEqual(templateResponse.status, 200);
+    assert.strictEqual(templateResponse.data.data.model_id, model.id);
+    assert.strictEqual(templateResponse.data.data.fields[0].key, "sn");
+    assert.strictEqual(templateResponse.data.data.route_steps[0].name, routeTemplate.name);
+
     const response = await api("POST", "/bomlist/post", {
       model: MODEL_SHORT,
       order_number: orderNumber,
@@ -392,6 +401,8 @@ test("NORMALIZED BOM: creation snapshots model component and route templates", a
     assert.strictEqual(order.model_id, model.id);
     assert.strictEqual(order.order_quantity, 25);
     assert.strictEqual(order.fields[0].prefix, "ORDER-");
+    assert.strictEqual(order.route_steps[0].name, routeTemplate.name);
+    assert.strictEqual(order.route_steps[0].requires_main_serial, true);
     assert.strictEqual(
       await prisma.bomlist_route_steps.count({ where: { bomlist_id: order.id } }),
       1,
