@@ -44,6 +44,16 @@ interface Regist {
   index?: number;
 }
 
+const REGISTRATION_METADATA_KEYS = new Set([
+  "model",
+  "order_number",
+  "po_number",
+  "subline",
+  "route_step_id",
+  "shift",
+  "plan",
+]);
+
 const EMPTY: Record<string, string> = {
   model: "",
   order_number: "",
@@ -171,7 +181,7 @@ export default function RegistPage() {
           if (cancelled) return;
           // Satu BOM rule berlaku universal untuk semua unit dan line.
           const candidates = (res.data ?? []).filter(
-            (b) => b.order_number === order && model.startsWith(b.model),
+            (b) => b.order_number === order && (model === b.model || model.startsWith(`${b.model}-`)),
           );
           const hit = candidates[0];
            if (hit) {
@@ -199,10 +209,22 @@ export default function RegistPage() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [form.model, form.order_number, form.subline]);
+  }, [form.model, form.order_number]);
 
-  // Satu template BOM dipakai oleh semua unit.
+  // Satu template BOM dipakai oleh semua unit. Component-only route tidak
+  // meminta main serial; operator hanya mendaftarkan komponen yang dipakai
+  // di line tersebut.
   const fields = useMemo(() => bomFields(bomRule), [bomRule]);
+  const selectedRoute = useMemo(
+    () => bomRule?.route_steps?.find((step) => step.id === form.route_step_id) ?? null,
+    [bomRule, form.route_step_id],
+  );
+  const registrationFields = useMemo(
+    () => selectedRoute?.requires_main_serial === false
+      ? fields.filter((field) => field.key !== "sn")
+      : fields,
+    [fields, selectedRoute],
+  );
   const routeOptions = useMemo(
     () => (bomRule?.route_steps ?? []).map((step) => ({
       value: step.id,
@@ -211,15 +233,22 @@ export default function RegistPage() {
     [bomRule],
   );
   const requiredKeys = useMemo(
-    () => fields.filter((f) => f.required).map((f) => f.key),
-    [fields],
+    () => registrationFields.filter((f) => f.required).map((f) => f.key),
+    [registrationFields],
   );
+  const hasRegistrationReference = registrationFields.some(
+    (field) => String((form as Record<string, unknown>)[field.key] ?? "").trim() !== "",
+  );
+  const plan = Number(form.plan);
   const isFormValid =
     ["model", "order_number", "po_number", "subline", "route_step_id"].every(
       (k) => String((form as Record<string, unknown>)[k] ?? "").trim() !== "",
     ) &&
     // BOM rule wajib ada — tanpa rule, backend menolak ("Batch tidak ada di bomlist")
     bomRule !== null &&
+    Number.isInteger(plan) &&
+    plan > 0 &&
+    hasRegistrationReference &&
     requiredKeys.every((k) => String((form as Record<string, unknown>)[k] ?? "").trim() !== "");
 
   const load = useCallback(async (kw = keyword, pg = page) => {
@@ -254,8 +283,21 @@ export default function RegistPage() {
       return;
     }
     setEditing(null);
+    setBomRule(null);
+    setRuleError(null);
     setForm(EMPTY);
     setDialogOpen(true);
+  };
+
+  const changeOrderIdentity = (updates: Record<string, string>) => {
+    setBomRule(null);
+    setRuleError(null);
+    setForm((current) => {
+      const next = Object.fromEntries(
+        Object.entries(current).filter(([key]) => REGISTRATION_METADATA_KEYS.has(key)),
+      ) as Record<string, string>;
+      return { ...next, ...updates, route_step_id: "", subline: "" };
+    });
   };
 
   // Edit memakai dialog create: prefill form, BOM probe jalan otomatis dari model+order
@@ -531,14 +573,14 @@ export default function RegistPage() {
                 label="Model *"
                 options={models}
                 value={form.model}
-                onChange={(v) => setForm({ ...form, model: v })}
+                onChange={(v) => changeOrderIdentity({ model: v })}
                 placeholder="Ketik untuk mencari model"
               />
               {!modelKnown && form.model.trim() && (
                 <p className="mt-1 text-xs text-warning">Model tidak ada di Model Master</p>
               )}
             </div>
-            <TextField label="Order Number" value={form.order_number} onChange={(e) => setForm({ ...form, order_number: e.target.value })} required />
+            <TextField label="Order Number" value={form.order_number} onChange={(e) => changeOrderIdentity({ order_number: e.target.value })} required />
             <TextField label="PO Number" value={form.po_number} onChange={(e) => setForm({ ...form, po_number: e.target.value })} required />
             <div>
               <label className="mb-1.5 block text-sm font-medium text-foreground">Route Step / Line *</label>
@@ -553,7 +595,11 @@ export default function RegistPage() {
                 disabled={ruleLoading || routeOptions.length === 0}
                 aria-label="Route step dan line produksi"
               />
-              <p className="mt-1 text-xs text-muted-foreground">Registration akan mewarisi Line yang ditetapkan pada route template model.</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {selectedRoute?.requires_main_serial === false
+                  ? "Route ini component-only: main serial tidak diperlukan."
+                  : "Registration akan mewarisi Line yang ditetapkan pada route template model."}
+              </p>
             </div>
             <TextField label="Shift" value={form.shift} onChange={(e) => setForm({ ...form, shift: e.target.value })} />
             <TextField label="Plan" type="number" value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value })} />
@@ -575,7 +621,7 @@ export default function RegistPage() {
                 mengandung prefix dari BOM
               </div> */}
               <div className="grid gap-4 sm:grid-cols-2">
-                {fields.map((f) => {
+                {registrationFields.map((f) => {
                   const value = String((form as Record<string, unknown>)[f.key] ?? "");
                   return (
                     <TextField
@@ -589,6 +635,11 @@ export default function RegistPage() {
                   );
                 })}
               </div>
+              {selectedRoute?.requires_main_serial === false && registrationFields.length === 0 && (
+                <p className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning">
+                  Route component-only memerlukan minimal satu BOM Requirement selain main serial.
+                </p>
+              )}
             </section>
           ) : (
             <div className="rounded-lg border border-dashed border-outline-variant p-4 text-xs text-on-surface-variant">

@@ -31,6 +31,7 @@ export interface BomRule {
     id: string;
     name: string;
     sequence: number;
+    requires_main_serial?: boolean;
     line_id?: string | null;
     line_master?: { id: string; line: string | null } | null;
   }> | null;
